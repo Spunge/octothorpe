@@ -1,0 +1,12 @@
+[package]
+name = "octothorpe"
+version = "0.1.0"
+authors = ["root <root@root>"]
+edition = "2018"
+
+[dependencies]
+jack = "0.6.0"
+
+[[bin]]
+name = "octothorpe"
+path = "main.rs"
