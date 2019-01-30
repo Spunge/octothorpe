@@ -1,6 +1,6 @@
 
 pub struct ProcessHandler<'a> {
-    pub controller: &'a super::controller::Controller,
+    pub controller: &'a super::controller::Controller<'a>,
     pub midi_in: &'a jack::Port<jack::MidiIn>, 
     pub midi_out: &'a mut jack::Port<jack::MidiOut>,
 }
@@ -16,7 +16,7 @@ impl<'a> jack::ProcessHandler for ProcessHandler<'a> {
 }
 
 pub struct NotificationHandler<'a> {
-    pub controller: &'a super::controller::Controller,
+    pub controller: &'a super::controller::Controller<'a>,
 }
 
 impl<'a> jack::NotificationHandler for NotificationHandler<'a> {

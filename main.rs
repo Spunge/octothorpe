@@ -19,8 +19,9 @@ fn main() {
         .register_port("control_out", jack::MidiOut::default())
         .unwrap();
 
+    let ring_buffer = jack::RingBuffer::new(1024).unwrap();
     // Setup controller
-    let controller = controller::Controller::new();
+    let controller = controller::Controller::new(&ring_buffer);
 
     // Setup handlers
     let processhandler = handlers::ProcessHandler { 
