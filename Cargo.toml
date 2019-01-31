@@ -9,4 +9,3 @@ jack = "0.6.0"
 
 [[bin]]
 name = "octothorpe"
-path = "main.rs"

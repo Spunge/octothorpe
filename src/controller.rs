@@ -1,15 +1,13 @@
 
 
-mod midi;
-
-pub struct Controller<'a> {
+pub struct Controller {
     //pub writer: jack::RingBufferWriter,
     is_identified: bool,
     device_id: u8,
-    buffer: Vec<midi::Message>,
+    buffer: Vec<super::Message>,
 }
 
-impl<'a> Controller<'a> {
+impl<'a> Controller {
     pub fn new() -> Self {
         Controller {
             is_identified: false,
@@ -18,8 +16,15 @@ impl<'a> Controller<'a> {
         }
     }
 
-    pub fn is_identified(&self) -> bool {
+    fn is_identified(&self) -> bool {
         self.is_identified
+    }
+
+    fn inquire(&mut self) {
+        self.buffer.push(super::Message::Inquiry(
+            0, 
+            [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7],
+        ));
     }
 
     fn identify(&mut self, inquiry_response: jack::RawMidi<'a>) {
@@ -30,10 +35,10 @@ impl<'a> Controller<'a> {
             self.is_identified = true;
             self.device_id = inquiry_response.bytes[13];
 
-            self.buffer.push(midi::Message(midi::Inquiry {
-                time: 0,
-                bytes: [0xF0, 0x47, self.device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7],
-            }));
+            self.buffer.push(super::Message::Introduction(
+                0, 
+                [0xF0, 0x47, self.device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7],
+            ));
         }
     }
 
@@ -63,15 +68,13 @@ impl<'a> Controller<'a> {
         }
     }
 
-    pub fn get_midi_output(&self) -> &Vec<&jack::RawMidi<'a>> {
+    pub fn get_midi_output(&mut self) -> &Vec<super::Message> {
+        if ! self.is_identified {
+            self.inquire()
+        }
+
         &self.buffer
     }
 
-    pub fn get_device_inquiry_request(&self) -> &jack::RawMidi<'a> {
-        &jack::RawMidi{
-            time: 0,
-            bytes: &[0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7],
-        }
-    }
 }
 

@@ -1,16 +1,22 @@
 
+
 extern crate jack;
 
 use std::io;
 
 mod controller;
 
-struct ProcessHandler<'a> {
+pub enum Message {
+    Introduction(u32, [u8; 12]),
+    Inquiry(u32, [u8; 6]),
+}
+
+struct ProcessHandler {
     midi_out: jack::Port<jack::MidiOut>,
     midi_in: jack::Port<jack::MidiIn>,
-    controller: controller::Controller<'a>,
+    controller: controller::Controller,
 }
-impl<'a> jack::ProcessHandler for ProcessHandler<'a> {
+impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, _client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Process incoming midi
         for event in self.midi_in.iter(process_scope) {
@@ -20,12 +26,10 @@ impl<'a> jack::ProcessHandler for ProcessHandler<'a> {
         // process outgoing midi
         let mut writer = self.midi_out.writer(process_scope);
 
-        if self.controller.is_identified() {
-            // Get buffer, output events, clear buffer
-        } else {
-            // Get device inquiry, 
-            writer.write(&self.controller.get_device_inquiry_request()).unwrap();
-        }
+        // Get buffer, output events, clear buffer
+        for i in self.controller.get_midi_output()
+
+            // TODO - output midi
 
         jack::Control::Continue
     }
