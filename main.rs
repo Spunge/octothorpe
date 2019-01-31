@@ -3,7 +3,7 @@ extern crate jack;
 
 use std::io;
 
-mod controller;
+//mod controller;
 mod handlers;
 
 fn main() {
@@ -19,19 +19,12 @@ fn main() {
         .register_port("control_out", jack::MidiOut::default())
         .unwrap();
 
-    let ring_buffer = jack::RingBuffer::new(1024).unwrap();
     // Setup controller
-    let controller = controller::Controller::new(&ring_buffer);
+    //let controller = controller::Controller::new(writer);
 
     // Setup handlers
-    let processhandler = handlers::ProcessHandler { 
-        controller: &controller,
-        midi_in: &midi_in,
-        midi_out: &mut midi_out,
-    };
-    let notificationhandler = handlers::NotificationHandler {
-        controller: &controller,
-    };
+    let processhandler = handlers::ProcessHandler::new(&midi_in, &mut midi_out);
+    let notificationhandler = handlers::NotificationHandler{};
 
     // Activate client
     let active_client = client

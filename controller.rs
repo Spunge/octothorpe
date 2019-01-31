@@ -1,17 +1,11 @@
 
 
 
-pub struct Controller<'a> { 
-    ring_buffer: &'a jack::RingBuffer,
-}
+pub struct Controller<'a> {}
 
 impl<'a> Controller<'a> {
-    pub fn new(ring_buffer: &jack::RingBuffer) -> Self {
-    //let (mut reader, mut writer) = ringbuf.into_reader_writer();
-
-        Controller { 
-            output_buffer: Vec::new(),
-        }
+    pub fn new() -> Self {
+        Controller {}
     }
 
     pub fn process_midi_input(&self, iterator: jack::MidiIter) {
@@ -39,7 +33,7 @@ impl<'a> Controller<'a> {
                 0b01111111 /* Velocity */,
             ],
         };
-    */
+        */
 
         //self.output_buffer.push(event);
     }
