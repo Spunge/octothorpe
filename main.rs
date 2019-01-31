@@ -3,7 +3,11 @@ extern crate jack;
 
 use std::io;
 
-struct NotificationHandler {}
+mod controller;
+
+struct NotificationHandler {
+    controller: controller::Controller,
+}
 
 impl jack::NotificationHandler for NotificationHandler {
     fn ports_connected(&mut self, client: &jack::Client, port_id_a: jack::PortId, port_id_b: jack::PortId, are_connected: bool) {
@@ -15,23 +19,38 @@ impl jack::NotificationHandler for NotificationHandler {
         if (client.is_mine(&port_a) || client.is_mine(&port_b)) && are_connected {
             println!("One of client ports got connected, sending identify request");
 
-            // TODO - send device enquiry
-            //let message = [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7];
+            self.controller.identify();
         }
     }
 }
 
 struct ProcessHandler {
+    midi_out: jack::Port<jack::MidiOut>,
     midi_in: jack::Port<jack::MidiIn>,
+    //reader: jack::RingBufferReader,
 }
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, _client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
+        // Process incoming midi
         for event in self.midi_in.iter(process_scope) {
+            println!("Got Midi!");
             println!("{:?}", event);
         }
-        // Handle input & output in controller
-        //self.controller.process_midi_input(self.midi_in.iter(process_scope));
-        //self.controller.write_midi_output(self.midi_out.writer(process_scope));
+
+        // Read from output buffer and output those events
+        if self.reader.space() != 0 {
+            // TODO - start reading till 0xF7 occurs, that will be a message, if space is larger,
+            // do this again
+            
+            //let mut outbuf = [0u8; 6];
+            //self.reader.read_buffer(&mut outbuf);
+
+            let mut put_p = self.midi_out.writer(process_scope);
+
+            println!("Sending Midi!");
+            println!("{:?}", outbuf);
+            put_p.write(&jack::RawMidi { time: 0, bytes: &outbuf }).unwrap();
+        }
 
         jack::Control::Continue
     }
@@ -42,26 +61,33 @@ fn main() {
     let (client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
+    //let output_buffer = jack::RingBuffer::new(1024).unwrap();
+    //let (output_reader, output_writer) = output_buffer.into_reader_writer();
+
     // Create ports
     let midi_in = client
         .register_port("control_in", jack::MidiIn::default())
         .unwrap();
-    let mut midi_out = client
+    let midi_out = client
         .register_port("control_out", jack::MidiOut::default())
         .unwrap();
 
     // Setup controller
-    //let controller = controller::Controller::new(writer);
+    let controller = controller::Controller{
+        //writer: output_writer,
+    };
 
     // Setup handlers
     let processhandler = ProcessHandler{
         midi_in: midi_in,
+        midi_out: midi_out,
+        //reader: output_reader,
+        controller: controller,
     };
-    let notificationhandler = NotificationHandler{};
 
     // Activate client
     let active_client = client
-        .activate_async(notificationhandler, processhandler)
+        .activate_async((), processhandler)
         .unwrap();
 
     // Wait for user to input string

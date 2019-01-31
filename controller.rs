@@ -1,24 +1,33 @@
 
 
 
-pub struct Controller<'a> {}
+pub struct Controller {
+    //pub writer: jack::RingBufferWriter,
+    identified: bool,
+    buffer: Vec<jack::RawMidi>,
+}
 
-impl<'a> Controller<'a> {
+impl Controller {
     pub fn new() -> Self {
-        Controller {}
-    }
-
-    pub fn process_midi_input(&self, iterator: jack::MidiIter) {
-        for event in iterator {
-            println!("{:?}", event);
+        Controller {
+            identified: false,
+            buffer: Vec::new(),
         }
     }
 
-    // Write midi events to output
-    pub fn write_midi_output(&self, _writer: jack::MidiWriter) {
-        //for event in self.output_buffer.drain(..) {
-            //println!("{:?}", event);
-        //}
+    pub fn get_midi_output(&self) {
+        if ! self.identifed {
+            vec![self.get_device_enquiry_request()]
+        } else {
+            &self.buffer
+        }
+    },
+
+    fn get_device_enquiry_request(&self) {
+        &jack::RawMidi{
+            time: 0,
+            bytes: &[0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7],
+        }
     }
 
     // Try to identify connected controller
