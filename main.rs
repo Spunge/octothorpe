@@ -16,15 +16,15 @@ impl<'a> jack::ProcessHandler for ProcessHandler<'a> {
         for event in self.midi_in.iter(process_scope) {
             self.controller.process_midi_event(event);
         }
-    
+
         // process outgoing midi
         let mut writer = self.midi_out.writer(process_scope);
 
         if self.controller.is_identified() {
             // Get buffer, output events, clear buffer
         } else {
-            // Get device enquiry, 
-            writer.write(self.controller.get_device_enquiry_request()).unwrap();
+            // Get device inquiry, 
+            writer.write(&self.controller.get_device_inquiry_request()).unwrap();
         }
 
         jack::Control::Continue
