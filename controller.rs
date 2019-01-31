@@ -1,29 +1,46 @@
 
 
 
-pub struct Controller {
+pub struct Controller<'a> {
     //pub writer: jack::RingBufferWriter,
-    identified: bool,
-    buffer: Vec<jack::RawMidi>,
+    is_identified: bool,
+    buffer: Vec<&'a jack::RawMidi<'a>>,
 }
 
-impl Controller {
+impl<'a> Controller<'a> {
     pub fn new() -> Self {
         Controller {
-            identified: false,
+            is_identified: false,
             buffer: Vec::new(),
         }
     }
 
-    pub fn get_midi_output(&self) {
-        if ! self.identifed {
-            vec![self.get_device_enquiry_request()]
-        } else {
-            &self.buffer
-        }
+    pub fn is_identified(&self) -> bool {
+        self.is_identified
+    }
+
+    fn process_sysex_message(&self, event) {
     },
 
-    fn get_device_enquiry_request(&self) {
+    fn process_message(&self, event) {
+        println!("Got Midi!");
+        println!("{:?}", event);
+    },
+
+    pub fn process_midi_event(&self, event: jack::RawMidi<'a>) {
+        // Sysex events pass us a lot of data
+        if event.bytes.len() > 3 {
+            self.process_sysex_message(event)
+        } else {
+            self.process_message(event);
+        }
+    }
+
+    pub fn get_midi_output(&self) -> &Vec<&jack::RawMidi<'a>> {
+        &self.buffer
+    }
+
+    pub fn get_device_enquiry_request(&self) -> &jack::RawMidi<'a> {
         &jack::RawMidi{
             time: 0,
             bytes: &[0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7],
