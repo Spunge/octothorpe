@@ -6,9 +6,31 @@ use std::io;
 
 mod controller;
 
-pub enum Message {
-    Introduction(u32, [u8; 12]),
-    Inquiry(u32, [u8; 6]),
+//#[derive(Debug)]
+//pub enum Gridkey {
+    //H([u8]),
+//}
+
+#[derive(Debug)]
+pub enum RawMessage {
+    Introduction([u8; 12]),
+    Inquiry([u8; 6]),
+    Note([u8; 3]),
+}
+
+#[derive(Debug)]
+pub struct Message {
+    time: u32,
+    bytes: RawMessage,
+}
+
+impl Message {
+    fn new(time: u32, message: RawMessage) -> Self {
+        Message {
+            time,
+            bytes: message,
+        }
+    }
 }
 
 struct ProcessHandler {
@@ -20,6 +42,7 @@ impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, _client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Process incoming midi
         for event in self.midi_in.iter(process_scope) {
+            println!("Input: {:?}", event);
             self.controller.process_midi_event(event);
         }
 
@@ -27,9 +50,20 @@ impl jack::ProcessHandler for ProcessHandler {
         let mut writer = self.midi_out.writer(process_scope);
 
         // Get buffer, output events, clear buffer
-        for i in self.controller.get_midi_output()
+        for message in self.controller.get_midi_output() {
+            println!("Output: {:?}", message);
+            match message.bytes {
+                RawMessage::Introduction(bytes) => 
+                    writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
+                RawMessage::Inquiry(bytes) => 
+                    writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
+                RawMessage::Note(bytes) => 
+                    writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
+            }
+        }
 
-            // TODO - output midi
+        // Clear buffer after writing events
+        self.controller.clear_buffer();
 
         jack::Control::Continue
     }
