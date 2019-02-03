@@ -6,11 +6,6 @@ use std::io;
 
 mod controller;
 
-//#[derive(Debug)]
-//pub enum Gridkey {
-    //H([u8]),
-//}
-
 #[derive(Debug)]
 pub enum RawMessage {
     Introduction([u8; 12]),
@@ -38,6 +33,7 @@ struct ProcessHandler {
     midi_in: jack::Port<jack::MidiIn>,
     controller: controller::Controller,
 }
+
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, _client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Process incoming midi
