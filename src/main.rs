@@ -6,6 +6,7 @@ use std::io;
 
 mod controller;
 
+
 #[derive(Debug)]
 pub enum RawMessage {
     Introduction([u8; 12]),

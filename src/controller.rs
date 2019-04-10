@@ -1,16 +1,58 @@
 
-#[derive(Debug)]
-//letters.insert(
-    //"h".toString(), 
-    //,
-//)
 
+// Get string as letter vector
+fn get_text_as_vector(text: String) -> Vec<u8> {
+    // Get letters array from string
+
+    (0..5)
+        .map(|row| {
+            let letters = text.chars();
+
+            letters
+                .map(|letter| { 
+                    // Get letter vector
+                    let vec = get_letter(letter);
+                    // Get width of letter
+                    let width = vec.len() / 5;
+
+                    // Return slice of it based on row
+                    let mut sliced = vec[std::ops::Range { start: row * width, end: (row + 1) * width }].to_vec();
+                    // Add whitespace
+                    sliced.push(0);
+                    // Return slice
+                    sliced
+                })
+                // Fold into one vector
+                .fold(Vec::new(), |mut acc, mut x| { acc.append(&mut x); acc })
+        })
+        // Fold into one vector
+        .fold(Vec::new(), |mut acc, mut x| { acc.append(&mut x); acc })
+}
+
+fn get_letter(letter: char) -> Vec<u8> {
+    match letter {
+        'h' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+        'a' => vec![0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+        'c' => vec![1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
+        'k' => vec![1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+        'e' => vec![1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+        'd' => vec![1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0],
+        'b' => vec![1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0],
+        'y' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0],
+        'r' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+        'o' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+        't' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+        _ => vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    }
+}
+
+#[derive(Debug)]
 pub struct Controller {
     buffer: Vec<super::Message>,
     is_identified: bool,
     device_id: u8,
 
-    text: String,
+    letters: Vec<u8>,
 
     tick_counter: u32,
     ticks_per_frame: u32,
@@ -18,20 +60,18 @@ pub struct Controller {
 
 impl<'a> Controller {
     pub fn new() -> Self {
+        println!("{:?}", get_text_as_vector("hacked by root".to_string()));
+
         Controller {
             is_identified: false,
             device_id: 0,
             buffer: Vec::new(),
 
-            text: "hacked by root".to_string(),
+            letters: get_text_as_vector("hacked by root".to_string()),
 
             tick_counter: 0,
             ticks_per_frame: 1000,
         }
-    }
-
-    fn is_identified(&self) -> bool {
-        self.is_identified
     }
 
     fn inquire(&mut self) {
@@ -97,7 +137,7 @@ impl<'a> Controller {
             self.inquire();
         }
 
-        //self.print_frame();
+        self.print_frame();
 
         &self.buffer
     }
@@ -107,26 +147,14 @@ impl<'a> Controller {
     }
 
     fn print_frame(&mut self) {
-        let x_range: std::ops::Range<u8> = 0..8;
-        let y_range: std::ops::Range<u8> = 0..5;
-
         // Loop through x coords
-        for x in x_range {
-            for y in y_range {
-                // Get letters from our string
-                let mut letters = self.text.chars();
-
-                let array = match letters.nth(x as usize / 3) {
-                    None => self.get_letter(' '),
-                    Some(letter) => self.get_letter(letter),
-                };
-
-                // Get value from letter array for current x & y
-                let value = array[x as usize % 3 + y as usize * 3];
+        for x in 0..8 {
+            for y in 0..5 {
+                let value = self.letters[x + self.letters.len() / 5 * y];
 
                 self.buffer.push(super::Message::new(
                     0,
-                    super::RawMessage::Note([0x90 + x, 0x35 + y, value]),
+                    super::RawMessage::Note([0x90 + x as u8, 0x35 + y as u8, value]),
                 ));
             }
         }
@@ -140,23 +168,6 @@ impl<'a> Controller {
                     super::RawMessage::Note([0x90 + x, 0x35 + y, 0x00]),
                 ));
             }
-        }
-    }
-
-    fn get_letter(&self, letter: char) -> &[u8; 15] {
-        match letter {
-            'h' => &[1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-            'a' => &[0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-            'c' => &[1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
-            'k' => &[1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
-            'e' => &[1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1],
-            'd' => &[1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0],
-            'b' => &[1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0],
-            'y' => &[1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0],
-            'r' => &[1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-            'o' => &[1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-            't' => &[1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-            _ => &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         }
     }
 }
