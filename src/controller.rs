@@ -36,13 +36,13 @@ fn get_letter(letter: char) -> Vec<u8> {
         'c' => vec![1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
         'k' => vec![1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
         'e' => vec![1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1],
-        'd' => vec![1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0],
-        'b' => vec![1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0],
+        'd' => vec![1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1],
+        'b' => vec![1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1],
         'y' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0],
-        'r' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-        'o' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-        't' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-        _ => vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        'r' => vec![1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+        'o' => vec![1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1],
+        't' => vec![1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+        _ => vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
     }
 }
 
@@ -54,23 +54,21 @@ pub struct Controller {
 
     letters: Vec<u8>,
 
-    tick_counter: u32,
-    ticks_per_frame: u32,
+    tick_counter: usize,
+    ticks_per_frame: usize,
 }
 
 impl<'a> Controller {
     pub fn new() -> Self {
-        println!("{:?}", get_text_as_vector("hacked by root".to_string()));
-
         Controller {
             is_identified: false,
             device_id: 0,
             buffer: Vec::new(),
 
-            letters: get_text_as_vector("hacked by root".to_string()),
+            letters: get_text_as_vector("hacked by root ".to_string()),
 
             tick_counter: 0,
-            ticks_per_frame: 1000,
+            ticks_per_frame: 40,
         }
     }
 
@@ -147,10 +145,13 @@ impl<'a> Controller {
     }
 
     fn print_frame(&mut self) {
+        // Get current frame based on tick counter
+        let current_frame = self.tick_counter / self.ticks_per_frame;
+
         // Loop through x coords
         for x in 0..8 {
             for y in 0..5 {
-                let value = self.letters[x + self.letters.len() / 5 * y];
+                let value = self.letters[(x + current_frame) % (self.letters.len() / 5) + (self.letters.len() / 5 * y)];
 
                 self.buffer.push(super::Message::new(
                     0,

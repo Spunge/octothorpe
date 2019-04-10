@@ -48,7 +48,6 @@ impl jack::ProcessHandler for ProcessHandler {
 
         // Get buffer, output events, clear buffer
         for message in self.controller.get_midi_output() {
-            println!("Output: {:?}", message);
             match message.bytes {
                 RawMessage::Introduction(bytes) => 
                     writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
