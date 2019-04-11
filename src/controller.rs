@@ -22,7 +22,7 @@ impl<'a> Controller {
             tick_counter: 0,
             ticks_per_frame: 30,
 
-            scroller: super::scroller::Scroller::new("hacked by root".to_string()),
+            scroller: super::scroller::Scroller::new("the quick brown fox jumped over the lazy dog".to_string()),
         }
     }
 
@@ -94,8 +94,6 @@ impl<'a> Controller {
         if self.tick_counter % self.ticks_per_frame == 0 {
             let frame = self.scroller.get_frame();
             self.scroller.next_frame();
-
-            println!("{:?}", frame);
 
             for x in 0..8 {
                 for y in 0..5 {

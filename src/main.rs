@@ -40,7 +40,6 @@ impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, _client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Process incoming midi
         for event in self.midi_in.iter(process_scope) {
-            println!("Input: {:?}", event);
             self.controller.process_midi_event(event);
         }
 
@@ -99,12 +98,11 @@ fn main() {
 
     // Try to connect to APC automagically
     for port in ports {
+        // TODO - Error handling of this
         if port.contains("capture") {
-            let result = active_client.as_client().connect_ports_by_name(&port, "Octothorpe:control_in");
-            println!("{:?}", result);
+            active_client.as_client().connect_ports_by_name(&port, "Octothorpe:control_in");
         } else if port.contains("playback") {
-            let result = active_client.as_client().connect_ports_by_name("Octothorpe:control_out", &port);
-            println!("{:?}", result);
+            active_client.as_client().connect_ports_by_name("Octothorpe:control_out", &port);
         }
     };
 
