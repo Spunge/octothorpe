@@ -6,6 +6,7 @@ use std::io;
 
 pub mod controller;
 pub mod scroller;
+pub mod transport;
 
 #[derive(Debug)]
 pub enum RawMessage {
@@ -80,16 +81,18 @@ fn main() {
     // Setup controller
     let controller = controller::Controller::new();
 
-    // Setup handlers
+    // Setup process handler that will handle in / output
     let processhandler = ProcessHandler{
         midi_in: midi_in,
         midi_out: midi_out,
         controller: controller,
     };
+    
+    let transport = transport::Transport::new(230.0);
 
     // Activate client
     let active_client = client
-        .activate_async((), processhandler, ())
+        .activate_async((), processhandler, transport)
         .unwrap();
 
     // Get APC ports

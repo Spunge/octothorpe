@@ -82,7 +82,7 @@ impl<'a> Controller {
         if ! self.is_identified {
             self.inquire();
         } else {
-            self.print_frame();
+            //self.print_frame();
         }
 
         &self.buffer
