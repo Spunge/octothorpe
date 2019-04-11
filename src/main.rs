@@ -94,6 +94,20 @@ fn main() {
         .activate_async((), processhandler)
         .unwrap();
 
+    // Get APC ports
+    let ports = active_client.as_client().ports(Some("Akai APC40"), None, jack::PortFlags::empty());
+
+    // Try to connect to APC automagically
+    for port in ports {
+        if port.contains("capture") {
+            let result = active_client.as_client().connect_ports_by_name(&port, "Octothorpe:control_in");
+            println!("{:?}", result);
+        } else if port.contains("playback") {
+            let result = active_client.as_client().connect_ports_by_name("Octothorpe:control_out", &port);
+            println!("{:?}", result);
+        }
+    };
+
     // Wait for user to input string
     println!("Press any key to quit");
     let mut user_input = String::new();

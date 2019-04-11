@@ -7,11 +7,10 @@ pub struct Scroller {
 
 impl Scroller {
     pub fn new(mut string: String) -> Self {
-        string.push_str(" ");
-        let buffer = Scroller::get_text_as_vector(string);
+        string.push_str("  ");
 
         Scroller{
-            buffer: buffer,
+            buffer: Scroller::get_text_as_vector(string),
             current_frame: 0,
         }
     }

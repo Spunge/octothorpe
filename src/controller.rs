@@ -20,7 +20,7 @@ impl<'a> Controller {
             buffer: Vec::new(),
 
             tick_counter: 0,
-            ticks_per_frame: 40,
+            ticks_per_frame: 30,
 
             scroller: super::scroller::Scroller::new("hacked by root".to_string()),
         }
