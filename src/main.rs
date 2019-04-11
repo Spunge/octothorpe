@@ -4,9 +4,8 @@ extern crate jack;
 
 use std::io;
 
-mod controller;
-mod scroller;
-
+pub mod controller;
+pub mod scroller;
 
 #[derive(Debug)]
 pub enum RawMessage {
@@ -90,7 +89,7 @@ fn main() {
 
     // Activate client
     let active_client = client
-        .activate_async((), processhandler)
+        .activate_async((), processhandler, ())
         .unwrap();
 
     // Get APC ports

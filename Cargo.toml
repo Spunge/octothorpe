@@ -5,7 +5,7 @@ authors = ["root <root@root>"]
 edition = "2018"
 
 [dependencies]
-jack = "0.6.0"
+jack = { git = "https://github.com/spunge/rust-jack.git" }
 
 [[bin]]
 name = "octothorpe"

@@ -1,12 +1,15 @@
 
 
+use super::scroller::Scroller;
+use super::{Message, RawMessage};
+
 #[derive(Debug)]
 pub struct Controller {
-    buffer: Vec<super::Message>,
+    buffer: Vec<Message>,
     is_identified: bool,
     device_id: u8,
 
-    scroller: super::scroller::Scroller,
+    scroller: Scroller,
 
     tick_counter: usize,
     ticks_per_frame: usize,
@@ -22,14 +25,14 @@ impl<'a> Controller {
             tick_counter: 0,
             ticks_per_frame: 30,
 
-            scroller: super::scroller::Scroller::new("the quick brown fox jumped over the lazy dog".to_string()),
+            scroller: Scroller::new("testing".to_string()),
         }
     }
 
     fn inquire(&mut self) {
-        self.buffer.push(super::Message::new(
+        self.buffer.push(Message::new(
             0, 
-            super::RawMessage::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]),
+            RawMessage::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]),
         ));
     }
 
@@ -41,9 +44,9 @@ impl<'a> Controller {
             self.is_identified = true;
             self.device_id = inquiry_response.bytes[13];
 
-            self.buffer.push(super::Message::new(
+            self.buffer.push(Message::new(
                 0,
-                super::RawMessage::Introduction([0xF0, 0x47, self.device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]),
+                RawMessage::Introduction([0xF0, 0x47, self.device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]),
             ));
         }
     }
@@ -73,7 +76,7 @@ impl<'a> Controller {
         }
     }
 
-    pub fn get_midi_output(&mut self) -> &Vec<super::Message> {
+    pub fn get_midi_output(&mut self) -> &Vec<Message> {
         self.tick_counter += 1;
 
         if ! self.is_identified {
@@ -92,17 +95,10 @@ impl<'a> Controller {
     fn print_frame(&mut self) {
         // Is it time to draw?
         if self.tick_counter % self.ticks_per_frame == 0 {
-            let frame = self.scroller.get_frame();
+            let mut frame = self.scroller.get_frame();
             self.scroller.next_frame();
 
-            for x in 0..8 {
-                for y in 0..5 {
-                    self.buffer.push(super::Message::new(
-                        0,
-                        super::RawMessage::Note([0x90 + x as u8, 0x35 + y as u8, frame[y + x * 5]]),
-                    ));
-                }
-            }
+            self.buffer.append(&mut frame);
         }
     }
 }
