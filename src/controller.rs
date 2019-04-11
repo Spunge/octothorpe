@@ -1,58 +1,12 @@
 
 
-// Get string as letter vector
-fn get_text_as_vector(text: String) -> Vec<u8> {
-    // Get letters array from string
-
-    (0..5)
-        .map(|row| {
-            let letters = text.chars();
-
-            letters
-                .map(|letter| { 
-                    // Get letter vector
-                    let vec = get_letter(letter);
-                    // Get width of letter
-                    let width = vec.len() / 5;
-
-                    // Return slice of it based on row
-                    let mut sliced = vec[std::ops::Range { start: row * width, end: (row + 1) * width }].to_vec();
-                    // Add whitespace
-                    sliced.push(0);
-                    // Return slice
-                    sliced
-                })
-                // Fold into one vector
-                .fold(Vec::new(), |mut acc, mut x| { acc.append(&mut x); acc })
-        })
-        // Fold into one vector
-        .fold(Vec::new(), |mut acc, mut x| { acc.append(&mut x); acc })
-}
-
-fn get_letter(letter: char) -> Vec<u8> {
-    match letter {
-        'h' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-        'a' => vec![0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-        'c' => vec![1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
-        'k' => vec![1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
-        'e' => vec![1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1],
-        'd' => vec![1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1],
-        'b' => vec![1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1],
-        'y' => vec![1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0],
-        'r' => vec![1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
-        'o' => vec![1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1],
-        't' => vec![1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
-        _ => vec![0, 0, 0, 0, 0, 0, 0, 0, 0],
-    }
-}
-
 #[derive(Debug)]
 pub struct Controller {
     buffer: Vec<super::Message>,
     is_identified: bool,
     device_id: u8,
 
-    letters: Vec<u8>,
+    scroller: super::scroller::Scroller,
 
     tick_counter: usize,
     ticks_per_frame: usize,
@@ -65,10 +19,10 @@ impl<'a> Controller {
             device_id: 0,
             buffer: Vec::new(),
 
-            letters: get_text_as_vector("hacked by root ".to_string()),
-
             tick_counter: 0,
             ticks_per_frame: 40,
+
+            scroller: super::scroller::Scroller::new("hacked by root".to_string()),
         }
     }
 
@@ -91,15 +45,6 @@ impl<'a> Controller {
                 0,
                 super::RawMessage::Introduction([0xF0, 0x47, self.device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]),
             ));
-
-            for x in 0..8 {
-                 for y in 0..5 {
-                    self.buffer.push(super::Message::new(
-                        0,
-                        super::RawMessage::Note([0x90 + x, 0x35 + y, 0x05]),
-                    ));
-                 }
-            }
         }
     }
 
@@ -133,9 +78,9 @@ impl<'a> Controller {
 
         if ! self.is_identified {
             self.inquire();
+        } else {
+            self.print_frame();
         }
-
-        self.print_frame();
 
         &self.buffer
     }
@@ -145,29 +90,20 @@ impl<'a> Controller {
     }
 
     fn print_frame(&mut self) {
-        // Get current frame based on tick counter
-        let current_frame = self.tick_counter / self.ticks_per_frame;
+        // Is it time to draw?
+        if self.tick_counter % self.ticks_per_frame == 0 {
+            let frame = self.scroller.get_frame();
+            self.scroller.next_frame();
 
-        // Loop through x coords
-        for x in 0..8 {
-            for y in 0..5 {
-                let value = self.letters[(x + current_frame) % (self.letters.len() / 5) + (self.letters.len() / 5 * y)];
+            println!("{:?}", frame);
 
-                self.buffer.push(super::Message::new(
-                    0,
-                    super::RawMessage::Note([0x90 + x as u8, 0x35 + y as u8, value]),
-                ));
-            }
-        }
-    }
-
-    fn clear_grid(&mut self) {
-        for x in 0..8 {
-            for y in 0..5 {
-                self.buffer.push(super::Message::new(
-                    0,
-                    super::RawMessage::Note([0x90 + x, 0x35 + y, 0x00]),
-                ));
+            for x in 0..8 {
+                for y in 0..5 {
+                    self.buffer.push(super::Message::new(
+                        0,
+                        super::RawMessage::Note([0x90 + x as u8, 0x35 + y as u8, frame[y + x * 5]]),
+                    ));
+                }
             }
         }
     }

@@ -5,6 +5,7 @@ extern crate jack;
 use std::io;
 
 mod controller;
+mod scroller;
 
 
 #[derive(Debug)]
