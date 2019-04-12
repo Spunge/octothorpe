@@ -88,7 +88,7 @@ fn main() {
         controller: controller,
     };
     
-    let transport = transport::Transport::new(230.0);
+    let transport = transport::Transport::new(140.0);
 
     // Activate client
     let active_client = client
