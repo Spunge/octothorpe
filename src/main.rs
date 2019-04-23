@@ -2,6 +2,7 @@
 
 extern crate jack;
 
+use std::io;
 use std::sync::mpsc::channel;
 
 pub mod client;
@@ -47,7 +48,7 @@ fn main() {
 
     // Activate client
     let async_client = jack_client
-        .activate_async((), processhandler, timebasehandler)
+        .activate_async(notificationhandler, processhandler, timebasehandler)
         .unwrap();
 
     // Get APC ports
@@ -61,5 +62,10 @@ fn main() {
             let _res = async_client.as_client().connect_ports_by_name("Octothorpe:control_out", &port);
         }
     };
+
+    // Wait for user to input string
+    println!("Press any key to quit");
+    let mut user_input = String::new();
+    io::stdin().read_line(&mut user_input).ok();
 }
 

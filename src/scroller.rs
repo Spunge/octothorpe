@@ -1,4 +1,5 @@
 
+use std::sync::mpsc::Sender;
 use super::{Message, RawMessage};
 
 #[derive(Debug)]
@@ -22,22 +23,18 @@ impl Scroller {
         self.current_frame += 1;
     }
 
-    pub fn get_frame(&mut self) -> Vec<Message> {
-        let mut output = Vec::new();
-
+    pub fn print_frame(&mut self, sender: &mut Sender<Message>)  {
         for x in 0..8 {
             for y in 0..5 {
                 // Get index in our buffer that we should show in frame
                 let index = (x + self.current_frame) % (self.buffer.len() / 5) + (self.buffer.len() / 5 * y);
 
-                output.push(Message::new(
+                sender.send(Message::new(
                     0,
                     RawMessage::Note([0x90 + x as u8, 0x35 + y as u8, self.buffer[index]]),
                 ));
             }
         }
-
-        output
     }
 
     // Get string as letter vector
