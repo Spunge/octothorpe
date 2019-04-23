@@ -2,11 +2,12 @@
 
 extern crate jack;
 
-use std::io;
+use std::sync::mpsc::channel;
 
 pub mod client;
 pub mod controller;
 pub mod scroller;
+pub mod handlers;
 
 #[derive(Debug)]
 pub enum RawMessage {
@@ -31,17 +32,22 @@ impl Message {
 }
 
 fn main() {
-    //let _controller = controller::Controller::new();
-
     // Setup client
     let (jack_client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
-    let client = client::Client::new(&jack_client);
+    let (midi_sender, midi_receiver) = channel();
+    let (bpm_sender, bpm_receiver) = channel();
+
+    let client = client::Client::new(midi_sender.clone(), bpm_sender);
+
+    let processhandler = handlers::ProcessHandler::new(midi_receiver, client, &jack_client);
+    let timebasehandler = handlers::TimebaseHandler::new(bpm_receiver);
+    let notificationhandler = handlers::NotificationHandler::new(midi_sender);
 
     // Activate client
     let async_client = jack_client
-        .activate_async((), client, client)
+        .activate_async((), processhandler, timebasehandler)
         .unwrap();
 
     // Get APC ports
@@ -55,12 +61,5 @@ fn main() {
             let _res = async_client.as_client().connect_ports_by_name("Octothorpe:control_out", &port);
         }
     };
-
-    // Wait for user to input string
-    println!("Press any key to quit");
-    let mut user_input = String::new();
-    io::stdin().read_line(&mut user_input).ok();
-
-    async_client.deactivate().unwrap();
 }
 
