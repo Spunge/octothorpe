@@ -7,8 +7,6 @@ use std::io;
 pub mod client;
 pub mod controller;
 pub mod scroller;
-pub mod transport;
-pub mod handlers;
 
 #[derive(Debug)]
 pub enum RawMessage {
@@ -39,14 +37,11 @@ fn main() {
     let (jack_client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
-    let client = client::Client::new();
-
-    let processhandler = handlers::ProcessHandler::new(&jack_client, &client);
-    let timebasehandler = handlers::TimebaseHandler::new(&client);
+    let client = client::Client::new(&jack_client);
 
     // Activate client
     let async_client = jack_client
-        .activate_async((), processhandler, timebasehandler)
+        .activate_async((), client, client)
         .unwrap();
 
     // Get APC ports
