@@ -4,6 +4,7 @@ use jack_sys as j;
 use std::sync::mpsc::{Sender, Receiver};
 use super::controller::Controller;
 use super::message::Message;
+use super::TICKS_PER_BEAT;
 
 pub struct TimebaseHandler {
     beats_per_minute: f64,
@@ -36,7 +37,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
             // Only update timebase when we are asked for it, or when our state changed
             if is_new_pos || ! self.is_up_to_date {
                 (*pos).beats_per_bar = self.beats_per_bar as f32;
-                (*pos).ticks_per_beat = 1920.0;
+                (*pos).ticks_per_beat = TICKS_PER_BEAT;
                 (*pos).beat_type = self.beat_type as f32;
                 (*pos).beats_per_minute = self.beats_per_minute;
                 
@@ -45,8 +46,11 @@ impl jack::TimebaseHandler for TimebaseHandler {
 
             let second = (*pos).frame as f64 / (*pos).frame_rate as f64;
 
+            // TODO - Rounding errors occur here
             let abs_tick = second / 60.0 * (*pos).beats_per_minute * (*pos).ticks_per_beat;
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
+
+            println!("{:?}", abs_tick);
 
             (*pos).bar = (abs_beat / (*pos).beats_per_bar as f64) as i32 + 1;
             (*pos).beat = (abs_beat % (*pos).beats_per_bar as f64) as i32;
@@ -89,6 +93,7 @@ impl jack::ProcessHandler for ProcessHandler {
         if state == 1 {
             println!("{:?} {:?} {:?} {:?}", pos.bar, pos.beat, pos.bar_start_tick, pos.tick);
             println!("{:?} {:?}", pos.frame, pos.frame_rate);
+            println!("{:?}", process_scope.n_frames());
         }
 
         // Write outgoing midi

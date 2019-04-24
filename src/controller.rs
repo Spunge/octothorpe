@@ -1,10 +1,13 @@
 
 use super::message::Message;
+use super::sequencer::Sequencer;
 
 #[derive(Debug)]
 pub struct Controller {
     device_id: Option<u8>,
     pub buffer: Vec<Message>,
+
+    sequencer: Sequencer,
 }
 
 impl Controller {
@@ -12,6 +15,8 @@ impl Controller {
         Controller {
             device_id: None,
             buffer: Vec::new(),
+
+            sequencer: Sequencer::new(),
         }
     }
 

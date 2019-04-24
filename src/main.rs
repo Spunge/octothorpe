@@ -1,16 +1,17 @@
 
-
 extern crate jack;
 
 pub mod controller;
-pub mod scroller;
 pub mod handlers;
 pub mod message;
+pub mod sequencer;
 
 use std::io;
 use std::sync::mpsc::channel;
 use controller::Controller;
 use handlers::*;
+
+const TICKS_PER_BEAT: f64 = 1920.0;
 
 fn main() {
     // Setup client
