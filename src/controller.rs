@@ -1,31 +1,32 @@
 
-use std::sync::mpsc::Sender;
-
-use super::scroller::Scroller;
-use super::{Message, RawMessage};
+use super::message::Message;
 
 #[derive(Debug)]
 pub struct Controller {
-    pub device_id: u8,
-    midi_sender: Sender<Message>,
+    device_id: Option<u8>,
+    pub buffer: Vec<Message>,
 }
 
 impl Controller {
-    pub fn new(device_id: u8, midi_sender: Sender<Message>) -> Self {
+    pub fn new() -> Self {
         Controller {
-            device_id: device_id,
-            midi_sender: midi_sender,
+            device_id: None,
+            buffer: Vec::new(),
         }
     }
 
-    pub fn introduce(&mut self) {
-        self.midi_sender.send(Message::new(
-            0,
-            RawMessage::Introduction([0xF0, 0x47, self.device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]),
-        ));
+    fn initialize(&mut self, device_id: u8) {
+        self.device_id = Some(device_id);
+
+        let message = Message::Introduction( 
+            0, 
+            [0xF0, 0x47, self.device_id.unwrap(), 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]
+        );
+
+        self.buffer.push(message);
     }
 
-    pub fn key_pressed(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+    fn key_pressed(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
         match event.bytes[1] {
             91 => jack_client.transport_start(),
             92 => {
@@ -42,11 +43,34 @@ impl Controller {
         };
     }
 
-    pub fn key_released(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
-    
+    fn key_released(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+        
     }
 
-    pub fn process_message(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+    pub fn process_midi_event(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+        // Sysex events pass us a lot of data
+        // It's cleaner to check the first byte though
+        if event.bytes.len() > 3 {
+            self.process_sysex_message(event);
+        } else {
+            self.process_message(event, jack_client);
+        }
+    }
+
+    fn process_sysex_message(&mut self, event: jack::RawMidi) {
+        // 0x06 = inquiry message, 0x02 = inquiry response
+        if event.bytes[3] == 0x06 && event.bytes[4] == 0x02  {
+            // 0x47 = akai manufacturer, 0x73 = model nr
+            if event.bytes[5] == 0x47 && event.bytes[6] == 0x73 {
+                self.initialize(event.bytes[13]);
+            }
+        } else {
+            println!("Got unknown sysex message");
+            println!("{:?}", event);
+        }
+    }
+
+    fn process_message(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
         println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
         println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
 
@@ -57,9 +81,6 @@ impl Controller {
                 println!("Unknown event: {:?}", event);
             }
         }
-    }
-
-    pub fn update(&mut self) {
     }
 }
 

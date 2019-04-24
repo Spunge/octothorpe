@@ -2,49 +2,28 @@
 
 extern crate jack;
 
-use std::io;
-use std::sync::mpsc::channel;
-
-pub mod client;
 pub mod controller;
 pub mod scroller;
 pub mod handlers;
+pub mod message;
 
-#[derive(Debug)]
-pub enum RawMessage {
-    Introduction([u8; 12]),
-    Inquiry([u8; 6]),
-    Note([u8; 3]),
-}
-
-#[derive(Debug)]
-pub struct Message {
-    time: u32,
-    bytes: RawMessage,
-}
-
-impl Message {
-    fn new(time: u32, message: RawMessage) -> Self {
-        Message {
-            time,
-            bytes: message,
-        }
-    }
-}
+use std::io;
+use std::sync::mpsc::channel;
+use controller::Controller;
+use handlers::*;
 
 fn main() {
     // Setup client
     let (jack_client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
-    let (midi_sender, midi_receiver) = channel();
-    let (bpm_sender, bpm_receiver) = channel();
+    let (sender, receiver) = channel();
 
-    let client = client::Client::new(midi_sender.clone(), bpm_sender);
+    let controller = Controller::new();
 
-    let processhandler = handlers::ProcessHandler::new(midi_receiver, client, &jack_client);
-    let timebasehandler = handlers::TimebaseHandler::new(bpm_receiver);
-    let notificationhandler = handlers::NotificationHandler::new(midi_sender);
+    let processhandler = ProcessHandler::new(controller, receiver, &jack_client);
+    let timebasehandler = TimebaseHandler::new();
+    let notificationhandler = NotificationHandler::new(sender);
 
     // Activate client
     let async_client = jack_client
@@ -64,7 +43,6 @@ fn main() {
     };
 
     // Wait for user to input string
-    println!("Press any key to quit");
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input).ok();
 }

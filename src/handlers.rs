@@ -2,12 +2,10 @@
 use jack_sys as j;
 
 use std::sync::mpsc::{Sender, Receiver};
-use super::client::Client;
-use super::{Message, RawMessage};
+use super::controller::Controller;
+use super::message::Message;
 
 pub struct TimebaseHandler {
-    receiver: Receiver<f64>,
-
     beats_per_minute: f64,
     beats_per_bar: isize,
     beat_type: isize,
@@ -15,10 +13,8 @@ pub struct TimebaseHandler {
 }
 
 impl TimebaseHandler {
-    pub fn new(receiver: Receiver<f64>) -> Self {
+    pub fn new() -> Self {
         TimebaseHandler {
-            receiver: receiver,
-
             beats_per_minute: 120.0,
             is_up_to_date: false,
             beats_per_bar: 4,
@@ -32,6 +28,10 @@ impl jack::TimebaseHandler for TimebaseHandler {
         unsafe {
             // Set position type
             (*pos).valid = j::JackPositionBBT;
+
+            if (*pos).beats_per_minute != self.beats_per_minute {
+                println!("{:?}", (*pos).beats_per_minute);
+            }
 
             // Only update timebase when we are asked for it, or when our state changed
             if is_new_pos || ! self.is_up_to_date {
@@ -57,54 +57,47 @@ impl jack::TimebaseHandler for TimebaseHandler {
 }
 
 pub struct ProcessHandler {
-    client: Client,
-    midi_receiver: Receiver<Message>,
+    controller: Controller,
+    receiver: Receiver<Message>,
 
     midi_out: jack::Port<jack::MidiOut>,
     midi_in: jack::Port<jack::MidiIn>,
 }
 
 impl ProcessHandler {
-    pub fn new(midi_receiver: Receiver<Message>, client: Client, jack_client: &jack::Client) -> Self {
+    pub fn new(controller: Controller, receiver: Receiver<Message>, client: &jack::Client) -> Self {
         // Create ports
-        let midi_in = jack_client
+        let midi_in = client
             .register_port("control_in", jack::MidiIn::default())
             .unwrap();
-        let midi_out = jack_client
+        let midi_out = client
             .register_port("control_out", jack::MidiOut::default())
             .unwrap();
 
-        ProcessHandler {
-            client: client,
-            midi_receiver: midi_receiver,
-
-            midi_in: midi_in,
-            midi_out: midi_out,
-        }
+        ProcessHandler { controller, receiver, midi_in, midi_out }
     }
 }
 
 impl jack::ProcessHandler for ProcessHandler {
-    fn process(&mut self, jack_client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
+    fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Process incoming midi
         for event in self.midi_in.iter(process_scope) {
-            self.client.process_midi_event(event, jack_client);
+            self.controller.process_midi_event(event, client);
         }
-
-        self.client.update();
 
         // process outgoing midi
         let mut writer = self.midi_out.writer(process_scope);
 
-        while let Ok(message) = self.midi_receiver.try_recv() {
-            match message.bytes {
-                RawMessage::Introduction(bytes) => 
-                    writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
-                RawMessage::Inquiry(bytes) => 
-                    writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
-                RawMessage::Note(bytes) => 
-                    writer.write(&jack::RawMidi{ time: message.time, bytes: &bytes}).unwrap(),
-            }
+        // TODO - Write controllers midi output
+        for message in self.controller.buffer.iter() {
+            writer.write(&message.to_raw_midi()).unwrap();
+        }
+
+        self.controller.buffer.clear();
+
+        // Write midi from notification handler
+        while let Ok(message) = self.receiver.try_recv() {
+            writer.write(&message.to_raw_midi()).unwrap();
         }
 
         jack::Control::Continue
@@ -112,13 +105,13 @@ impl jack::ProcessHandler for ProcessHandler {
 }
 
 pub struct NotificationHandler {
-    midi_sender: Sender<Message>,
+    sender: Sender<Message>,
 }
 
 impl NotificationHandler {
-    pub fn new(midi_sender: Sender<Message>) -> Self {
+    pub fn new(sender: Sender<Message>) -> Self {
         NotificationHandler {
-            midi_sender: midi_sender,
+            sender: sender,
         }
     }
 }
@@ -130,9 +123,7 @@ impl jack::NotificationHandler for NotificationHandler {
 
         // If one of our ports got connected, check what we are connected to
         if (jack_client.is_mine(&port_a) || jack_client.is_mine(&port_b)) && are_connected {
-            let message = Message::new(0, RawMessage::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]));
-
-            self.midi_sender.send(message);
+            self.sender.send( Message::Inquiry( 0, [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) );
         }
     }
 }

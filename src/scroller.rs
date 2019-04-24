@@ -1,6 +1,5 @@
 
-use std::sync::mpsc::Sender;
-use super::{Message, RawMessage};
+use super::message::Message;
 
 #[derive(Debug)]
 pub struct Scroller {
@@ -23,16 +22,18 @@ impl Scroller {
         self.current_frame += 1;
     }
 
-    pub fn print_frame(&mut self, sender: &mut Sender<Message>)  {
+    pub fn print_frame(&mut self, buffer: &mut Vec<Message>)  {
         for x in 0..8 {
             for y in 0..5 {
                 // Get index in our buffer that we should show in frame
                 let index = (x + self.current_frame) % (self.buffer.len() / 5) + (self.buffer.len() / 5 * y);
 
-                sender.send(Message::new(
+                let message = Message::Note(
                     0,
-                    RawMessage::Note([0x90 + x as u8, 0x35 + y as u8, self.buffer[index]]),
-                ));
+                    [0x90 + x as u8, 0x35 + y as u8, self.buffer[index]],
+                );
+        
+                buffer.push(message);
             }
         }
     }
