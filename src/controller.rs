@@ -28,12 +28,19 @@ impl Controller {
 
     fn key_pressed(&mut self, event: jack::RawMidi, client: &jack::Client) {
         match event.bytes[1] {
-            91 => client.transport_start(),
+            91 => {
+                println!("Starting transport \n");
+                client.transport_start();
+            },
             92 => {
                  let (state, _) = client.transport_query();
                  match state {
-                    1 => client.transport_stop(),
+                    1 => {
+                        println!("Stopping transport \n");
+                        client.transport_stop();
+                    },
                     _ => {
+                        println!("Ressetting transport \n");
                         let pos = jack::Position::default();
                         client.transport_reposition(pos);
                     }
@@ -71,8 +78,9 @@ impl Controller {
     }
 
     fn process_message(&mut self, event: jack::RawMidi, client: &jack::Client) {
-        println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
-        println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
+        // Output in hex so we can compare to apc40 manual easily
+        //println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
+        //println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
 
         match event.bytes[0] {
             144 => self.key_pressed(event, client),

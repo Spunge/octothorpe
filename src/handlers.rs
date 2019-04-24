@@ -29,7 +29,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
             // Set position type
             (*pos).valid = j::JackPositionBBT;
 
-            if (*pos).beats_per_minute != self.beats_per_minute {
+            if ! is_new_pos && (*pos).beats_per_minute != self.beats_per_minute {
                 println!("{:?}", (*pos).beats_per_minute);
             }
 
@@ -60,39 +60,44 @@ pub struct ProcessHandler {
     controller: Controller,
     receiver: Receiver<Message>,
 
-    midi_out: jack::Port<jack::MidiOut>,
-    midi_in: jack::Port<jack::MidiIn>,
+    control_in: jack::Port<jack::MidiIn>,
+    control_out: jack::Port<jack::MidiOut>,
+
+    sequence_out: jack::Port<jack::MidiOut>,
 }
 
 impl ProcessHandler {
     pub fn new(controller: Controller, receiver: Receiver<Message>, client: &jack::Client) -> Self {
         // Create ports
-        let midi_in = client
-            .register_port("control_in", jack::MidiIn::default())
-            .unwrap();
-        let midi_out = client
-            .register_port("control_out", jack::MidiOut::default())
-            .unwrap();
+        let control_in = client.register_port("control_in", jack::MidiIn::default()).unwrap();
+        let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
+        let sequence_out = client.register_port("sequence_out", jack::MidiOut::default()).unwrap();
 
-        ProcessHandler { controller, receiver, midi_in, midi_out }
+        ProcessHandler { controller, receiver, control_in, control_out, sequence_out }
     }
 }
 
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Process incoming midi
-        for event in self.midi_in.iter(process_scope) {
+        for event in self.control_in.iter(process_scope) {
             self.controller.process_midi_event(event, client);
         }
 
-        // process outgoing midi
-        let mut writer = self.midi_out.writer(process_scope);
+        let (state, pos) = client.transport_query();
 
-        // TODO - Write controllers midi output
+        if state == 1 {
+            println!("{:?} {:?} {:?} {:?}", pos.bar, pos.beat, pos.bar_start_tick, pos.tick);
+            println!("{:?} {:?}", pos.frame, pos.frame_rate);
+        }
+
+        // Write outgoing midi
+        let mut writer = self.control_out.writer(process_scope);
+
+        // Write controllers output
         for message in self.controller.buffer.iter() {
             writer.write(&message.to_raw_midi()).unwrap();
         }
-
         self.controller.buffer.clear();
 
         // Write midi from notification handler
