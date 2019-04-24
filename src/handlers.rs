@@ -117,13 +117,13 @@ impl NotificationHandler {
 }
 
 impl jack::NotificationHandler for NotificationHandler {
-    fn ports_connected(&mut self, jack_client: &jack::Client, id_a: jack::PortId, id_b: jack::PortId, are_connected: bool) {
-        let port_a = jack_client.port_by_id(id_a).unwrap();
-        let port_b = jack_client.port_by_id(id_b).unwrap();
+    fn ports_connected(&mut self, client: &jack::Client, id_a: jack::PortId, id_b: jack::PortId, are_connected: bool) {
+        let port_a = client.port_by_id(id_a).unwrap();
+        let port_b = client.port_by_id(id_b).unwrap();
 
         // If one of our ports got connected, check what we are connected to
-        if (jack_client.is_mine(&port_a) || jack_client.is_mine(&port_b)) && are_connected {
-            self.sender.send( Message::Inquiry( 0, [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) );
+        if (client.is_mine(&port_a) || client.is_mine(&port_b)) && are_connected {
+            self.sender.send( Message::Inquiry( 0, [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) ).unwrap();
         }
     }
 }

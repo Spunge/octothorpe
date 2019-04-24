@@ -14,19 +14,19 @@ use handlers::*;
 
 fn main() {
     // Setup client
-    let (jack_client, _status) =
+    let (client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
     let (sender, receiver) = channel();
 
     let controller = Controller::new();
 
-    let processhandler = ProcessHandler::new(controller, receiver, &jack_client);
+    let processhandler = ProcessHandler::new(controller, receiver, &client);
     let timebasehandler = TimebaseHandler::new();
     let notificationhandler = NotificationHandler::new(sender);
 
     // Activate client
-    let async_client = jack_client
+    let async_client = client
         .activate_async(notificationhandler, processhandler, timebasehandler)
         .unwrap();
 
