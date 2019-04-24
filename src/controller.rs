@@ -8,11 +8,6 @@ use super::{Message, RawMessage};
 pub struct Controller {
     pub device_id: u8,
     midi_sender: Sender<Message>,
-
-    scroller: Scroller,
-
-    tick_counter: usize,
-    ticks_per_frame: usize,
 }
 
 impl Controller {
@@ -20,11 +15,6 @@ impl Controller {
         Controller {
             device_id: device_id,
             midi_sender: midi_sender,
-
-            tick_counter: 0,
-            ticks_per_frame: 30,
-
-            scroller: Scroller::new(device_id.to_string()),
         }
     }
 
@@ -35,21 +25,41 @@ impl Controller {
         ));
     }
 
-    pub fn process_midi_event(&self, event: jack::RawMidi, buffer: &mut Vec<Message>) {
+    pub fn key_pressed(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+        match event.bytes[1] {
+            91 => jack_client.transport_start(),
+            92 => {
+                 let (state, _) = jack_client.transport_query();
+                 match state {
+                    1 => jack_client.transport_stop(),
+                    _ => {
+                        let pos = jack::Position::default();
+                        jack_client.transport_reposition(pos);
+                    }
+                 }
+            },
+            _ => return,
+        };
+    }
+
+    pub fn key_released(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+    
+    }
+
+    pub fn process_message(&mut self, event: jack::RawMidi, jack_client: &jack::Client) {
+        println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
+        println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
+
+        match event.bytes[0] {
+            144 => self.key_pressed(event, jack_client),
+            128 => self.key_released(event, jack_client),
+            _ => {
+                println!("Unknown event: {:?}", event);
+            }
+        }
     }
 
     pub fn update(&mut self) {
-        self.print_frame();
-
-        self.tick_counter += 1;
-    }
-
-    fn print_frame(&mut self) {
-        // Is it time to draw?
-        if self.tick_counter % self.ticks_per_frame == 0 {
-            self.scroller.print_frame(&mut self.midi_sender);
-            self.scroller.next_frame();
-        }
     }
 }
 

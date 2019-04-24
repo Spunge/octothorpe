@@ -128,9 +128,8 @@ impl jack::NotificationHandler for NotificationHandler {
         let port_a = jack_client.port_by_id(id_a).unwrap();
         let port_b = jack_client.port_by_id(id_b).unwrap();
 
+        // If one of our ports got connected, check what we are connected to
         if (jack_client.is_mine(&port_a) || jack_client.is_mine(&port_b)) && are_connected {
-            println!("Sending inquiry");
-
             let message = Message::new(0, RawMessage::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]));
 
             self.midi_sender.send(message);

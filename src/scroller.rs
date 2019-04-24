@@ -65,6 +65,7 @@ impl Scroller {
 
     pub fn get_letter(letter: char) -> Vec<u8> {
         match letter {
+            '0' => vec![0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0],
             '.' => vec![0, 0, 0, 0, 1],
             '\'' => vec![1, 1, 0, 0, 0],
             '!' => vec![1, 1, 1, 0, 1],
