@@ -58,11 +58,11 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    fn get_notes_in_cycle(&self, cycle: &Cycle) -> Vec<Note> {
+    pub fn output_note_on_events_in_cycle(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
         let start_tick = cycle.start_tick % self.length;
         let end_tick = start_tick + cycle.ticks_in_cycle;
         
-        self.notes.iter()
+        let mut played_notes = self.notes.iter()
             .cloned()
             .map(|mut note| {
                 if note.tick + self.length >= start_tick 
@@ -75,16 +75,8 @@ impl Pattern {
             .filter(|note| {
                 note.tick >= start_tick && note.tick < end_tick
             })
-            .collect()
-    }
-
-    pub fn output_note_on_events_in_cycle(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
-
-        let notes_in_cycle = self.get_notes_in_cycle(cycle);
-
-        let mut played_notes = notes_in_cycle.iter()
             .map(|note| {
-                PlayedNote::new(*note, ticks_elapsed, writer)
+                PlayedNote::new(note, ticks_elapsed, writer)
             })
             .collect();
 
