@@ -3,20 +3,37 @@ use jack_sys as j;
 
 use std::sync::mpsc::{Sender, Receiver};
 use super::controller::Controller;
-use super::message::Message;
+use super::message::{Message, MessageData};
 use super::TICKS_PER_BEAT;
 
-pub struct Writer<'a> {
-    writer: jack::MidiWriter<'a>,
+pub struct Writer {
+    buffer: Vec<Message>
 }
 
-impl<'a> Writer<'a> {
-    fn new(writer: jack::MidiWriter<'a>) -> Self {
-        Writer { writer, }
+impl Writer {
+    fn new() -> Self {
+        Writer { buffer: Vec::new() }
     }
 
     pub fn write(&mut self, message: Message) {
-        self.writer.write(&message.to_raw_midi()).unwrap();
+        self.buffer.push(message);
+    }
+
+    fn drain<'a>(&mut self, mut writer: jack::MidiWriter<'a>) {
+        self.buffer.sort();
+
+        if self.buffer.len() > 0 {
+            println!("\n");
+        }
+
+        self.buffer.iter()
+            .for_each(|message| {
+                println!("{:?}", message.time);
+                match writer.write(&message.to_raw_midi()) {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(_) => {},
+                }
+            });
     }
 }
 
@@ -121,9 +138,8 @@ impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Get writers
         let control_in = self.control_in.iter(process_scope);
-        let mut control_out = Writer::new(self.control_out.writer(process_scope));
-
-        let mut midi_out = Writer::new(self.midi_out.writer(process_scope));
+        let mut control_out = Writer::new();
+        let mut midi_out = Writer::new();
 
         // Process incoming midi
         for event in control_in {
@@ -134,12 +150,18 @@ impl jack::ProcessHandler for ProcessHandler {
         let (state, pos) = client.transport_query();
         let cycle = Cycle::new(pos, process_scope.n_frames());
 
+        // Always turn notes off after their time is up to prevent infinite notes
+        self.controller.sequencer.output_midi_note_off(&cycle, &mut midi_out);
+
         // Transport is running?
         if state == 1 {
             self.controller.sequencer.output_midi_note_on(&cycle, &mut midi_out);
         }
 
-        self.controller.sequencer.output_midi_note_off(&cycle, &mut midi_out);
+        self.controller.sequencer.update_ticks(&cycle);
+
+        control_out.drain(self.control_out.writer(process_scope));
+        midi_out.drain(self.midi_out.writer(process_scope));
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
@@ -169,7 +191,7 @@ impl jack::NotificationHandler for NotificationHandler {
 
         // If one of our ports got connected, check what we are connected to
         if (client.is_mine(&port_a) || client.is_mine(&port_b)) && are_connected {
-            self.sender.send( Message::Inquiry( 0, [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) ).unwrap();
+            self.sender.send( Message::new(0, MessageData::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) ) ).unwrap();
         }
     }
 }

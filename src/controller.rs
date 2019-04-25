@@ -1,5 +1,5 @@
 
-use super::message::Message;
+use super::message::{Message, MessageData};
 use super::sequencer::Sequencer;
 use super::handlers::Writer;
 
@@ -63,9 +63,9 @@ impl Controller {
             // 0x47 = akai manufacturer, 0x73 = model nr
             if event.bytes[5] == 0x47 && event.bytes[6] == 0x73 {
                 // Introduce ourselves to controller
-                let message = Message::Introduction( 
+                let message = Message::new( 
                     0, 
-                    [0xF0, 0x47, event.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7],
+                    MessageData::Introduction([0xF0, 0x47, event.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]),
                 );
 
                 control_out.write(message);
