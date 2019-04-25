@@ -22,15 +22,13 @@ impl Writer {
     fn drain<'a>(&mut self, mut writer: jack::MidiWriter<'a>) {
         self.buffer.sort();
 
-        if self.buffer.len() > 0 {
-            println!("\n");
-        }
-
         self.buffer.iter()
             .for_each(|message| {
-                println!("{:?}", message.time);
                 match writer.write(&message.to_raw_midi()) {
-                    Err(e) => println!("Error: {}", e),
+                    Err(e) => {
+                        println!("Error: {}", e);
+                        println!("{:?}\n", self.buffer);
+                    },
                     Ok(_) => {},
                 }
             });
@@ -160,13 +158,13 @@ impl jack::ProcessHandler for ProcessHandler {
 
         self.controller.sequencer.update_ticks(&cycle);
 
-        control_out.drain(self.control_out.writer(process_scope));
-        midi_out.drain(self.midi_out.writer(process_scope));
-
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
             control_out.write(message);
         }
+
+        control_out.drain(self.control_out.writer(process_scope));
+        midi_out.drain(self.midi_out.writer(process_scope));
 
         jack::Control::Continue
     }

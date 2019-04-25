@@ -94,6 +94,7 @@ impl Pattern {
                 let ticks_till_note = played_note.note_off - ticks_elapsed;
                 let frames_till_note = ticks_till_note / cycle.ticks_in_cycle * cycle.frames as f64;
 
+                // Don't round this as rounding error can cause frame to go over 256
                 writer.write(played_note.note.note_off(frames_till_note.round() as u32));
             }
 
