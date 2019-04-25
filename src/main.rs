@@ -43,6 +43,8 @@ fn main() {
         }
     };
 
+    let _res = async_client.as_client().connect_ports_by_name("Octothorpe:midi_out", "amsynth:midi_in");
+
     // Wait for user to input string
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input).ok();

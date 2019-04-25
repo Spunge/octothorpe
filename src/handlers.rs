@@ -21,18 +21,23 @@ impl<'a> Writer<'a> {
 }
 
 pub struct Cycle {
-    pub pos: jack::Position,
+    pub start_tick: f64,
+    pub end_tick: f64,
     pub frames: u32,
-    pub transport_is_rolling: bool,
 }
 
 impl Cycle {
-    fn new(pos: jack::Position, frames: u32, transport_is_rolling: bool) -> Self {
-        Cycle { pos, frames, transport_is_rolling }
+    fn new(pos: jack::Position, frames: u32) -> Self {
+        Cycle { 
+            start_tick: Cycle::get_tick(pos, pos.frame),
+            end_tick: Cycle::get_tick(pos, pos.frame + frames),
+            frames,
+        }
     }
 
-    pub fn get_abs_beat(&self) -> i32 {
-        self.pos.beat * self.pos.bar * self.pos.beats_per_bar as i32
+    fn get_tick(pos: jack::Position, frame: u32) -> f64 {
+        let second = frame as f64 / pos.frame_rate as f64;
+        second / 60.0 * pos.beats_per_minute * pos.ticks_per_beat
     }
 }
 
@@ -74,10 +79,8 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 self.is_up_to_date = true;
             }
 
-            let second = (*pos).frame as f64 / (*pos).frame_rate as f64;
 
-            // TODO - Rounding errors occur here
-            let abs_tick = second / 60.0 * (*pos).beats_per_minute * (*pos).ticks_per_beat;
+            let abs_tick = Cycle::get_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
             (*pos).bar = (abs_beat / (*pos).beats_per_bar as f64) as i32 + 1;
@@ -125,8 +128,10 @@ impl jack::ProcessHandler for ProcessHandler {
         let (state, pos) = client.transport_query();
 
         // Output frame for this cycle
-        let cycle = Cycle::new(pos, process_scope.n_frames(), state == 1);
-        self.controller.sequencer.output(cycle, &mut control_out, &mut midi_out);
+        let cycle = Cycle::new(pos, process_scope.n_frames());
+        if state == 1 {
+            self.controller.sequencer.pattern.output_midi(cycle, &mut midi_out);
+        }
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
