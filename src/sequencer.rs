@@ -19,31 +19,6 @@ impl Note {
         Note { tick, length, key: 69, velocity: 127 }
     }
 
-    /*
-    fn play_if_in_cycle(
-        &mut self,
-        tick: f64,
-        start_tick: f64,
-        end_tick: f64,
-        ticks_elapsed: &f64,
-        writer: &mut Writer, 
-        played_notes: &mut Vec<PlayedNote>
-    ) {
-        // Does note start fall in this cycle?
-        if tick >= start_tick && tick < end_tick {
-            // TODO - Get note ticks offset && note frame offset
-            // TODO - Remove notes with same key from playednotes as MIDI will stop the played
-            // note
-            writer.write(self.note_on());
-            let note_off = ticks_elapsed + tick - start_tick + self.length;
-            println!("{:?} {:?} {:?}", start_tick, end_tick, tick);
-            println!("{:?} {:?}", ticks_elapsed, note_off);
-            let played_note = PlayedNote::new(*self, note_off);
-            played_notes.push(played_note);
-        }
-    }
-    */
-
     fn note_on(&self) -> Message {
         Message::Note( 
             0, 
@@ -114,13 +89,6 @@ impl Pattern {
             .collect();
 
         self.played_notes.append(&mut played_notes);
-
-        //for note in self.notes.iter_mut() {
-            // TODO - Get note ticks offset && note frame offset
-            // TODO - Remove notes with same key from playednotes as MIDI will stop the played
-            //note.play_if_in_cycle(note.tick, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
-            //note.play_if_in_cycle(note.tick + self.length, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
-        //}
     }
 
     pub fn output_note_off_events(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
