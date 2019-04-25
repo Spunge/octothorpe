@@ -6,6 +6,36 @@ use super::controller::Controller;
 use super::message::Message;
 use super::TICKS_PER_BEAT;
 
+pub struct Writer<'a> {
+    writer: jack::MidiWriter<'a>,
+}
+
+impl<'a> Writer<'a> {
+    fn new(writer: jack::MidiWriter<'a>) -> Self {
+        Writer { writer, }
+    }
+
+    pub fn write(&mut self, message: Message) {
+        self.writer.write(&message.to_raw_midi()).unwrap();
+    }
+}
+
+pub struct Cycle {
+    pub pos: jack::Position,
+    pub frames: u32,
+    pub transport_is_rolling: bool,
+}
+
+impl Cycle {
+    fn new(pos: jack::Position, frames: u32, transport_is_rolling: bool) -> Self {
+        Cycle { pos, frames, transport_is_rolling }
+    }
+
+    pub fn get_abs_beat(&self) -> i32 {
+        self.pos.beat * self.pos.bar * self.pos.beats_per_bar as i32
+    }
+}
+
 pub struct TimebaseHandler {
     beats_per_minute: f64,
     beats_per_bar: isize,
@@ -16,7 +46,7 @@ pub struct TimebaseHandler {
 impl TimebaseHandler {
     pub fn new() -> Self {
         TimebaseHandler {
-            beats_per_minute: 120.0,
+            beats_per_minute: 60.0,
             is_up_to_date: false,
             beats_per_bar: 4,
             beat_type: 4,
@@ -50,8 +80,6 @@ impl jack::TimebaseHandler for TimebaseHandler {
             let abs_tick = second / 60.0 * (*pos).beats_per_minute * (*pos).ticks_per_beat;
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
-            println!("{:?}", abs_tick);
-
             (*pos).bar = (abs_beat / (*pos).beats_per_bar as f64) as i32 + 1;
             (*pos).beat = (abs_beat % (*pos).beats_per_bar as f64) as i32;
             (*pos).bar_start_tick = (abs_beat as i32 * (*pos).ticks_per_beat as i32) as f64;
@@ -67,7 +95,7 @@ pub struct ProcessHandler {
     control_in: jack::Port<jack::MidiIn>,
     control_out: jack::Port<jack::MidiOut>,
 
-    sequence_out: jack::Port<jack::MidiOut>,
+    midi_out: jack::Port<jack::MidiOut>,
 }
 
 impl ProcessHandler {
@@ -75,39 +103,34 @@ impl ProcessHandler {
         // Create ports
         let control_in = client.register_port("control_in", jack::MidiIn::default()).unwrap();
         let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
-        let sequence_out = client.register_port("sequence_out", jack::MidiOut::default()).unwrap();
+        let midi_out = client.register_port("midi_out", jack::MidiOut::default()).unwrap();
 
-        ProcessHandler { controller, receiver, control_in, control_out, sequence_out }
+        ProcessHandler { controller, receiver, control_in, control_out, midi_out }
     }
 }
 
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
+        // Get writers
+        let control_in = self.control_in.iter(process_scope);
+        let mut control_out = Writer::new(self.control_out.writer(process_scope));
+
+        let mut midi_out = Writer::new(self.midi_out.writer(process_scope));
+
         // Process incoming midi
-        for event in self.control_in.iter(process_scope) {
-            self.controller.process_midi_event(event, client);
+        for event in control_in {
+            self.controller.process_midi_event(event, client, &mut control_out);
         }
 
         let (state, pos) = client.transport_query();
 
-        if state == 1 {
-            println!("{:?} {:?} {:?} {:?}", pos.bar, pos.beat, pos.bar_start_tick, pos.tick);
-            println!("{:?} {:?}", pos.frame, pos.frame_rate);
-            println!("{:?}", process_scope.n_frames());
-        }
-
-        // Write outgoing midi
-        let mut writer = self.control_out.writer(process_scope);
-
-        // Write controllers output
-        for message in self.controller.buffer.iter() {
-            writer.write(&message.to_raw_midi()).unwrap();
-        }
-        self.controller.buffer.clear();
+        // Output frame for this cycle
+        let cycle = Cycle::new(pos, process_scope.n_frames(), state == 1);
+        self.controller.sequencer.output(cycle, &mut control_out, &mut midi_out);
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
-            writer.write(&message.to_raw_midi()).unwrap();
+            control_out.write(message);
         }
 
         jack::Control::Continue
