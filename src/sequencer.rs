@@ -36,7 +36,7 @@ impl Note {
             writer.write(self.note_on());
             let note_off = ticks_elapsed + tick - start_tick + self.length;
             println!("{:?} {:?} {:?}", start_tick, end_tick, tick);
-            println!("{:?} {:?}\n", ticks_elapsed, note_off);
+            println!("{:?} {:?}", ticks_elapsed, note_off);
             let played_note = PlayedNote::new(*self, note_off);
             played_notes.push(played_note);
         }
@@ -78,57 +78,16 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    /*
-    fn play_note_if_in_cycle(&mut self, tick: f64, note: Note, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
-        // Does note start fall in this cycle?
-        if tick >= start_tick && tick < end_tick {
-            // TODO - Get note ticks offset && note frame offset
-            // TODO - Remove notes with same key from playednotes as MIDI will stop the played
-            // note
-            writer.write(note.note_on());
-            let played_note = PlayedNote::new(note, ticks_elapsed + tick - start_tick + note.length);
-            self.played_notes.push(played_note);
-        }
-    }
-    */
-
     pub fn output_note_on_events_in_cycle(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
         let start_tick = cycle.start_tick % self.length;
         let end_tick = start_tick + cycle.ticks_in_cycle;
 
         for note in self.notes.iter_mut() {
+            // TODO - Get note ticks offset && note frame offset
+            // TODO - Remove notes with same key from playednotes as MIDI will stop the played
             note.play_if_in_cycle(note.tick, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
             note.play_if_in_cycle(note.tick + self.length, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
-            //self.play_note_if_in_cycle(note.tick, *note, cycle, ticks_elapsed, writer);
-            //self.play_note_if_in_cycle(note.tick + self.length, *note, cycle, ticks_elapsed, writer);
-            /*
-            let start_tick = cycle.start_tick % self.length;
-            let end_tick = start_tick + cycle.ticks_in_cycle;
-
-            let a = note.tick >= start_tick && note.tick < end_tick;
-            // As pattern repeats itself, check for the next iteration aswell
-            let b = note.tick + self.length >= start_tick && note.tick + self.length < end_tick;
-
-            // Does note start fall in this cycle?
-            if a || b {
-                // TODO - Get note ticks offset && note frame offset
-                // TODO - Remove notes with same key from playednotes as MIDI will stop the played
-                // note
-                writer.write(note.note_on());
-                if a {
-                    let played_note = PlayedNote::new(*note, ticks_elapsed + note.tick - start_tick + note.length);
-                    self.played_notes.push(played_note);
-                }
-                if b {
-                    let played_note = PlayedNote::new(*note, ticks_elapsed + note.tick + self.length - start_tick + note.length);
-                    self.played_notes.push(played_note);
-                }
-
-            }
-            */
-
         }
-
     }
 
     pub fn output_note_off_events(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
