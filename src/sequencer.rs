@@ -19,6 +19,7 @@ impl Note {
         Note { tick, length, key: 69, velocity: 127 }
     }
 
+    /*
     fn play_if_in_cycle(
         &mut self,
         tick: f64,
@@ -41,6 +42,7 @@ impl Note {
             played_notes.push(played_note);
         }
     }
+    */
 
     fn note_on(&self) -> Message {
         Message::Note( 
@@ -64,8 +66,11 @@ struct PlayedNote {
 }
 
 impl PlayedNote {
-    fn new(note: Note, note_off: f64) -> Self {
-        PlayedNote { note, note_off }
+    fn new(note: Note, ticks_elapsed: &f64, writer: &mut Writer) -> Self {
+        // Write note
+        writer.write(note.note_on());
+
+        PlayedNote { note, note_off: ticks_elapsed + note.length }
     }
 }
 
@@ -78,16 +83,44 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    pub fn output_note_on_events_in_cycle(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
+    fn get_notes_in_cycle(&self, cycle: &Cycle) -> Vec<Note> {
         let start_tick = cycle.start_tick % self.length;
         let end_tick = start_tick + cycle.ticks_in_cycle;
+        
+        self.notes.iter()
+            .cloned()
+            .map(|mut note| {
+                if note.tick + self.length >= start_tick 
+                    && note.tick + self.length < end_tick 
+                {
+                    note.tick += self.length;
+                }
+                note
+            })
+            .filter(|note| {
+                note.tick >= start_tick && note.tick < end_tick
+            })
+            .collect()
+    }
 
-        for note in self.notes.iter_mut() {
+    pub fn output_note_on_events_in_cycle(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {
+
+        let notes_in_cycle = self.get_notes_in_cycle(cycle);
+
+        let mut played_notes = notes_in_cycle.iter()
+            .map(|note| {
+                PlayedNote::new(*note, ticks_elapsed, writer)
+            })
+            .collect();
+
+        self.played_notes.append(&mut played_notes);
+
+        //for note in self.notes.iter_mut() {
             // TODO - Get note ticks offset && note frame offset
             // TODO - Remove notes with same key from playednotes as MIDI will stop the played
-            note.play_if_in_cycle(note.tick, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
-            note.play_if_in_cycle(note.tick + self.length, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
-        }
+            //note.play_if_in_cycle(note.tick, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
+            //note.play_if_in_cycle(note.tick + self.length, start_tick, end_tick, ticks_elapsed, writer, &mut self.played_notes);
+        //}
     }
 
     pub fn output_note_off_events(&mut self, cycle: &Cycle, ticks_elapsed: &f64, writer: &mut Writer) {

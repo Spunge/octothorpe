@@ -20,6 +20,7 @@ impl<'a> Writer<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct Cycle {
     pub start_tick: f64,
     pub end_tick: f64,
