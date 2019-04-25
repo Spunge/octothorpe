@@ -23,14 +23,19 @@ impl<'a> Writer<'a> {
 pub struct Cycle {
     pub start_tick: f64,
     pub end_tick: f64,
+    pub ticks_in_cycle: f64,
     pub frames: u32,
 }
 
 impl Cycle {
     fn new(pos: jack::Position, frames: u32) -> Self {
+        let start_tick = Cycle::get_tick(pos, pos.frame);
+        let end_tick = Cycle::get_tick(pos, pos.frame + frames);
+
         Cycle { 
-            start_tick: Cycle::get_tick(pos, pos.frame),
-            end_tick: Cycle::get_tick(pos, pos.frame + frames),
+            start_tick,
+            end_tick,
+            ticks_in_cycle: end_tick - start_tick,
             frames,
         }
     }
@@ -51,7 +56,7 @@ pub struct TimebaseHandler {
 impl TimebaseHandler {
     pub fn new() -> Self {
         TimebaseHandler {
-            beats_per_minute: 60.0,
+            beats_per_minute: 120.0,
             is_up_to_date: false,
             beats_per_bar: 4,
             beat_type: 4,
@@ -78,7 +83,6 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 
                 self.is_up_to_date = true;
             }
-
 
             let abs_tick = Cycle::get_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
@@ -125,13 +129,16 @@ impl jack::ProcessHandler for ProcessHandler {
             self.controller.process_midi_event(event, client, &mut control_out);
         }
 
+        // Get something representing this process cycle
         let (state, pos) = client.transport_query();
-
-        // Output frame for this cycle
         let cycle = Cycle::new(pos, process_scope.n_frames());
+
+        // Transport is running?
         if state == 1 {
-            self.controller.sequencer.pattern.output_midi(cycle, &mut midi_out);
+            self.controller.sequencer.output_midi_note_on(&cycle, &mut midi_out);
         }
+
+        self.controller.sequencer.output_midi_note_off(&cycle, &mut midi_out);
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
