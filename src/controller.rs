@@ -76,7 +76,7 @@ impl Controller {
 
     fn process_message(&mut self, event: jack::RawMidi, client: &jack::Client, _control_out: &mut Writer) {
         // Output in hex so we can compare to apc40 manual easily
-        //println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
+        println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
         //println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
 
         match event.bytes[0] {

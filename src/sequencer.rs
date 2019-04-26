@@ -20,24 +20,24 @@ impl Note {
         Note { tick, length, key: key, velocity: 127 }
     }
 
-    fn note_on(&self, time: u32) -> Message {
-        Message::new(time, MessageData::Note([0x90, self.key, self.velocity]))
+    fn note_on(&self, frames: u32) -> Message {
+        Message::new(frames, MessageData::Note([0x90, self.key, self.velocity]))
     }
     
-    fn note_off(&self, time: u32) -> Message {
-        Message::new(time, MessageData::Note([0x80, self.key, self.velocity]))
+    fn note_off(&self, frames: u32) -> Message {
+        Message::new(frames, MessageData::Note([0x80, self.key, self.velocity]))
     }
 }
 
 #[derive(Debug)]
-struct PlayedNote {
+struct NoteOff {
     note: Note,
-    note_off: u32,
+    tick: u32,
 }
 
-impl PlayedNote {
-    fn new(note: Note, note_off: u32) -> Self {
-        PlayedNote { note, note_off }
+impl NoteOff {
+    fn new(note: Note, tick: u32) -> Self {
+        NoteOff { note, tick }
     }
 }
 
@@ -46,7 +46,7 @@ pub struct Pattern {
     start: u32,
     length: u32,
     notes: Vec<Note>,
-    played_notes: Vec<PlayedNote>,
+    note_offs: Vec<NoteOff>,
 }
 
 impl Pattern {
@@ -56,7 +56,7 @@ impl Pattern {
 
     pub fn output_note_on_events(&mut self, pattern_cycle: &Cycle, absolute_cycle: &Cycle, writer: &mut Writer) {
         // Clone so we can change the tick on notes for next pattern iteration
-        let mut played_notes = self.notes.iter()
+        let mut note_offs = self.notes.iter()
             .cloned()
             // If note in next iteration of the pattern does belong in this cycle, add it
             .map(|mut note| {
@@ -74,23 +74,23 @@ impl Pattern {
                 // Write note
                 writer.write(note.note_on(pattern_cycle.frames_till_tick(note.tick)));
 
-                PlayedNote::new(note, absolute_cycle.start + pattern_cycle.ticks_till_tick(note.tick + note.length))
+                NoteOff::new(note, absolute_cycle.start + pattern_cycle.ticks_till_tick(note.tick + note.length))
             })
             .collect();
 
         // TODO - When note is pushed that is already in the list, we need to remove it as MIDI
         // will cut off that note
-        self.played_notes.append(&mut played_notes);
+        self.note_offs.append(&mut note_offs);
     }
 
     pub fn output_note_off_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        self.played_notes.retain(|played_note| {
-            if cycle.contains(played_note.note_off) {
-                writer.write(played_note.note.note_off(cycle.frames_till_tick(played_note.note_off)));
+        self.note_offs.retain(|note_off| {
+            if cycle.contains(note_off.tick) {
+                writer.write(note_off.note.note_off(cycle.frames_till_tick(note_off.tick)));
             }
 
             // Return the opposite of A to keep notes that are not yet finished
-            !cycle.contains(played_note.note_off)
+            !cycle.contains(note_off.tick)
         });
     }
 }
@@ -100,9 +100,13 @@ pub struct Indicator {
 }
 
 impl Indicator {
-    fn activate_led(&mut self, cycle: &Cycle, led: u32, writer: &mut Writer) {
-        println!("{:?}", cycle);
-        println!("{}", led);
+    fn switch_to_led(&mut self, cycle: &Cycle, led: u32, writer: &mut Writer) {
+        let frames = cycle.frames_till_tick(led * TICKS_PER_BEAT as u32);
+
+        writer.write(Message::new(frames, MessageData::Note([0x90 + self.active_led as u8, 0x34, 0])));
+
+        self.active_led = led;
+        writer.write(Message::new(frames, MessageData::Note([0x90 + self.active_led as u8, 0x34, 1])));
     }
 
     fn output(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
@@ -111,7 +115,7 @@ impl Indicator {
                 cycle.contains(beat * TICKS_PER_BEAT as u32)
             })
             .for_each(|beat| {
-                self.activate_led(cycle, beat, writer);
+                self.switch_to_led(cycle, beat, writer);
             });
     }
 }
@@ -136,7 +140,7 @@ impl Sequencer {
                 start: 0,
                 length: 8,
 
-                played_notes: Vec::new(),
+                note_offs: Vec::new(),
                 notes: vec![
                     Note::new(0, TICKS_PER_BEAT as u32, 72),
                     Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
