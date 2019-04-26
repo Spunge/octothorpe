@@ -6,6 +6,7 @@ pub struct Cycle {
     pub ticks: u32,
     pub frames: u32,
     pub is_rolling: bool,
+    pub is_repositioned: bool,
 }
 
 impl Cycle {
@@ -16,20 +17,18 @@ impl Cycle {
             ticks: self.ticks,
             frames: self.frames,
             is_rolling: self.is_rolling,
+            is_repositioned: self.is_repositioned,
         }
     }
 
     pub fn new(pos: jack::Position, frames: u32, state: u32) -> Self {
         let start = Cycle::get_tick(pos, pos.frame) as u32;
         let end = Cycle::get_tick(pos, pos.frame + frames) as u32;
+        let is_rolling = state == 1;
+        // Seems repositioning causes a 0 ticks cycle
+        let is_repositioned = start == end;
 
-        Cycle { 
-            start,
-            end,
-            ticks: end - start,
-            frames,
-            is_rolling: state == 1,
-        }
+        Cycle { start, end, ticks: end - start, frames, is_rolling: is_rolling, is_repositioned }
     }
 
     pub fn get_tick(pos: jack::Position, frame: u32) -> f64 {

@@ -60,9 +60,10 @@ impl jack::TimebaseHandler for TimebaseHandler {
             // Set position type
             (*pos).valid = j::JackPositionBBT;
 
-            if ! is_new_pos && (*pos).beats_per_minute != self.beats_per_minute {
-                println!("{:?}", (*pos).beats_per_minute);
-            }
+            // BPM changed?
+            //if ! is_new_pos && (*pos).beats_per_minute != self.beats_per_minute {
+                //println!("{:?}", (*pos).beats_per_minute);
+            //}
 
             // Only update timebase when we are asked for it, or when our state changed
             if is_new_pos || ! self.is_up_to_date {
@@ -122,7 +123,7 @@ impl jack::ProcessHandler for ProcessHandler {
         let (state, pos) = client.transport_query();
         let cycle = Cycle::new(pos, process_scope.n_frames(), state);
 
-        self.controller.sequencer.output(cycle, &mut control_out, &mut midi_out);
+        self.controller.sequencer.output(&cycle, &mut control_out, &mut midi_out);
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
