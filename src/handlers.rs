@@ -37,16 +37,16 @@ impl Writer {
 
 #[derive(Debug)]
 pub struct Cycle {
-    pub start_tick: f64,
-    pub end_tick: f64,
-    pub ticks_in_cycle: f64,
+    pub start_tick: u32,
+    pub end_tick: u32,
+    pub ticks_in_cycle: u32,
     pub frames: u32,
 }
 
 impl Cycle {
     fn new(pos: jack::Position, frames: u32) -> Self {
-        let start_tick = Cycle::get_tick(pos, pos.frame);
-        let end_tick = Cycle::get_tick(pos, pos.frame + frames);
+        let start_tick = Cycle::get_tick(pos, pos.frame) as u32;
+        let end_tick = Cycle::get_tick(pos, pos.frame + frames) as u32;
 
         Cycle { 
             start_tick,
