@@ -104,7 +104,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
             (*pos).bar = (abs_beat / (*pos).beats_per_bar as f64) as i32 + 1;
-            (*pos).beat = (abs_beat % (*pos).beats_per_bar as f64) as i32;
+            (*pos).beat = (abs_beat % (*pos).beats_per_bar as f64) as i32 + 1;
             (*pos).bar_start_tick = (abs_beat as i32 * (*pos).ticks_per_beat as i32) as f64;
             (*pos).tick = abs_tick as i32 - (*pos).bar_start_tick as i32;
         }

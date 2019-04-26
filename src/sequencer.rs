@@ -82,6 +82,8 @@ impl Pattern {
             })
             .collect();
 
+        // TODO - When note is pushed that is already in the list, we need to remove it as MIDI
+        // will cut off that note
         self.played_notes.append(&mut played_notes);
     }
 
@@ -118,9 +120,9 @@ impl Sequencer {
                 length: 4 * TICKS_PER_BEAT as u32,
                 played_notes: Vec::new(),
                 notes: vec![
-                    Note::new(0, TICKS_PER_BEAT as u32, 74),
+                    Note::new(0, TICKS_PER_BEAT as u32, 69),
                     Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
-                    Note::new(TICKS_PER_BEAT as u32 * 2, TICKS_PER_BEAT as u32, 69),
+                    Note::new(TICKS_PER_BEAT as u32 * 2, TICKS_PER_BEAT as u32, 72),
                     Note::new(TICKS_PER_BEAT as u32 * 3, TICKS_PER_BEAT as u32, 69),
                 ],
             },
