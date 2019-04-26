@@ -104,14 +104,6 @@ impl Indicator {
         writer.write(Message::new(frames, MessageData::Note([0x90 + led as u8, 0x34, state])));
     }
 
-    fn switch_beat(&mut self, cycle: &Cycle, led: u32, writer: &mut Writer) {
-        let frames = cycle.frames_till_tick(led * TICKS_PER_BEAT as u32);
-
-        self.switch_led(self.active_led, 0, frames, writer);
-        self.active_led = led;
-        self.switch_led(self.active_led, 1, frames, writer);
-    }
-
     fn clear(&mut self, writer: &mut Writer) {
         (0..9).for_each(|led| {
             self.switch_led(led, 0, 0, writer);
@@ -120,11 +112,22 @@ impl Indicator {
 
     fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
         (0..pattern.length)
+            // Check for beats at start of the pattern for 1910 -> 10 cycles
+            .map(|mut beat| {
+                if cycle.contains((pattern.length + beat) * TICKS_PER_BEAT as u32) {
+                    beat += pattern.length;
+                }
+                beat
+            })
             .filter(|beat| {
                 cycle.contains(beat * TICKS_PER_BEAT as u32)
             })
             .for_each(|beat| {
-                self.switch_beat(cycle, beat, writer);
+                let frames = cycle.frames_till_tick(beat * TICKS_PER_BEAT as u32);
+
+                self.switch_led(self.active_led, 0, frames, writer);
+                self.active_led = beat % pattern.length;
+                self.switch_led(self.active_led, 1, frames, writer);
             });
     }
 }
@@ -184,8 +187,16 @@ impl Sequencer {
             self.indicator.clear(control_out);
         }
 
+        if self.was_repositioned {
+            let beat_start = (pattern_cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
+            let reposition_cycle = cycle.repositioned(beat_start);
+            println!("{:?}", reposition_cycle);
+
+            self.indicator.draw(&reposition_cycle, &self.pattern, control_out);
+        }
+
         // Update grid when running, after repositioning
-        if cycle.is_rolling || self.was_repositioned {
+        if cycle.is_rolling {
             self.indicator.draw(&pattern_cycle, &self.pattern, control_out);
         }
 
