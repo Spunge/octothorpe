@@ -40,6 +40,10 @@ impl Cycle {
         tick >= self.start && tick < self.end 
     }
 
+    //pub fn contains_or_contains_next(&self, tick: u32, next_tick: u32) {
+        //self.contains(tick) || self.contains(next_tick)
+    //}
+
     pub fn ticks_till_tick(&self, tick: u32) -> u32 {
         tick - self.start
     }

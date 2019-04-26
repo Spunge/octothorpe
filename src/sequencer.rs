@@ -2,100 +2,12 @@
 use super::TICKS_PER_BEAT;
 use super::handlers::Writer;
 use super::message::{Message, MessageData};
+use super::note::Note;
 use super::cycle::Cycle;
-
-#[derive(Debug, Clone, Copy)]
-struct Note {
-    // Ticks in pattern that note should be played
-    pub tick: u32,
-    pub length: u32,
-
-    key: u8,
-    velocity: u8,
-}
-
-impl Note {
-    // Create A4 quarter note
-    fn new(tick: u32, length: u32, key: u8) -> Self {
-        Note { tick, length, key: key, velocity: 127 }
-    }
-
-    fn note_on(&self, frames: u32) -> Message {
-        Message::new(frames, MessageData::Note([0x90, self.key, self.velocity]))
-    }
-    
-    fn note_off(&self, frames: u32) -> Message {
-        Message::new(frames, MessageData::Note([0x80, self.key, self.velocity]))
-    }
-}
-
-#[derive(Debug)]
-struct NoteOff {
-    note: Note,
-    tick: u32,
-}
-
-impl NoteOff {
-    fn new(note: Note, tick: u32) -> Self {
-        NoteOff { note, tick }
-    }
-}
-
-#[derive(Debug)]
-pub struct Pattern {
-    start: u32,
-    length: u32,
-    notes: Vec<Note>,
-    note_offs: Vec<NoteOff>,
-}
-
-impl Pattern {
-    fn ticks(&self) -> u32 {
-        self.length * TICKS_PER_BEAT as u32
-    }
-
-    pub fn output_note_on_events(&mut self, pattern_cycle: &Cycle, absolute_cycle: &Cycle, writer: &mut Writer) {
-        // Clone so we can change the tick on notes for next pattern iteration
-        let mut note_offs = self.notes.iter()
-            .cloned()
-            // If note in next iteration of the pattern does belong in this cycle, add it
-            .map(|mut note| {
-                if pattern_cycle.contains(note.tick + self.ticks()) {
-                    note.tick += self.ticks();
-                }
-                note
-            })
-            // Check all notes to see if they belong in this cycle
-            .filter(|note| {
-                pattern_cycle.contains(note.tick)
-            })
-            // Play notes
-            .map(|note| {
-                // Write note
-                writer.write(note.note_on(pattern_cycle.frames_till_tick(note.tick)));
-
-                NoteOff::new(note, absolute_cycle.start + pattern_cycle.ticks_till_tick(note.tick + note.length))
-            })
-            .collect();
-
-        // TODO - When note is pushed that is already in the list, we need to remove it as MIDI
-        // will cut off that note
-        self.note_offs.append(&mut note_offs);
-    }
-
-    pub fn output_note_off_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        self.note_offs.retain(|note_off| {
-            if cycle.contains(note_off.tick) {
-                writer.write(note_off.note.note_off(cycle.frames_till_tick(note_off.tick)));
-            }
-
-            // Return the opposite of A to keep notes that are not yet finished
-            !cycle.contains(note_off.tick)
-        });
-    }
-}
+use super::pattern::Pattern;
 
 pub struct Indicator {
+    pub leds: u32,
     active_led: u32,
 }
 
@@ -105,17 +17,17 @@ impl Indicator {
     }
 
     fn clear(&mut self, writer: &mut Writer) {
-        (0..9).for_each(|led| {
+        (0..self.leds + 1).for_each(|led| {
             self.switch_led(led, 0, 0, writer);
         });
     }
 
     fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
-        (0..pattern.length)
+        (0..self.leds + 1)
             // Check for beats at start of the pattern for 1910 -> 10 cycles
             .map(|mut beat| {
-                if cycle.contains((pattern.length + beat) * TICKS_PER_BEAT as u32) {
-                    beat += pattern.length;
+                if cycle.contains((8 + beat) * TICKS_PER_BEAT as u32) {
+                    beat += 8;
                 }
                 beat
             })
@@ -147,12 +59,13 @@ impl Sequencer {
             was_repositioned: true,
 
             indicator: Indicator{
+                leds: 8,
                 active_led: 0,
             },
 
             pattern: Pattern {
                 start: 0,
-                length: 8,
+                length: 4,
 
                 note_offs: Vec::new(),
                 notes: vec![
@@ -178,6 +91,8 @@ impl Sequencer {
     pub fn output(&mut self, cycle: &Cycle, control_out: &mut Writer, midi_out: &mut Writer) {
         let pattern_cycle = cycle.repositioned(cycle.start % self.pattern.ticks());
         let absolute_cycle = cycle.repositioned(self.ticks_elapsed);
+        // TODO - Create indicator cycle thats a multiple of pattern length && >= indicator.leds
+        //let indicator_cycle = cycle.repositioned(cycle.start % self.indicator.ticks());
 
         // Always turn notes off after their time is up to prevent infinite notes
         self.pattern.output_note_off_events(&absolute_cycle, midi_out);
@@ -190,7 +105,6 @@ impl Sequencer {
         if self.was_repositioned {
             let beat_start = (pattern_cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
             let reposition_cycle = cycle.repositioned(beat_start);
-            println!("{:?}", reposition_cycle);
 
             self.indicator.draw(&reposition_cycle, &self.pattern, control_out);
         }
