@@ -4,6 +4,7 @@ use jack_sys as j;
 use std::sync::mpsc::{Sender, Receiver};
 use super::controller::Controller;
 use super::message::{Message, MessageData};
+use super::cycle::Cycle;
 use super::TICKS_PER_BEAT;
 
 pub struct Writer {
@@ -32,33 +33,6 @@ impl Writer {
                     Ok(_) => {},
                 }
             });
-    }
-}
-
-#[derive(Debug)]
-pub struct Cycle {
-    pub start_tick: u32,
-    pub end_tick: u32,
-    pub ticks_in_cycle: u32,
-    pub frames: u32,
-}
-
-impl Cycle {
-    fn new(pos: jack::Position, frames: u32) -> Self {
-        let start_tick = Cycle::get_tick(pos, pos.frame) as u32;
-        let end_tick = Cycle::get_tick(pos, pos.frame + frames) as u32;
-
-        Cycle { 
-            start_tick,
-            end_tick,
-            ticks_in_cycle: end_tick - start_tick,
-            frames,
-        }
-    }
-
-    fn get_tick(pos: jack::Position, frame: u32) -> f64 {
-        let second = frame as f64 / pos.frame_rate as f64;
-        second / 60.0 * pos.beats_per_minute * pos.ticks_per_beat
     }
 }
 
@@ -146,17 +120,9 @@ impl jack::ProcessHandler for ProcessHandler {
 
         // Get something representing this process cycle
         let (state, pos) = client.transport_query();
-        let cycle = Cycle::new(pos, process_scope.n_frames());
+        let cycle = Cycle::new(pos, process_scope.n_frames(), state);
 
-        // Always turn notes off after their time is up to prevent infinite notes
-        self.controller.sequencer.output_midi_note_off(&cycle, &mut midi_out);
-
-        // Transport is running?
-        if state == 1 {
-            self.controller.sequencer.output_midi_note_on(&cycle, &mut midi_out);
-        }
-
-        self.controller.sequencer.update_ticks(&cycle);
+        self.controller.sequencer.output(cycle, &mut control_out, &mut midi_out);
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {

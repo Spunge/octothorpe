@@ -17,18 +17,18 @@ impl Controller {
     fn key_pressed(&mut self, event: jack::RawMidi, client: &jack::Client) {
         match event.bytes[1] {
             91 => {
-                //println!("Starting transport \n");
+                println!("\nStarting transport");
                 client.transport_start();
             },
             92 => {
                  let (state, _) = client.transport_query();
                  match state {
                     1 => {
-                        //println!("Stopping transport \n");
+                        println!("\nStopping transport");
                         client.transport_stop();
                     },
                     _ => {
-                        //println!("Ressetting transport \n");
+                        println!("\nRessetting transport");
                         let pos = jack::Position::default();
                         client.transport_reposition(pos);
                     }
@@ -38,9 +38,7 @@ impl Controller {
         };
     }
 
-    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client) {
-        
-    }
+    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client) {}
 
     pub fn process_midi_event(
         &mut self,

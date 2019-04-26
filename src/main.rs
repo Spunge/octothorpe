@@ -5,6 +5,7 @@ pub mod controller;
 pub mod handlers;
 pub mod message;
 pub mod sequencer;
+pub mod cycle;
 
 use std::io;
 use std::sync::mpsc::channel;
