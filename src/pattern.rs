@@ -18,33 +18,38 @@ impl Pattern {
     }
 
     pub fn output_note_on_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        // Clone so we can change the tick on notes for next pattern iteration
-        let mut note_offs = self.notes.iter()
-            .cloned()
-            // Check all notes to see if they belong in this cycle
-            .filter(|note| { cycle.contains_recurring(note.tick, self.ticks()) })
-            // Play notes
-            .map(|note| {
-                // Write note
-                writer.write(note.note_on(cycle.delta_frames_recurring(note.tick, self.ticks())));
+        let ticks = self.ticks();
 
-                NoteOff::new(note, cycle.absolute_start + cycle.delta_ticks_recurring(note.tick, self.ticks()) + note.length)
+        // Clone so we can change the tick on notes for next pattern iteration
+        let mut note_offs: Vec<NoteOff> = self.notes.iter()
+            .filter_map(|note| {
+                match cycle.delta_frames_recurring(note.tick, ticks) {
+                    Some(frames) => {
+                        // Write note
+                        writer.write(note.note_on(frames));
+
+                        // Absolute tick note_off should be tiggered
+                        let note_off = cycle.absolute_start + cycle.frames_to_ticks(frames) + note.length;
+                        // TODO - When note is pushed that is already in the list, we need to remove it as MIDI
+                        Some(NoteOff::new(*note, note_off))
+                    },
+                    None => { None },
+                }
             })
             .collect();
 
-        // TODO - When note is pushed that is already in the list, we need to remove it as MIDI
-        // will cut off that note
         self.note_offs.append(&mut note_offs);
     }
 
     pub fn output_note_off_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
         self.note_offs.retain(|note_off| {
-            if cycle.contains_absolute(note_off.tick) {
-                writer.write(note_off.note.note_off(cycle.delta_frames_absolute(note_off.tick)));
+            match cycle.delta_frames_absolute(note_off.tick) {
+                Some(frames) => {
+                    writer.write(note_off.note.note_off(frames));
+                    true
+                },
+                None => false
             }
-
-            // Return the opposite of A to keep notes that are not yet finished
-            !cycle.contains_absolute(note_off.tick)
         });
     }
 }

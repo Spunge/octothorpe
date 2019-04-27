@@ -46,55 +46,46 @@ impl Cycle {
         second / 60.0 * pos.beats_per_minute * pos.ticks_per_beat
     }
 
-    pub fn contains(&self, tick: u32) -> bool {
-        tick >= self.start && tick < self.end 
+    pub fn frames_to_ticks(&self, frames: u32) -> u32 {
+        (frames as f64 / self.frames as f64 * self.ticks as f64) as u32
     }
 
-    pub fn contains_recurring(&self, tick: u32, interval: u32) -> bool {
+    pub fn ticks_to_frames(&self, ticks: u32) -> u32 {
+        (ticks as f64 / self.ticks as f64 * self.frames as f64) as u32
+    }
+
+    pub fn delta_frames(&self, tick: u32) -> Option<u32> {
+        if tick >= self.start && tick < self.end {
+            Some(self.ticks_to_frames(tick - self.start))
+        } else {
+            None
+        }
+    }
+
+    pub fn delta_frames_absolute(&self, tick: u32) -> Option<u32> {
+        if tick >= self.absolute_start && tick < self.absolute_end {
+            Some(self.ticks_to_frames(tick - self.absolute_start))
+        } else {
+            None
+        }
+    }
+
+    pub fn delta_frames_recurring(&self, tick: u32, interval: u32) -> Option<u32> {
         let pattern_start = self.start % interval;
         let pattern_end = pattern_start + self.ticks;
         let next_tick = tick + interval;
 
-        tick >= pattern_start && tick < pattern_end
-            || next_tick >= pattern_start && next_tick < pattern_end
-    }
-
-    pub fn contains_absolute(&self, tick: u32) -> bool {
-        tick >= self.absolute_start && tick < self.absolute_end 
-    }
-
-    pub fn delta_ticks(&self, tick: u32) -> u32 {
-        tick - self.start
-    }
-
-    pub fn delta_ticks_absolute(&self, absolute_tick: u32) -> u32 {
-        absolute_tick - self.absolute_start
-    }
-
-    pub fn delta_ticks_recurring(&self, tick: u32, interval: u32) -> u32 {
-        let pattern_start = self.start % interval;
-
-        if pattern_start > tick {
-            tick + interval - pattern_start
+        if tick >= pattern_start && tick < pattern_end
+            || next_tick >= pattern_start && next_tick < pattern_end 
+        {
+            if pattern_start > tick {
+                Some(self.ticks_to_frames(next_tick - pattern_start))
+            } else {
+                Some(self.ticks_to_frames(tick - pattern_start))
+            }
         } else {
-            tick - pattern_start
+            None
         }
-    }
-
-    fn ticks_to_frames(&self, ticks: u32) -> u32 {
-        (ticks as f64 / self.ticks as f64 * self.frames as f64) as u32
-    }
-
-    pub fn delta_frames(&self, tick: u32) -> u32 {
-        self.ticks_to_frames(self.delta_ticks(tick))
-    }
-
-    pub fn delta_frames_absolute(&self, tick: u32) -> u32 {
-        self.ticks_to_frames(self.delta_ticks_absolute(tick))
-    }
-
-    pub fn delta_frames_recurring(&self, tick: u32, interval: u32) -> u32 {
-        self.ticks_to_frames(self.delta_ticks_recurring(tick, interval))
     }
 }
 

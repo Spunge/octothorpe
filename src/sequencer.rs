@@ -33,12 +33,15 @@ impl Indicator {
     fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
         let steps = pattern.length;
         let ticks = steps * TICKS_PER_BEAT as u32;
-        (0..steps)
-            .filter(|beat| { cycle.contains_recurring(beat * TICKS_PER_BEAT as u32, ticks) })
-            .for_each(|beat| {
-                let frames = cycle.delta_frames_recurring(beat * TICKS_PER_BEAT as u32, ticks);
-                self.switch_to_led(beat, frames, writer)
-            });
+
+        (0..steps).for_each(|beat| { 
+            let tick = beat * TICKS_PER_BEAT as u32;
+
+            match cycle.delta_frames_recurring(tick, ticks) {
+                Some(frames) => self.switch_to_led(beat, frames, writer),
+                None => {}
+            };
+        })
     }
 }
 
@@ -66,9 +69,9 @@ impl Sequencer {
                 note_offs: Vec::new(),
                 notes: vec![
                     Note::new(0, TICKS_PER_BEAT as u32, 72),
-                    //Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
+                    Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
                     Note::new(TICKS_PER_BEAT as u32 * 2, TICKS_PER_BEAT as u32, 69),
-                    //Note::new(TICKS_PER_BEAT as u32 * 3, TICKS_PER_BEAT as u32, 69),
+                    Note::new(TICKS_PER_BEAT as u32 * 3, TICKS_PER_BEAT as u32, 69),
                 ],
             },
         }
