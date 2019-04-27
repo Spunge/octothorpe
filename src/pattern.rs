@@ -18,14 +18,18 @@ impl Pattern {
 
         Pattern {
             start: 0,
-            length: 4,
+            length: 8,
 
             note_offs: Vec::new(),
             notes: vec![
-                Note::new(0, ticks, 0, 74, 127),
+                Note::new(0, ticks, 0, 72, 127),
                 Note::new(ticks, ticks, 0, 69, 127),
                 Note::new(ticks * 2, ticks, 0, 69, 127),
                 Note::new(ticks * 3, ticks, 0, 69, 127),
+                Note::new(ticks * 4, ticks, 0, 72, 127),
+                Note::new(ticks * 5, ticks, 0, 69, 127),
+                Note::new(ticks * 6, ticks, 0, 69, 127),
+                Note::new(ticks * 7, ticks, 0, 69, 127),
             ],
         }
     }
