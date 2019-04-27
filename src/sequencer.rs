@@ -13,7 +13,9 @@ pub struct Indicator {
 
 impl Indicator {
     fn switch_led(&mut self, led: u32, state: u8, frames: u32, writer: &mut Writer) {
-        writer.write(Message::new(frames, MessageData::Note([0x90 + led as u8, 0x34, state])));
+        if led < self.leds {
+            writer.write(Message::new(frames, MessageData::Note([0x90 + led as u8, 0x34, state])));
+        }
     }
 
     fn clear(&mut self, writer: &mut Writer) {
@@ -22,24 +24,20 @@ impl Indicator {
         });
     }
 
-    fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
-        (0..self.leds + 1)
-            // Check for beats at start of the pattern for 1910 -> 10 cycles
-            .map(|mut beat| {
-                if cycle.contains((8 + beat) * TICKS_PER_BEAT as u32) {
-                    beat += 8;
-                }
-                beat
-            })
-            .filter(|beat| {
-                cycle.contains(beat * TICKS_PER_BEAT as u32)
-            })
-            .for_each(|beat| {
-                let frames = cycle.frames_till_tick(beat * TICKS_PER_BEAT as u32);
+    fn switch_to_led(&mut self, led: u32, frames: u32, writer: &mut Writer) {
+        self.switch_led(self.active_led, 0, frames, writer);
+        self.active_led = led;
+        self.switch_led(self.active_led, 1, frames, writer);
+    }
 
-                self.switch_led(self.active_led, 0, frames, writer);
-                self.active_led = beat % pattern.length;
-                self.switch_led(self.active_led, 1, frames, writer);
+    fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
+        let steps = pattern.length;
+        let ticks = steps * TICKS_PER_BEAT as u32;
+        (0..steps)
+            .filter(|beat| { cycle.contains_recurring(beat * TICKS_PER_BEAT as u32, ticks) })
+            .for_each(|beat| {
+                let frames = cycle.delta_frames_recurring(beat * TICKS_PER_BEAT as u32, ticks);
+                self.switch_to_led(beat, frames, writer)
             });
     }
 }
@@ -48,14 +46,12 @@ pub struct Sequencer {
     pattern: Pattern,
     indicator: Indicator,
     // Keep track of elapsed ticks to trigger note_off when transport stops
-    ticks_elapsed: u32,
     was_repositioned: bool,
 }
 
 impl Sequencer {
     pub fn new() -> Self {
         Sequencer{
-            ticks_elapsed: 0,
             was_repositioned: true,
 
             indicator: Indicator{
@@ -70,9 +66,9 @@ impl Sequencer {
                 note_offs: Vec::new(),
                 notes: vec![
                     Note::new(0, TICKS_PER_BEAT as u32, 72),
-                    Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
+                    //Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
                     Note::new(TICKS_PER_BEAT as u32 * 2, TICKS_PER_BEAT as u32, 69),
-                    Note::new(TICKS_PER_BEAT as u32 * 3, TICKS_PER_BEAT as u32, 69),
+                    //Note::new(TICKS_PER_BEAT as u32 * 3, TICKS_PER_BEAT as u32, 69),
                 ],
             },
         }
@@ -84,26 +80,19 @@ impl Sequencer {
             self.was_repositioned = false;
         }
         self.was_repositioned = cycle.is_repositioned;
-        // Update next ticks to keep track of absoulute ticks elapsed for note off events
-        self.ticks_elapsed += cycle.ticks;
     }
 
     pub fn output(&mut self, cycle: &Cycle, control_out: &mut Writer, midi_out: &mut Writer) {
-        let pattern_cycle = cycle.repositioned(cycle.start % self.pattern.ticks());
-        let absolute_cycle = cycle.repositioned(self.ticks_elapsed);
-        // TODO - Create indicator cycle thats a multiple of pattern length && >= indicator.leds
-        //let indicator_cycle = cycle.repositioned(cycle.start % self.indicator.ticks());
-
         // Always turn notes off after their time is up to prevent infinite notes
-        self.pattern.output_note_off_events(&absolute_cycle, midi_out);
+        self.pattern.output_note_off_events(&cycle, midi_out);
 
         // Clean grid on starting
-        if self.ticks_elapsed == 0 {
+        if cycle.absolute_start == 0 {
             self.indicator.clear(control_out);
         }
 
         if self.was_repositioned {
-            let beat_start = (pattern_cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
+            let beat_start = (cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
             let reposition_cycle = cycle.repositioned(beat_start);
 
             self.indicator.draw(&reposition_cycle, &self.pattern, control_out);
@@ -111,11 +100,11 @@ impl Sequencer {
 
         // Update grid when running, after repositioning
         if cycle.is_rolling {
-            self.indicator.draw(&pattern_cycle, &self.pattern, control_out);
+            self.indicator.draw(cycle, &self.pattern, control_out);
         }
 
         if cycle.is_rolling {
-            self.pattern.output_note_on_events(&pattern_cycle, &absolute_cycle, midi_out);
+            self.pattern.output_note_on_events(cycle, midi_out);
         }
 
         self.update(cycle);

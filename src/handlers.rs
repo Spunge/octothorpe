@@ -90,6 +90,8 @@ pub struct ProcessHandler {
     controller: Controller,
     receiver: Receiver<Message>,
 
+    ticks_elapsed: u32,
+
     control_in: jack::Port<jack::MidiIn>,
     control_out: jack::Port<jack::MidiOut>,
 
@@ -103,7 +105,14 @@ impl ProcessHandler {
         let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
         let midi_out = client.register_port("midi_out", jack::MidiOut::default()).unwrap();
 
-        ProcessHandler { controller, receiver, control_in, control_out, midi_out }
+        ProcessHandler { 
+            controller, 
+            receiver,
+            ticks_elapsed: 0,
+            control_in,
+            control_out,
+            midi_out 
+        }
     }
 }
 
@@ -121,8 +130,11 @@ impl jack::ProcessHandler for ProcessHandler {
 
         // Get something representing this process cycle
         let (state, pos) = client.transport_query();
-        let cycle = Cycle::new(pos, process_scope.n_frames(), state);
+        let cycle = Cycle::new(pos, self.ticks_elapsed, process_scope.n_frames(), state);
+        // Update next ticks to keep track of absoulute ticks elapsed for note off events
+        self.ticks_elapsed += cycle.ticks;
 
+        // Output midi
         self.controller.sequencer.output(&cycle, &mut control_out, &mut midi_out);
 
         // Write midi from notification handler

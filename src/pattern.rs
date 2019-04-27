@@ -17,27 +17,18 @@ impl Pattern {
         self.length * TICKS_PER_BEAT as u32
     }
 
-    pub fn output_note_on_events(&mut self, pattern_cycle: &Cycle, absolute_cycle: &Cycle, writer: &mut Writer) {
+    pub fn output_note_on_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
         // Clone so we can change the tick on notes for next pattern iteration
         let mut note_offs = self.notes.iter()
             .cloned()
-            // If note in next iteration of the pattern does belong in this cycle, add it
-            .map(|mut note| {
-                if pattern_cycle.contains(note.tick + self.ticks()) {
-                    note.tick += self.ticks();
-                }
-                note
-            })
             // Check all notes to see if they belong in this cycle
-            .filter(|note| {
-                pattern_cycle.contains(note.tick)
-            })
+            .filter(|note| { cycle.contains_recurring(note.tick, self.ticks()) })
             // Play notes
             .map(|note| {
                 // Write note
-                writer.write(note.note_on(pattern_cycle.frames_till_tick(note.tick)));
+                writer.write(note.note_on(cycle.delta_frames_recurring(note.tick, self.ticks())));
 
-                NoteOff::new(note, absolute_cycle.start + pattern_cycle.ticks_till_tick(note.tick + note.length))
+                NoteOff::new(note, cycle.absolute_start + cycle.delta_ticks_recurring(note.tick, self.ticks()) + note.length)
             })
             .collect();
 
@@ -48,12 +39,12 @@ impl Pattern {
 
     pub fn output_note_off_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
         self.note_offs.retain(|note_off| {
-            if cycle.contains(note_off.tick) {
-                writer.write(note_off.note.note_off(cycle.frames_till_tick(note_off.tick)));
+            if cycle.contains_absolute(note_off.tick) {
+                writer.write(note_off.note.note_off(cycle.delta_frames_absolute(note_off.tick)));
             }
 
             // Return the opposite of A to keep notes that are not yet finished
-            !cycle.contains(note_off.tick)
+            !cycle.contains_absolute(note_off.tick)
         });
     }
 }

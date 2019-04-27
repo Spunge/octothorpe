@@ -46,8 +46,10 @@ fn main() {
         }
     };
 
+    // Try to connect to synth & midi monitors for testing
     let _res = async_client.as_client().connect_ports_by_name("Octothorpe:midi_out", "amsynth:midi_in");
-    let _res = async_client.as_client().connect_ports_by_name("Octothorpe:midi_out", "midi-monitor:input");
+    let _res = async_client.as_client().connect_ports_by_name("Octothorpe:midi_out", "midi_out:input");
+    let _res = async_client.as_client().connect_ports_by_name("Octothorpe:control_out", "control_out:input");
 
     // Wait for user to input string
     let mut user_input = String::new();
