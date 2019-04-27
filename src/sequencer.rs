@@ -2,7 +2,6 @@
 use super::TICKS_PER_BEAT;
 use super::handlers::Writer;
 use super::message::{Message, MessageData};
-use super::note::Note;
 use super::cycle::Cycle;
 use super::pattern::Pattern;
 
@@ -55,24 +54,8 @@ impl Sequencer {
     pub fn new() -> Self {
         Sequencer{
             was_repositioned: true,
-
-            indicator: Indicator{
-                leds: 8,
-                active_led: 0,
-            },
-
-            pattern: Pattern {
-                start: 0,
-                length: 11,
-
-                note_offs: Vec::new(),
-                notes: vec![
-                    Note::new(0, TICKS_PER_BEAT as u32, 72),
-                    Note::new(TICKS_PER_BEAT as u32, TICKS_PER_BEAT as u32, 69),
-                    Note::new(TICKS_PER_BEAT as u32 * 2, TICKS_PER_BEAT as u32, 69),
-                    Note::new(TICKS_PER_BEAT as u32 * 3, TICKS_PER_BEAT as u32, 69),
-                ],
-            },
+            indicator: Indicator{ leds: 8, active_led: 0 },
+            pattern: Pattern::default(),
         }
     }
 

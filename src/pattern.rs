@@ -13,6 +13,23 @@ pub struct Pattern {
 }
 
 impl Pattern {
+    pub fn default() -> Self {
+        let ticks = TICKS_PER_BEAT as u32;
+
+        Pattern {
+            start: 0,
+            length: 4,
+
+            note_offs: Vec::new(),
+            notes: vec![
+                Note::new(0, ticks, 0, 74, 127),
+                Note::new(ticks, ticks, 0, 69, 127),
+                Note::new(ticks * 2, ticks, 0, 69, 127),
+                Note::new(ticks * 3, ticks, 0, 69, 127),
+            ],
+        }
+    }
+
     pub fn ticks(&self) -> u32 {
         self.length * TICKS_PER_BEAT as u32
     }
@@ -22,7 +39,7 @@ impl Pattern {
         let note_offs = &mut self.note_offs;
 
         // Clone so we can change the tick on notes for next pattern iteration
-        self.notes.iter_mut()
+        self.notes.iter()
             // Is note located within pattern?
             .filter(|note| { note.tick < ticks })
             // It, is, play it, queing note off

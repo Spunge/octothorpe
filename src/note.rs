@@ -7,22 +7,23 @@ pub struct Note {
     pub tick: u32,
     pub length: u32,
 
+    channel: u8,
     pub key: u8,
     velocity: u8,
 }
 
 impl Note {
     // Create A4 quarter note
-    pub fn new(tick: u32, length: u32, key: u8) -> Self {
-        Note { tick, length, key: key, velocity: 127 }
+    pub fn new(tick: u32, length: u32, channel: u8, key: u8, velocity: u8) -> Self {
+        Note { tick, length, channel, key, velocity, }
     }
 
     pub fn note_on(&self, frames: u32) -> Message {
-        Message::new(frames, MessageData::Note([0x90, self.key, self.velocity]))
+        Message::new(frames, MessageData::Note([0x90 + self.channel, self.key, self.velocity]))
     }
     
     pub fn note_off(&self, frames: u32) -> Message {
-        Message::new(frames, MessageData::Note([0x80, self.key, self.velocity]))
+        Message::new(frames, MessageData::Note([0x80 + self.channel, self.key, self.velocity]))
     }
 }
 
