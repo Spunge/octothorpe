@@ -68,14 +68,35 @@ impl Grid {
     }
     
     // TODO - Make trait
-    fn switch_led(&mut self, led: u32, state: u8, writer: &mut Writer) {
-        writer.write(Message::new(0, MessageData::Note([0x90 + (led % 8) as u8, 0x35 + (led / 8) as u8, state])));
+    fn switch_led(&mut self, x: u8, y: u8, state: u8, writer: &mut Writer) {
+        writer.write(Message::new(0, MessageData::Note([0x90 + x, y, state])));
     }
 
     fn clear(&mut self, writer: &mut Writer) {
+        // Active pattern 1
+        self.switch_led(0, 0x52, 2, writer);
+        // Inactive pattern 2
+        self.switch_led(0, 0x53, 1, writer);
+        self.switch_led(0, 0x54, 1, writer);
+
+        // Active track
+        self.switch_led(0, 0x33, 1, writer);
+        // Alternate tracks active
+        self.switch_led(0, 0x50, 1, writer);
+
+        // Velocity
+        (0..8).for_each(|led| {
+            self.switch_led(led, 0x30, 1, writer);
+        });
+
+        // Clear length indicator
+        (0..8).for_each(|led| {
+            self.switch_led(led, 0x32, 0, writer);
+        });
+        // Clear grid
         (0..40).for_each(|led| {
-            self.switch_led(led, 0, writer);
-        })
+            self.switch_led(led % 8, 0x35 + led / 8, 0, writer);
+        });
     }
 
     // TODO - Show 1 bar pattern over the whole grid, doubling the steps
@@ -96,8 +117,12 @@ impl Grid {
             })
             .for_each(|pos| {
                 let (x, y) = pos;
-                self.switch_led(y as u32 * 8 + x, 1, writer);
-            })
+                self.switch_led(x as u8, 0x35 + y as u8, 1, writer);
+            });
+
+        (0..pattern.bars).for_each(|led| {
+            self.switch_led(led as u8, 0x32, 1, writer);
+        })
     }
 }
 
