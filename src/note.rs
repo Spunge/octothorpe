@@ -7,7 +7,7 @@ pub struct Note {
     pub tick: u32,
     pub length: u32,
 
-    key: u8,
+    pub key: u8,
     velocity: u8,
 }
 

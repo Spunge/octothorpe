@@ -37,10 +37,9 @@ impl Indicator {
         (0..steps).for_each(|beat| { 
             let tick = beat * TICKS_PER_BEAT as u32;
 
-            match cycle.delta_frames_recurring(tick, ticks) {
-                Some(frames) => self.switch_to_led(beat, frames, writer),
-                None => {}
-            };
+            if let Some(delta_ticks) = cycle.delta_ticks_recurring(tick, ticks) {
+                self.switch_to_led(beat, cycle.ticks_to_frames(delta_ticks), writer);
+            }
         })
     }
 }
@@ -64,7 +63,7 @@ impl Sequencer {
 
             pattern: Pattern {
                 start: 0,
-                length: 4,
+                length: 11,
 
                 note_offs: Vec::new(),
                 notes: vec![

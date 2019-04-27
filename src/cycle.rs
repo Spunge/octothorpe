@@ -70,7 +70,7 @@ impl Cycle {
         }
     }
 
-    pub fn delta_frames_recurring(&self, tick: u32, interval: u32) -> Option<u32> {
+    pub fn delta_ticks_recurring(&self, tick: u32, interval: u32) -> Option<u32> {
         let pattern_start = self.start % interval;
         let pattern_end = pattern_start + self.ticks;
         let next_tick = tick + interval;
@@ -79,9 +79,9 @@ impl Cycle {
             || next_tick >= pattern_start && next_tick < pattern_end 
         {
             if pattern_start > tick {
-                Some(self.ticks_to_frames(next_tick - pattern_start))
+                Some(next_tick - pattern_start)
             } else {
-                Some(self.ticks_to_frames(tick - pattern_start))
+                Some(tick - pattern_start)
             }
         } else {
             None
