@@ -32,3 +32,6 @@ Effect knobs
 Velocity
 - Show velocity of notes in grid by color of note
 - Use indicator bar for selecting velocity when grid note is pressed
+
+Effect knobs
+- Record effect knobs into patterns
