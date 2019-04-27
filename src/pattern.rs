@@ -7,7 +7,8 @@ use super::cycle::Cycle;
 #[derive(Debug)]
 pub struct Pattern {
     pub start: u32,
-    pub length: u32,
+    pub bars: u32,
+    beats_per_bar: u32,
     pub notes: Vec<Note>,
     pub note_offs: Vec<NoteOff>,
 }
@@ -18,7 +19,8 @@ impl Pattern {
 
         Pattern {
             start: 0,
-            length: 8,
+            bars: 1,
+            beats_per_bar: 4,
 
             note_offs: Vec::new(),
             notes: vec![
@@ -26,16 +28,20 @@ impl Pattern {
                 Note::new(ticks, ticks, 0, 69, 127),
                 Note::new(ticks * 2, ticks, 0, 69, 127),
                 Note::new(ticks * 3, ticks, 0, 69, 127),
-                Note::new(ticks * 4, ticks, 0, 72, 127),
-                Note::new(ticks * 5, ticks, 0, 69, 127),
-                Note::new(ticks * 6, ticks, 0, 69, 127),
-                Note::new(ticks * 7, ticks, 0, 69, 127),
+                //Note::new(ticks * 4, ticks, 0, 72, 127),
+                //Note::new(ticks * 5, ticks, 0, 69, 127),
+                //Note::new(ticks * 6, ticks, 0, 69, 127),
+                //Note::new(ticks * 7, ticks, 0, 69, 127),
             ],
         }
     }
 
+    pub fn beats(&self) -> u32 {
+        self.bars * self.beats_per_bar
+    }
+
     pub fn ticks(&self) -> u32 {
-        self.length * TICKS_PER_BEAT as u32
+        self.bars * self.beats_per_bar * TICKS_PER_BEAT as u32
     }
 
     pub fn output_note_on_events(&mut self, cycle: &Cycle, writer: &mut Writer) {

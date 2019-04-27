@@ -31,11 +31,12 @@ impl Indicator {
     }
 
     fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
-        let steps = pattern.length;
-        let ticks = steps * TICKS_PER_BEAT as u32;
+        // TODO - Show 1 bar pattern over the whole grid, doubling the steps
+        let steps = pattern.beats() * 2;
+        let ticks = steps * TICKS_PER_BEAT as u32 / 2;
 
         (0..steps).for_each(|beat| { 
-            let tick = beat * TICKS_PER_BEAT as u32;
+            let tick = beat * TICKS_PER_BEAT as u32 / 2;
 
             if let Some(delta_ticks) = cycle.delta_ticks_recurring(tick, ticks) {
                 self.switch_to_led(beat, cycle.ticks_to_frames(delta_ticks), writer);
@@ -77,15 +78,16 @@ impl Grid {
         })
     }
 
+    // TODO - Show 1 bar pattern over the whole grid, doubling the steps
     fn draw_pattern(&mut self, pattern: &Pattern, writer: &mut Writer) {
         let base_note = self.base_note as i32;
 
         pattern.notes.iter()
             .map(|note| {
-                let beat = note.tick / TICKS_PER_BEAT as u32;
-                let row = base_note - note.key as i32;
+                let x = note.tick / TICKS_PER_BEAT as u32 * 2;
+                let y = base_note - note.key as i32;
 
-                (beat, row)
+                (x, y)
             })
             .filter(|pos| {
                 let (x, y) = pos;
