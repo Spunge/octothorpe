@@ -6,7 +6,7 @@ use super::cycle::Cycle;
 use super::note::NoteOff;
 
 pub struct Instrument {
-    is_active: bool,
+    pub is_active: bool,
 
     patterns: Vec<Pattern>,
     phrases: Vec<Phrase>,
@@ -72,7 +72,7 @@ impl Instrument {
     pub fn output(&mut self, cycle: &Cycle, writer: &mut Writer) {
         self.output_note_offs(cycle, writer);
 
-        if cycle.is_rolling {
+        if cycle.is_rolling && self.is_active {
             // Get note offs by playing note_ons
             self.note_offs.append(&mut self.phrases[self.playing_phrase]
                                   .output_notes(cycle, self.channel, &self.patterns, writer));

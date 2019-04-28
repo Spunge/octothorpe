@@ -55,9 +55,9 @@ impl Sequencer {
     }
 
     pub fn toggle_instrument_active(&mut self, instrument: u8, writer: &mut Writer) {
-        self.active_grid.clear(0, false, writer);
-        self.instrument_by_index(instrument).toggle_active();
-        self.active_grid.clear(0, false, writer);
+        let instrument = self.instrument_by_index(instrument);
+        instrument.is_active = ! instrument.is_active;
+        self.draw_active_grid(0, writer);
     }
 
     pub fn switch_group(&mut self, writer: &mut Writer) {
@@ -66,12 +66,21 @@ impl Sequencer {
         self.draw(0, writer);
     }
 
-    pub fn draw_active_grid
+    pub fn draw_active_grid(&mut self, frame: u32, writer: &mut Writer) {
+        let leds = self.active_grid.width;
+
+        (0..leds).for_each(|led| {
+            let instrument = self.instrument_by_index(led);
+            let state = if instrument.is_active { 1 } else { 0 };
+            self.active_grid.switch_led(led, 0, state, frame, writer);
+        });
+    }
 
     // Called on start
     pub fn draw(&mut self, frame: u32, writer: &mut Writer) {
         self.instrument_grid.switch_led(self.instrument, 0, 1, frame, writer);
         self.group_grid.switch_led(0, 0, self.group, frame, writer);
+        self.draw_active_grid(0, writer);
 
         match self.view {
             View::Pattern => { self.instrument().pattern().draw(frame, writer) },

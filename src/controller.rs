@@ -14,42 +14,28 @@ impl Controller {
         }
     }
 
-    fn transport_key_pressed(&self, event: jack::RawMidi, client: &jack::Client) {
-         match event.bytes[1] {
-            0x5B => client.transport_start(),
-            0x5C => {
-                 let (state, _) = client.transport_query();
-                 match state {
-                    1 => client.transport_stop(),
-                    _ => {
-                        let pos = jack::Position::default();
-                        client.transport_reposition(pos);
-                    }
-                 };
-            },
-            0x33 => self.sequencer.switch_instrument(event.bytes[0] - 0x90, writer),
-            0x50 => self.sequencer.switch_group(writer),
-            0x30 => self.sequencer.activate_instrument(event.bytes[0] - 0x90, writer),
-            _ => {},
-        };
-    }
-
-    fn instrument_key_pressed(&mut self, event: jack::RawMidi, _client: &jack::Client, writer: &mut Writer) {
-        match event.bytes[1] {
-            _ => {},
-        }
-    }
-
     fn key_pressed(&mut self, event: jack::RawMidi, client: &jack::Client, writer: &mut Writer) {
         // Output in hex so we can compare to apc40 manual easily
         println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
         //println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
 
         match event.bytes[1] {
-            0x5B | 0x5C => self.transport_key_pressed(event, client),
-            0x33 | 0x50 => self.instrument_key_pressed(event, client, writer),
+            0x5B => client.transport_start(),
+            0x5C => {
+                let (state, _) = client.transport_query();
+                match state {
+                    1 => client.transport_stop(),
+                    _ => {
+                        let pos = jack::Position::default();
+                        client.transport_reposition(pos);
+                    }
+                };
+            },
+            0x33 => self.sequencer.switch_instrument(event.bytes[0] - 0x90, writer),
+            0x50 => self.sequencer.switch_group(writer),
+            0x30 => self.sequencer.toggle_instrument_active(event.bytes[0] - 0x90, writer),
             _ => {},
-        }
+        };
     }
 
     fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client, _writer: &mut Writer) {}
