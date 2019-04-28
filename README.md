@@ -6,9 +6,9 @@ Turn your APC40 into a step sequencer
 
 ### TODO 
 Patterns
-- [ ] Grid click activates / deactivates note
+- [ ] Grid click activates / deactivates note with current velocity
 - [ ] row 0x31 -> change pattern length
-- [ ] shift + row 0x31 -> change velocity
+- [ ] shift + row 0x31 -> change velocity level
 - [ ] row 0x32 -> move zoom viewport
 - [ ] shift + row 0x32 -> change zoom level
 - [ ] bank select moves viewport in all directions, also moving zoom indicator
@@ -32,7 +32,6 @@ Effect knobs
 ### Idea / unsure about
 Velocity
 - Show velocity of notes in grid by color of note?
-- Use indicator bar for selecting velocity when grid note is pressed?
 
 Effect knobs
 - Record effect knobs into patterns

@@ -14,10 +14,10 @@ pub struct Pattern {
 
     pub notes: Vec<Note>,
 
-    pub pattern_grid: Grid,
-    pub length_grid: Grid,
-    pub indicator_grid: Grid,
-    pub zoom_grid: Grid,
+    pattern_grid: Grid,
+    length_grid: Grid,
+    indicator_grid: Grid,
+    zoom_grid: Grid,
 }
 
 impl Pattern {
@@ -55,6 +55,18 @@ impl Pattern {
         Pattern::create(notes)
     }
 
+    pub fn draw(&mut self, frame: u32, writer: &mut Writer) {
+        self.draw_pattern(frame, writer);
+        self.draw_length(frame, writer);
+        self.draw_zoom(frame, writer);
+    }
+
+    pub fn clear(&mut self, frame: u32, writer: &mut Writer) {
+        self.pattern_grid.clear_active(frame, writer);
+        self.length_grid.clear_active(frame, writer);
+        self.zoom_grid.clear_active(frame, writer);
+    }
+
     pub fn draw_pattern(&mut self, frame: u32, writer: &mut Writer) {
         let grid = &mut self.pattern_grid;
 
@@ -67,6 +79,20 @@ impl Pattern {
                 // Add 4 to push grid 4 down
                 grid.try_switch_led(x as i32, y + 4, 1, frame, writer);
             });
+    }
+    
+    pub fn draw_length(&mut self, frame: u32, writer: &mut Writer) {
+        (0..self.bars).for_each(|x| {
+            self.length_grid.switch_led(x, 0, 1, frame, writer);
+        });
+    }
+
+    pub fn draw_zoom(&mut self, frame: u32, writer: &mut Writer) {
+        let divide_by = 2_u8.pow(self.zoom_level);
+
+        (0..(8 / divide_by)).for_each(|x| {
+            self.zoom_grid.switch_led(x, 0, 1, frame, writer);
+        })
     }
 
     pub fn draw_indicator(&mut self, cycle: &Cycle, writer: &mut Writer) {
@@ -82,20 +108,6 @@ impl Pattern {
                 self.indicator_grid.clear_active(frame, writer);
                 self.indicator_grid.try_switch_led(beat as i32, 0, 1, frame, writer)
             }
-        })
-    }
-    
-    pub fn draw_length(&mut self, frame: u32, writer: &mut Writer) {
-        (0..self.bars).for_each(|x| {
-            self.length_grid.switch_led(x, 0, 1, frame, writer);
-        });
-    }
-
-    pub fn draw_zoom(&mut self, frame: u32, writer: &mut Writer) {
-        let divide_by = 2_u8.pow(self.zoom_level);
-
-        (0..(8 / divide_by)).for_each(|x| {
-            self.zoom_grid.switch_led(x, 0, 1, frame, writer);
         })
     }
 

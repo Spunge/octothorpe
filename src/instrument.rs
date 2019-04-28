@@ -42,15 +42,10 @@ impl Instrument {
         &mut self.patterns[self.showing_pattern]
     }
 
-    // Clear midi controller grids on start
-    pub fn clear(&mut self, writer: &mut Writer) {
-        let pattern = self.active_pattern();
-        pattern.pattern_grid.clear(writer);
-        pattern.length_grid.clear(writer);
-        pattern.indicator_grid.clear(writer);
-        pattern.zoom_grid.clear(writer);
+    pub fn active_phrase(&mut self) -> &mut Phrase {
+        &mut self.phrases[self.showing_phrase]
     }
-    
+
     pub fn output_note_offs(&mut self, cycle: &Cycle, writer: &mut Writer) {
         let channel = self.channel;
 

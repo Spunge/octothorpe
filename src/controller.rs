@@ -14,13 +14,13 @@ impl Controller {
         }
     }
 
-    fn key_pressed(&mut self, event: jack::RawMidi, client: &jack::Client) {
-        match event.bytes[1] {
-            91 => {
+    fn transport_key_pressed(&self, event: jack::RawMidi, client: &jack::Client) {
+         match event.bytes[1] {
+            0x5B => {
                 println!("\nStarting transport");
                 client.transport_start();
             },
-            92 => {
+            0x5C => {
                  let (state, _) = client.transport_query();
                  match state {
                     1 => {
@@ -34,11 +34,31 @@ impl Controller {
                     }
                  }
             },
-            _ => return,
+            _ => {},
         };
     }
 
-    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client) {}
+    fn instrument_key_pressed(&mut self, event: jack::RawMidi, _client: &jack::Client, writer: &mut Writer) {
+        match event.bytes[1] {
+            0x33 => { self.sequencer.switch_instrument(event.bytes[0] - 0x90, writer) },
+            0x50 => { self.sequencer.switch_instrument_group(writer) },
+            _ => {},
+        }
+    }
+
+    fn key_pressed(&mut self, event: jack::RawMidi, client: &jack::Client, writer: &mut Writer) {
+        // Output in hex so we can compare to apc40 manual easily
+        println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
+        //println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
+
+        match event.bytes[1] {
+            0x5B | 0x5C => self.transport_key_pressed(event, client),
+            0x33 | 0x50 => self.instrument_key_pressed(event, client, writer),
+            _ => {},
+        }
+    }
+
+    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client, _writer: &mut Writer) {}
 
     pub fn process_midi_event(
         &mut self,
@@ -75,14 +95,11 @@ impl Controller {
         }
     }
 
-    fn process_message(&mut self, event: jack::RawMidi, client: &jack::Client, _control_out: &mut Writer) {
-        // Output in hex so we can compare to apc40 manual easily
-        println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
-        //println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
+    fn process_message(&mut self, event: jack::RawMidi, client: &jack::Client, writer: &mut Writer) {
 
         match event.bytes[0] {
-            144 => self.key_pressed(event, client),
-            128 => self.key_released(event, client),
+            0x90...0x97 => self.key_pressed(event, client, writer),
+            0x80...0x87 => self.key_released(event, client, writer),
             _ => {},
         }
     }
