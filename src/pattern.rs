@@ -3,83 +3,105 @@ use super::TICKS_PER_BEAT;
 use super::note::{Note, NoteOff};
 use super::handlers::Writer;
 use super::cycle::Cycle;
+use super::sequencer::Grid;
 
-#[derive(Debug)]
 pub struct Pattern {
-    pub start: u32,
     pub bars: u32,
     beats_per_bar: u32,
+
     pub notes: Vec<Note>,
-    pub note_offs: Vec<NoteOff>,
+
+    pattern_grid: Grid,
+    length_grid: Grid,
+    indicator_grid: Grid,
 }
 
 impl Pattern {
-    pub fn default() -> Self {
-        let ticks = TICKS_PER_BEAT as u32;
-
+    fn create(notes: Vec<Note>) -> Self {
         Pattern {
-            start: 0,
             bars: 1,
             beats_per_bar: 4,
 
-            note_offs: Vec::new(),
-            notes: vec![
-                Note::new(0, ticks, 0, 72, 127),
-                Note::new(ticks, ticks, 0, 69, 127),
-                Note::new(ticks * 2, ticks, 0, 69, 127),
-                Note::new(ticks * 3, ticks, 0, 69, 127),
-                //Note::new(ticks * 4, ticks, 0, 72, 127),
-                //Note::new(ticks * 5, ticks, 0, 69, 127),
-                //Note::new(ticks * 6, ticks, 0, 69, 127),
-                //Note::new(ticks * 7, ticks, 0, 69, 127),
-            ],
+            pattern_grid: Grid::new(8, 5, 0x35),
+            indicator_grid: Grid::new(8, 1, 0x34),
+            length_grid: Grid::new(8, 1, 0x32),
+
+            notes,
         }
     }
 
-    pub fn beats(&self) -> u32 {
-        self.bars * self.beats_per_bar
+    pub fn new() -> Self {
+        Pattern::create(vec![])
     }
 
-    pub fn ticks(&self) -> u32 {
-        self.bars * self.beats_per_bar * TICKS_PER_BEAT as u32
+    pub fn default() -> Self {
+        let ticks = TICKS_PER_BEAT as u32;
+
+        let notes = vec![
+            Note::new(0, ticks, 72, 127),
+            Note::new(ticks, ticks, 69, 127),
+            Note::new(ticks * 2, ticks, 69, 127),
+            Note::new(ticks * 3, ticks, 69, 127),
+        ];
+
+        Pattern::create(notes)
     }
 
-    pub fn output_note_on_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        let ticks = self.ticks();
-        let note_offs = &mut self.note_offs;
+    pub fn clear(&mut self, writer: &mut Writer) {
+        self.pattern_grid.clear(writer);
+        self.length_grid.clear(writer);
+        self.indicator_grid.clear(writer);
+    }
 
-        // Clone so we can change the tick on notes for next pattern iteration
+    pub fn draw_pattern(&mut self, writer: &mut Writer) {
+        let grid = &mut self.pattern_grid;
+
         self.notes.iter()
-            // Is note located within pattern?
-            .filter(|note| { note.tick < ticks })
-            // It, is, play it, queing note off
             .for_each(|note| {
-                if let Some(delta_ticks) = cycle.delta_ticks_recurring(note.tick, ticks) {
-                    // Write note
-                    writer.write(note.note_on(cycle.ticks_to_frames(delta_ticks)));
+                let x = note.tick / TICKS_PER_BEAT as u32 * 2;
+                // Use A4 (69 in midi) as base note
+                let y = 69 - note.key as i32;
 
-                    // Absolute tick note_off should be tiggered
-                    let new = NoteOff::new(*note, cycle.absolute_start + delta_ticks + note.length);
-
-                    note_offs.retain(|old| {;
-                        old.note.key != new.note.key
-                    });
-
-                    note_offs.push(new);
-                }
+                // Add 4 to push grid 4 down
+                grid.try_switch_led(x as i32, y + 4, 1, 0, writer);
             });
     }
-    
-    pub fn output_note_off_events(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        self.note_offs.retain(|note_off| {
-            match cycle.delta_frames_absolute(note_off.tick) {
-                Some(frames) => {
-                    writer.write(note_off.note.note_off(frames));
-                    false
-                },
-                None => true
+
+    pub fn draw_indicator(&mut self, cycle: &Cycle, writer: &mut Writer) {
+        // TODO - Show 1 bar pattern over the whole grid, doubling the steps
+        let steps = 8;
+        let ticks = steps * TICKS_PER_BEAT as u32 / 2;
+
+        (0..steps).for_each(|beat| { 
+            let tick = beat * TICKS_PER_BEAT as u32 / 2;
+
+            if let Some(delta_ticks) = cycle.delta_ticks_recurring(tick, ticks) {
+                let frame = cycle.ticks_to_frames(delta_ticks);
+                self.indicator_grid.clear_active(frame, writer);
+                self.indicator_grid.try_switch_led(beat as i32, 0, 1, frame, writer)
             }
-        });
+        })
+    }
+
+    pub fn output_notes(&self, cycle: &Cycle, channel: u8, offset: u32, interval: u32, writer: &mut Writer) -> Vec<NoteOff> {
+        // Clone so we can change the tick on notes for next pattern iteration
+        self.notes.iter()
+            // Pattern could contain notes that fall not within start & finish of pattern
+            .filter(|note| { note.tick < self.bars * self.beats_per_bar * TICKS_PER_BEAT as u32 })
+            // It, is, play it, queing note off
+            .filter_map(|note| {
+                match cycle.delta_ticks_recurring(note.tick + offset, interval) {
+                    Some(delta_ticks) => {
+                        // Write note
+                        writer.write(note.note_on(cycle.ticks_to_frames(delta_ticks), channel));
+
+                        // Absolute tick note_off should be tiggered
+                        Some(NoteOff::new(*note, cycle.absolute_start + delta_ticks + note.length))
+                    },
+                    None => None,
+                }
+            })
+            .collect()
     }
 }
 

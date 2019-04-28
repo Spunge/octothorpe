@@ -1,62 +1,72 @@
 
-use super::TICKS_PER_BEAT;
 use super::handlers::Writer;
 use super::message::{Message, MessageData};
 use super::cycle::Cycle;
-use super::pattern::Pattern;
+use super::instrument::Instrument;
 
-pub struct Indicator {
-    pub leds: u32,
-    active_led: u32,
+pub struct Grid {
+    width: u8,
+    height: u8,
+    base_note: u8,
+    active_leds: Vec<u8>,
 }
 
-impl Indicator {
-    // TODO - Make trait
-    fn switch_led(&mut self, led: u32, state: u8, frames: u32, writer: &mut Writer) {
-        if led < self.leds {
-            writer.write(Message::new(frames, MessageData::Note([0x90 + led as u8, 0x34, state])));
+// TODO - undraw & redraw?
+impl Grid {
+    pub fn new(width: u8, height: u8, base_note: u8) -> Self {
+        Grid { width, height, base_note, active_leds: vec![] }
+    }
+
+    fn draw_led(channel: u8, note: u8, state: u8, frame: u32, writer: &mut Writer) {
+        writer.write(Message::new(frame, MessageData::Note([channel, note, state])));
+    }
+
+    pub fn save_led_state(&mut self, led: u8, state: u8) {
+        if state > 0 {
+            if ! self.active_leds.contains(&led) {
+                self.active_leds.push(led);
+            }
+        } else {
+            self.active_leds.retain(|active_led| {
+                &led != active_led
+            })
         }
     }
 
-    fn clear(&mut self, writer: &mut Writer) {
-        (0..self.leds + 1).for_each(|led| {
-            self.switch_led(led, 0, 0, writer);
-        });
+    // Do not allow switching leds outside of grid
+    pub fn try_switch_led(&mut self, x: i32, y: i32, state: u8, frame: u32, writer: &mut Writer) {
+        if x >= self.width as i32 || x < 0 || y >= self.height as i32 || y < 0 {
+            ()
+        } else {
+            self.switch_led(x as u8, y as u8, state, frame, writer);
+        }
     }
 
-    fn switch_to_led(&mut self, led: u32, frames: u32, writer: &mut Writer) {
-        self.switch_led(self.active_led, 0, frames, writer);
-        self.active_led = led;
-        self.switch_led(self.active_led, 1, frames, writer);
+    pub fn switch_led(&mut self, x: u8, y: u8, state: u8, frame: u32, writer: &mut Writer) {
+        self.save_led_state(y * self.width + x, state);
+
+        Grid::draw_led(0x90 + x, self.base_note + y, state, frame, writer);
     }
 
-    fn draw(&mut self, cycle: &Cycle, pattern: &Pattern, writer: &mut Writer) {
-        // TODO - Show 1 bar pattern over the whole grid, doubling the steps
-        let steps = pattern.beats() * 2;
-        let ticks = steps * TICKS_PER_BEAT as u32 / 2;
+    pub fn clear_active(&mut self, frame: u32, writer: &mut Writer) {
+        self.active_leds.iter()
+            .for_each(|led| {
+                Grid::draw_led(0x90 + led % self.width, self.base_note + led / self.width, 0, frame, writer);
+            });
 
-        (0..steps).for_each(|beat| { 
-            let tick = beat * TICKS_PER_BEAT as u32 / 2;
+        self.active_leds.clear();
+    }
 
-            if let Some(delta_ticks) = cycle.delta_ticks_recurring(tick, ticks) {
-                self.switch_to_led(beat, cycle.ticks_to_frames(delta_ticks), writer);
+    pub fn clear(&mut self, writer: &mut Writer) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                self.switch_led(x, y, 0, 0, writer);
             }
-        })
+        }
     }
 }
 
-struct LedState {
-    index: u32,
-    state: u8,
-}
-
-struct ViewPort {}
-
-struct Grid {
-    active_leds: Vec<LedState>,
-    base_note: i32,
-}
-
+/*
 impl Grid {
     fn new() -> Self {
         Grid {
@@ -68,25 +78,22 @@ impl Grid {
     }
     
     // TODO - Make trait
-    fn switch_led(&mut self, x: u8, y: u8, state: u8, writer: &mut Writer) {
-        writer.write(Message::new(0, MessageData::Note([0x90 + x, y, state])));
-    }
 
     fn clear(&mut self, writer: &mut Writer) {
         // Active pattern 1
-        self.switch_led(0, 0x52, 2, writer);
+        self.switch_led(0, 0x52, 0, writer);
         // Inactive pattern 2
-        self.switch_led(0, 0x53, 1, writer);
-        self.switch_led(0, 0x54, 1, writer);
+        self.switch_led(0, 0x53, 0, writer);
+        self.switch_led(0, 0x54, 0, writer);
 
         // Active track
-        self.switch_led(0, 0x33, 1, writer);
+        self.switch_led(0, 0x33, 0, writer);
         // Alternate tracks active
-        self.switch_led(0, 0x50, 1, writer);
+        self.switch_led(0, 0x50, 0, writer);
 
         // Velocity
         (0..8).for_each(|led| {
-            self.switch_led(led, 0x30, 1, writer);
+            self.switch_led(led, 0x30, 0, writer);
         });
 
         // Clear length indicator
@@ -98,48 +105,24 @@ impl Grid {
             self.switch_led(led % 8, 0x35 + led / 8, 0, writer);
         });
     }
-
-    // TODO - Show 1 bar pattern over the whole grid, doubling the steps
-    fn draw_pattern(&mut self, pattern: &Pattern, writer: &mut Writer) {
-        let base_note = self.base_note as i32;
-
-        pattern.notes.iter()
-            .map(|note| {
-                let x = note.tick / TICKS_PER_BEAT as u32 * 2;
-                let y = base_note - note.key as i32;
-
-                (x, y)
-            })
-            .filter(|pos| {
-                let (x, y) = pos;
-                // Led falls within grid?
-                y >= &0 && y <= &4 && x >= &0 && x <= &7
-            })
-            .for_each(|pos| {
-                let (x, y) = pos;
-                self.switch_led(x as u8, 0x35 + y as u8, 1, writer);
-            });
-
-        (0..pattern.bars).for_each(|led| {
-            self.switch_led(led as u8, 0x32, 1, writer);
-        })
-    }
 }
+*/
 
 pub struct Sequencer {
-    pattern: Pattern,
-    indicator: Indicator,
-    grid: Grid,
+    instruments: Vec<Instrument>,
+    active_instrument: usize,
     // Keep track of elapsed ticks to trigger note_off when transport stops
     was_repositioned: bool,
 }
 
 impl Sequencer {
     pub fn new() -> Self {
+        let mut instruments = vec![Instrument::default(0)];
+        instruments.append(&mut (1..16).map(|channel| { Instrument::new(channel) }).collect());
+
         Sequencer{
-            indicator: Indicator{ leds: 8, active_led: 0 },
-            pattern: Pattern::default(),
-            grid: Grid::new(),
+            instruments,
+            active_instrument: 0,
             was_repositioned: true,
         }
     }
@@ -154,30 +137,15 @@ impl Sequencer {
 
     pub fn output(&mut self, cycle: &Cycle, control_out: &mut Writer, midi_out: &mut Writer) {
         // Always turn notes off after their time is up to prevent infinite notes
-        self.pattern.output_note_off_events(&cycle, midi_out);
+        //self.pattern.output_note_off_events(&cycle, midi_out);
 
-        // Clean grid on starting
-        if cycle.absolute_start == 0 {
-            self.indicator.clear(control_out);
-            self.grid.clear(control_out);
-            self.grid.draw_pattern(&self.pattern, control_out);
-        }
+        let active_instrument = &mut self.instruments[self.active_instrument];
 
-        if self.was_repositioned {
-            let beat_start = (cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
-            let reposition_cycle = cycle.repositioned(beat_start);
+        active_instrument.draw(cycle, self.was_repositioned, control_out);
 
-            self.indicator.draw(&reposition_cycle, &self.pattern, control_out);
-        }
-
-        // Update grid when running, after repositioning
-        if cycle.is_rolling {
-            self.indicator.draw(cycle, &self.pattern, control_out);
-        }
-
-        if cycle.is_rolling {
-            self.pattern.output_note_on_events(cycle, midi_out);
-        }
+        self.instruments.iter_mut().for_each(|instrument| {
+            instrument.output(cycle, midi_out);
+        });
 
         self.update(cycle);
     }

@@ -6,6 +6,8 @@ pub mod handlers;
 pub mod message;
 pub mod sequencer;
 pub mod cycle;
+pub mod instrument;
+pub mod phrase;
 pub mod pattern;
 pub mod note;
 
