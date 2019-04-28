@@ -67,6 +67,7 @@ impl Controller {
                 );
 
                 control_out.write(message);
+                self.sequencer.draw(128, control_out);
             }
         } else {
             println!("Got unknown sysex message");

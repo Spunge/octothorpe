@@ -7,12 +7,16 @@ pub struct Cycle {
     pub absolute_end: u32,
     pub ticks: u32,
     pub frames: u32,
+
     pub is_rolling: bool,
+    // Is this cycle a 0 length reposition cycle?
     pub is_repositioned: bool,
+    // Was last cycle a reposition cycle?
+    pub was_repositioned: bool,
 }
 
 impl Cycle {
-    pub fn new(pos: jack::Position, absolute_start: u32, frames: u32, state: u32) -> Self {
+    pub fn new(pos: jack::Position, absolute_start: u32, was_repositioned: bool, frames: u32, state: u32) -> Self {
         let start = Cycle::get_tick(pos, pos.frame) as u32;
         let end = Cycle::get_tick(pos, pos.frame + frames) as u32;
         let ticks = end - start;
@@ -30,6 +34,7 @@ impl Cycle {
             frames, 
             is_rolling,
             is_repositioned,
+            was_repositioned,
         }
     }
 

@@ -3,17 +3,21 @@ use super::TICKS_PER_BEAT;
 use super::note::{Note, NoteOff};
 use super::handlers::Writer;
 use super::cycle::Cycle;
-use super::sequencer::Grid;
+use super::grid::Grid;
 
 pub struct Pattern {
-    pub bars: u32,
+    bars: u8,
     beats_per_bar: u32,
+
+    zoom_level: u32,
+    zoom_offset: u8,
 
     pub notes: Vec<Note>,
 
-    pattern_grid: Grid,
-    length_grid: Grid,
-    indicator_grid: Grid,
+    pub pattern_grid: Grid,
+    pub length_grid: Grid,
+    pub indicator_grid: Grid,
+    pub zoom_grid: Grid,
 }
 
 impl Pattern {
@@ -22,9 +26,13 @@ impl Pattern {
             bars: 1,
             beats_per_bar: 4,
 
+            zoom_level: 1,
+            zoom_offset: 0,
+
             pattern_grid: Grid::new(8, 5, 0x35),
             indicator_grid: Grid::new(8, 1, 0x34),
             length_grid: Grid::new(8, 1, 0x32),
+            zoom_grid: Grid::new(8, 1, 0x31),
 
             notes,
         }
@@ -47,13 +55,7 @@ impl Pattern {
         Pattern::create(notes)
     }
 
-    pub fn clear(&mut self, writer: &mut Writer) {
-        self.pattern_grid.clear(writer);
-        self.length_grid.clear(writer);
-        self.indicator_grid.clear(writer);
-    }
-
-    pub fn draw_pattern(&mut self, writer: &mut Writer) {
+    pub fn draw_pattern(&mut self, frame: u32, writer: &mut Writer) {
         let grid = &mut self.pattern_grid;
 
         self.notes.iter()
@@ -63,7 +65,7 @@ impl Pattern {
                 let y = 69 - note.key as i32;
 
                 // Add 4 to push grid 4 down
-                grid.try_switch_led(x as i32, y + 4, 1, 0, writer);
+                grid.try_switch_led(x as i32, y + 4, 1, frame, writer);
             });
     }
 
@@ -82,12 +84,26 @@ impl Pattern {
             }
         })
     }
+    
+    pub fn draw_length(&mut self, frame: u32, writer: &mut Writer) {
+        (0..self.bars).for_each(|x| {
+            self.length_grid.switch_led(x, 0, 1, frame, writer);
+        });
+    }
+
+    pub fn draw_zoom(&mut self, frame: u32, writer: &mut Writer) {
+        let divide_by = 2_u8.pow(self.zoom_level);
+
+        (0..(8 / divide_by)).for_each(|x| {
+            self.zoom_grid.switch_led(x, 0, 1, frame, writer);
+        })
+    }
 
     pub fn output_notes(&self, cycle: &Cycle, channel: u8, offset: u32, interval: u32, writer: &mut Writer) -> Vec<NoteOff> {
         // Clone so we can change the tick on notes for next pattern iteration
         self.notes.iter()
             // Pattern could contain notes that fall not within start & finish of pattern
-            .filter(|note| { note.tick < self.bars * self.beats_per_bar * TICKS_PER_BEAT as u32 })
+            .filter(|note| { note.tick < self.bars as u32 * self.beats_per_bar * TICKS_PER_BEAT as u32 })
             // It, is, play it, queing note off
             .filter_map(|note| {
                 match cycle.delta_ticks_recurring(note.tick + offset, interval) {

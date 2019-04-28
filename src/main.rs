@@ -10,6 +10,7 @@ pub mod instrument;
 pub mod phrase;
 pub mod pattern;
 pub mod note;
+pub mod grid;
 
 use std::io;
 use std::sync::mpsc::channel;

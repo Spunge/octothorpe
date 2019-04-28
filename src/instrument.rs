@@ -4,12 +4,6 @@ use super::phrase::Phrase;
 use super::handlers::Writer;
 use super::cycle::Cycle;
 use super::note::NoteOff;
-use super::TICKS_PER_BEAT;
-
-enum View {
-    Pattern,
-    Phrase,
-}
 
 pub struct Instrument {
     patterns: Vec<Pattern>,
@@ -17,8 +11,6 @@ pub struct Instrument {
     playing_phrase: usize,
     showing_phrase: usize,
     showing_pattern: usize,
-
-    view: View,
 
     note_offs: Vec<NoteOff>,
     channel: u8,
@@ -29,7 +21,6 @@ impl Instrument {
         Instrument {
             patterns,
             phrases,
-            view: View::Pattern,
             playing_phrase: 0,
             showing_phrase: 0,
             showing_pattern: 0,
@@ -47,41 +38,19 @@ impl Instrument {
         Instrument::create(channel, vec![Pattern::default()], vec![Phrase::default()]) 
     }
 
-    // Clear midi controller grids
+    pub fn active_pattern(&mut self) -> &mut Pattern {
+        &mut self.patterns[self.showing_pattern]
+    }
+
+    // Clear midi controller grids on start
     pub fn clear(&mut self, writer: &mut Writer) {
-        self.patterns[self.showing_pattern].clear(writer)
+        let pattern = self.active_pattern();
+        pattern.pattern_grid.clear(writer);
+        pattern.length_grid.clear(writer);
+        pattern.indicator_grid.clear(writer);
+        pattern.zoom_grid.clear(writer);
     }
-
-    // Draw this instrument grids
-    pub fn draw(&mut self, cycle: &Cycle, was_repositioned: bool, writer: &mut Writer) {
-        let pattern = &mut self.patterns[self.showing_pattern];
-
-        match self.view {
-            View::Pattern => {
-                // Clean grid on starting
-                if cycle.absolute_start == 0 {
-                    pattern.clear(writer);
-                    pattern.draw_pattern(writer);
-                }
-
-                if was_repositioned {
-                    let beat_start = (cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
-                    let reposition_cycle = cycle.repositioned(beat_start);
-
-                    pattern.draw_indicator(&reposition_cycle, writer);
-                }
-
-                // Update grid when running, after repositioning
-                if cycle.is_rolling {
-                    pattern.draw_indicator(cycle, writer);
-                }
-            },
-            View::Phrase => {
-                println!("phrase view todo");
-            },
-        }
-    }
-
+    
     pub fn output_note_offs(&mut self, cycle: &Cycle, writer: &mut Writer) {
         let channel = self.channel;
 
@@ -105,7 +74,7 @@ impl Instrument {
             self.note_offs.append(&mut self.phrases[self.playing_phrase]
                                   .output_notes(cycle, self.channel, &self.patterns, writer));
 
-            // Put same key notes next to each other
+            // Remove first occurences of same key notes
             self.note_offs.sort();
             self.note_offs.reverse();
             self.note_offs.dedup_by(|a, b| { a.note.key == b.note.key });
