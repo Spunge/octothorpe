@@ -19,7 +19,7 @@ impl Grid {
         writer.write(Message::new(frame, MessageData::Note([channel, note, state])));
     }
 
-    pub fn save_led_state(&mut self, led: u8, state: u8) {
+    fn save_led_state(&mut self, led: u8, state: u8) {
         if state > 0 {
             if ! self.active_leds.contains(&led) {
                 self.active_leds.push(led);
@@ -46,7 +46,7 @@ impl Grid {
         Grid::draw_led(0x90 + x, self.base_note + y, state, frame, writer);
     }
 
-    pub fn clear_active(&mut self, frame: u32, writer: &mut Writer) {
+    fn clear_active(&mut self, frame: u32, writer: &mut Writer) {
         self.active_leds.iter()
             .for_each(|led| {
                 Grid::draw_led(0x90 + led % self.width, self.base_note + led / self.width, 0, frame, writer);
@@ -55,10 +55,14 @@ impl Grid {
         self.active_leds.clear();
     }
 
-    pub fn clear(&mut self, writer: &mut Writer) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                self.switch_led(x, y, 0, 0, writer);
+    pub fn clear(&mut self, frame: u32, force: bool, writer: &mut Writer) {
+        if ! force {
+            self.clear_active(frame, writer)
+        } else {
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    self.switch_led(x, y, 0, frame, writer);
+                }
             }
         }
     }

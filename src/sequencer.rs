@@ -12,80 +12,112 @@ pub enum View {
 
 pub struct Sequencer {
     instruments: Vec<Instrument>,
-    instrument_active: u8,
-    instrument_group: u8,
+    instrument: u8,
+    group: u8,
     view: View,
-    instrument_active_grid: Grid,
-    instrument_group_grid: Grid,
+
+    indicator_grid: Grid,
+    instrument_grid: Grid,
+    group_grid: Grid,
+    active_grid: Grid,
 }
 
 impl Sequencer {
     pub fn new() -> Self {
-        let mut instruments = vec![Instrument::default(0)];
-        instruments.append(&mut (1..16).map(|channel| { Instrument::new(channel) }).collect());
+        let mut instruments = vec![Instrument::default(0), Instrument::alternate_default(1)];
+        instruments.append(&mut (2..16).map(|channel| { Instrument::new(channel) }).collect());
 
         Sequencer{
             instruments,
-            instrument_active: 0,
-            instrument_group: 0,
+            instrument: 0,
+            group: 0,
             view: View::Pattern,
-            instrument_active_grid: Grid::new(8, 1, 0x33),
-            instrument_group_grid: Grid::new(1, 1, 0x50),
+
+            indicator_grid: Grid::new(8, 1, 0x34),
+            instrument_grid: Grid::new(8, 1, 0x33),
+            group_grid: Grid::new(1, 1, 0x50),
+            active_grid: Grid::new(8, 1, 0x30),
         }
     }
 
-    pub fn active_instrument(&mut self) -> &mut Instrument {
-        &mut self.instruments[(self.instrument_group * 8 + self.instrument_active) as usize]
+    fn instrument_by_index(&mut self, index: u8) -> &mut Instrument {
+        &mut self.instruments[(self.group * 8 + index) as usize]
+    }
+
+    pub fn instrument(&mut self) -> &mut Instrument {
+        self.instrument_by_index(self.instrument)
     }
 
     pub fn switch_instrument(&mut self, instrument: u8, writer: &mut Writer) {
-        self.clear(0, writer);
-        self.instrument_active = instrument;
+        self.clear(0, false, writer);
+        self.instrument = instrument;
         self.draw(0, writer);
     }
 
-    pub fn switch_instrument_group(&mut self, writer: &mut Writer) {
-        self.clear(0, writer);
-        self.instrument_group = if self.instrument_group == 1 { 0 } else { 1 };
+    pub fn toggle_instrument_active(&mut self, instrument: u8, writer: &mut Writer) {
+        self.active_grid.clear(0, false, writer);
+        self.instrument_by_index(instrument).toggle_active();
+        self.active_grid.clear(0, false, writer);
+    }
+
+    pub fn switch_group(&mut self, writer: &mut Writer) {
+        self.clear(0, false, writer);
+        self.group = if self.group == 1 { 0 } else { 1 };
         self.draw(0, writer);
     }
-    
+
+    pub fn draw_active_grid
+
     // Called on start
     pub fn draw(&mut self, frame: u32, writer: &mut Writer) {
-        self.instrument_active_grid.switch_led(self.instrument_active, 0, 1, frame, writer);
-        self.instrument_group_grid.switch_led(0, 0, self.instrument_group, frame, writer);
+        self.instrument_grid.switch_led(self.instrument, 0, 1, frame, writer);
+        self.group_grid.switch_led(0, 0, self.group, frame, writer);
 
         match self.view {
-            View::Pattern => { self.active_instrument().active_pattern().draw(frame, writer) },
+            View::Pattern => { self.instrument().pattern().draw(frame, writer) },
             View::Phrase => { },
         };
     }
 
-    pub fn clear(&mut self, frame: u32, writer: &mut Writer) {
-        self.instrument_active_grid.clear_active(frame, writer);
-        self.instrument_group_grid.clear_active(frame, writer);
+    pub fn clear(&mut self, frame: u32, force: bool, writer: &mut Writer) {
+        self.instrument_grid.clear(frame, force, writer);
+        self.group_grid.clear(frame, force, writer);
 
         match self.view {
-            View::Pattern => { self.active_instrument().active_pattern().clear(frame, writer) },
+            View::Pattern => { self.instrument().pattern().clear(frame, force, writer) },
             View::Phrase => { },
         };
+    }
+
+    pub fn draw_indicator(&mut self, cycle: &Cycle, writer: &mut Writer) {
+        // TODO - Show 1 bar pattern over the whole grid, doubling the steps
+        let steps = 8;
+        let ticks = steps * TICKS_PER_BEAT as u32 / 2;
+
+        (0..steps).for_each(|beat| { 
+            let tick = beat * TICKS_PER_BEAT as u32 / 2;
+
+            if let Some(delta_ticks) = cycle.delta_ticks_recurring(tick, ticks) {
+                let frame = cycle.ticks_to_frames(delta_ticks);
+                self.indicator_grid.clear(frame, false, writer);
+                self.indicator_grid.try_switch_led(beat as i32, 0, 1, frame, writer)
+            }
+        })
     }
 
     pub fn draw_dynamic(&mut self, cycle: &Cycle, writer: &mut Writer) {
         match self.view {
             View::Pattern => {
-                let pattern = self.active_instrument().active_pattern();
-
                 if cycle.was_repositioned {
                     let beat_start = (cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
                     let reposition_cycle = cycle.repositioned(beat_start);
 
-                    pattern.draw_indicator(&reposition_cycle, writer);
+                    self.draw_indicator(&reposition_cycle, writer);
                 }
 
                 // Update grid when running, after repositioning
                 if cycle.is_rolling {
-                    pattern.draw_indicator(cycle, writer);
+                    self.draw_indicator(cycle, writer);
                 }
             },
             View::Phrase => { },

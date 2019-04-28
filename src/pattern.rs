@@ -16,7 +16,6 @@ pub struct Pattern {
 
     pattern_grid: Grid,
     length_grid: Grid,
-    indicator_grid: Grid,
     zoom_grid: Grid,
 }
 
@@ -30,7 +29,6 @@ impl Pattern {
             zoom_offset: 0,
 
             pattern_grid: Grid::new(8, 5, 0x35),
-            indicator_grid: Grid::new(8, 1, 0x34),
             length_grid: Grid::new(8, 1, 0x32),
             zoom_grid: Grid::new(8, 1, 0x31),
 
@@ -44,12 +42,23 @@ impl Pattern {
 
     pub fn default() -> Self {
         let ticks = TICKS_PER_BEAT as u32;
-
         let notes = vec![
             Note::new(0, ticks, 72, 127),
             Note::new(ticks, ticks, 69, 127),
             Note::new(ticks * 2, ticks, 69, 127),
             Note::new(ticks * 3, ticks, 69, 127),
+        ];
+
+        Pattern::create(notes)
+    }
+
+    pub fn alternate_default() -> Self {
+        let ticks = TICKS_PER_BEAT as u32;
+        let notes = vec![
+            Note::new(0, ticks, 69, 127),
+            Note::new(ticks, ticks, 71, 127),
+            Note::new(ticks * 2, ticks, 69, 127),
+            Note::new(ticks * 3, ticks, 73, 127),
         ];
 
         Pattern::create(notes)
@@ -61,10 +70,10 @@ impl Pattern {
         self.draw_zoom(frame, writer);
     }
 
-    pub fn clear(&mut self, frame: u32, writer: &mut Writer) {
-        self.pattern_grid.clear_active(frame, writer);
-        self.length_grid.clear_active(frame, writer);
-        self.zoom_grid.clear_active(frame, writer);
+    pub fn clear(&mut self, frame: u32, force: bool, writer: &mut Writer) {
+        self.pattern_grid.clear(frame, force, writer);
+        self.length_grid.clear(frame, force, writer);
+        self.zoom_grid.clear(frame, force, writer);
     }
 
     pub fn draw_pattern(&mut self, frame: u32, writer: &mut Writer) {
@@ -72,6 +81,8 @@ impl Pattern {
 
         self.notes.iter()
             .for_each(|note| {
+                // TODO - mark all leds in length of note
+                // TODO - incorporate
                 let x = note.tick / TICKS_PER_BEAT as u32 * 2;
                 // Use A4 (69 in midi) as base note
                 let y = 69 - note.key as i32;
@@ -92,22 +103,6 @@ impl Pattern {
 
         (0..(8 / divide_by)).for_each(|x| {
             self.zoom_grid.switch_led(x, 0, 1, frame, writer);
-        })
-    }
-
-    pub fn draw_indicator(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        // TODO - Show 1 bar pattern over the whole grid, doubling the steps
-        let steps = 8;
-        let ticks = steps * TICKS_PER_BEAT as u32 / 2;
-
-        (0..steps).for_each(|beat| { 
-            let tick = beat * TICKS_PER_BEAT as u32 / 2;
-
-            if let Some(delta_ticks) = cycle.delta_ticks_recurring(tick, ticks) {
-                let frame = cycle.ticks_to_frames(delta_ticks);
-                self.indicator_grid.clear_active(frame, writer);
-                self.indicator_grid.try_switch_led(beat as i32, 0, 1, frame, writer)
-            }
         })
     }
 

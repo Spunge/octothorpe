@@ -6,6 +6,8 @@ use super::cycle::Cycle;
 use super::note::NoteOff;
 
 pub struct Instrument {
+    is_active: bool,
+
     patterns: Vec<Pattern>,
     phrases: Vec<Phrase>,
     playing_phrase: usize,
@@ -19,6 +21,8 @@ pub struct Instrument {
 impl Instrument {
     fn create(channel: u8, patterns: Vec<Pattern>, phrases: Vec<Phrase>) -> Self {
         Instrument {
+            is_active: true,
+
             patterns,
             phrases,
             playing_phrase: 0,
@@ -38,11 +42,15 @@ impl Instrument {
         Instrument::create(channel, vec![Pattern::default()], vec![Phrase::default()]) 
     }
 
-    pub fn active_pattern(&mut self) -> &mut Pattern {
+    pub fn alternate_default(channel: u8) -> Self {
+        Instrument::create(channel, vec![Pattern::alternate_default()], vec![Phrase::default()]) 
+    }
+
+    pub fn pattern(&mut self) -> &mut Pattern {
         &mut self.patterns[self.showing_pattern]
     }
 
-    pub fn active_phrase(&mut self) -> &mut Phrase {
+    pub fn phrase(&mut self) -> &mut Phrase {
         &mut self.phrases[self.showing_phrase]
     }
 

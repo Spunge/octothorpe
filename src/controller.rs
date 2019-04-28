@@ -16,32 +16,26 @@ impl Controller {
 
     fn transport_key_pressed(&self, event: jack::RawMidi, client: &jack::Client) {
          match event.bytes[1] {
-            0x5B => {
-                println!("\nStarting transport");
-                client.transport_start();
-            },
+            0x5B => client.transport_start(),
             0x5C => {
                  let (state, _) = client.transport_query();
                  match state {
-                    1 => {
-                        println!("\nStopping transport");
-                        client.transport_stop();
-                    },
+                    1 => client.transport_stop(),
                     _ => {
-                        println!("\nRessetting transport");
                         let pos = jack::Position::default();
                         client.transport_reposition(pos);
                     }
-                 }
+                 };
             },
+            0x33 => self.sequencer.switch_instrument(event.bytes[0] - 0x90, writer),
+            0x50 => self.sequencer.switch_group(writer),
+            0x30 => self.sequencer.activate_instrument(event.bytes[0] - 0x90, writer),
             _ => {},
         };
     }
 
     fn instrument_key_pressed(&mut self, event: jack::RawMidi, _client: &jack::Client, writer: &mut Writer) {
         match event.bytes[1] {
-            0x33 => { self.sequencer.switch_instrument(event.bytes[0] - 0x90, writer) },
-            0x50 => { self.sequencer.switch_instrument_group(writer) },
             _ => {},
         }
     }
@@ -87,6 +81,7 @@ impl Controller {
                 );
 
                 control_out.write(message);
+                self.sequencer.clear(128, true, control_out);
                 self.sequencer.draw(128, control_out);
             }
         } else {
