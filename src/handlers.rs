@@ -3,38 +3,9 @@ use jack_sys as j;
 
 use std::sync::mpsc::{Sender, Receiver};
 use super::controller::Controller;
-use super::message::{Message, MessageData};
+use super::message::{TimedMessage, Message};
 use super::cycle::Cycle;
 use super::TICKS_PER_BEAT;
-
-pub struct Writer {
-    buffer: Vec<Message>
-}
-
-impl Writer {
-    fn new() -> Self {
-        Writer { buffer: Vec::new() }
-    }
-
-    pub fn write(&mut self, message: Message) {
-        self.buffer.push(message);
-    }
-
-    fn drain<'a>(&mut self, mut writer: jack::MidiWriter<'a>) {
-        self.buffer.sort();
-
-        self.buffer.iter()
-            .for_each(|message| {
-                match writer.write(&message.to_raw_midi()) {
-                    Err(e) => {
-                        println!("Error: {}", e);
-                        println!("{:?}\n", self.buffer);
-                    },
-                    Ok(_) => {},
-                }
-            });
-    }
-}
 
 pub struct TimebaseHandler {
     beats_per_minute: f64,
@@ -86,21 +57,42 @@ impl jack::TimebaseHandler for TimebaseHandler {
     }
 }
 
+struct MidiOut {
+    port: jack::Port<jack::MidiOut>,
+}
+
+impl MidiOut {
+    fn write(&mut self, process_scope: &jack::ProcessScope, mut messages: Vec<TimedMessage>) {
+        let mut writer = self.port.writer(process_scope);
+
+        messages.sort();
+        messages.iter().for_each(|message| { 
+            match writer.write(&message.to_raw_midi()) {
+                Err(e) => {
+                    println!("Error: {}", e);
+                    println!("{:?}\n", messages);
+                },
+                Ok(_) => {},
+            }
+        });
+    }
+}
+
 pub struct ProcessHandler {
     controller: Controller,
-    receiver: Receiver<Message>,
+    receiver: Receiver<TimedMessage>,
 
     ticks_elapsed: u32,
     was_repositioned: bool,
 
     control_in: jack::Port<jack::MidiIn>,
-    control_out: jack::Port<jack::MidiOut>,
+    control_out: MidiOut,
 
-    midi_out: jack::Port<jack::MidiOut>,
+    midi_out: MidiOut,
 }
 
 impl ProcessHandler {
-    pub fn new(controller: Controller, receiver: Receiver<Message>, client: &jack::Client) -> Self {
+    pub fn new(controller: Controller, receiver: Receiver<TimedMessage>, client: &jack::Client) -> Self {
         // Create ports
         let control_in = client.register_port("control_in", jack::MidiIn::default()).unwrap();
         let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
@@ -112,24 +104,14 @@ impl ProcessHandler {
             ticks_elapsed: 0,
             was_repositioned: false,
             control_in,
-            control_out,
-            midi_out 
+            control_out: MidiOut{ port: control_out },
+            midi_out: MidiOut{ port: midi_out },
         }
     }
 }
 
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
-        // Get writers
-        let control_in = self.control_in.iter(process_scope);
-        let mut control_out = Writer::new();
-        let mut midi_out = Writer::new();
-
-        // Process incoming midi
-        for event in control_in {
-            self.controller.process_midi_event(event, client, &mut control_out);
-        }
-
         // Get something representing this process cycle
         let (state, pos) = client.transport_query();
         let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
@@ -137,28 +119,30 @@ impl jack::ProcessHandler for ProcessHandler {
         self.ticks_elapsed += cycle.ticks;
         self.was_repositioned = cycle.is_repositioned;
 
-        // Output midi
-        self.controller.sequencer.draw_dynamic(&cycle, &mut control_out);
-        self.controller.sequencer.output(&cycle, &mut midi_out);
+        // Process incoming midi and build a vec of control output
+        let mut control_messages = self.controller.process_midi_messages(self.control_in.iter(process_scope), client);
 
+        if let Some(messages) = self.controller.sequencer.draw_dynamic(&cycle) {
+            control_messages.extend(messages);
+        }
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
-            control_out.write(message);
+            control_messages.push(message);
         }
 
-        control_out.drain(self.control_out.writer(process_scope));
-        midi_out.drain(self.midi_out.writer(process_scope));
+        self.control_out.write(process_scope, control_messages);
+        self.midi_out.write(process_scope, self.controller.sequencer.output(&cycle));
 
         jack::Control::Continue
     }
 }
 
 pub struct NotificationHandler {
-    sender: Sender<Message>,
+    sender: Sender<TimedMessage>,
 }
 
 impl NotificationHandler {
-    pub fn new(sender: Sender<Message>) -> Self {
+    pub fn new(sender: Sender<TimedMessage>) -> Self {
         NotificationHandler {
             sender: sender,
         }
@@ -172,7 +156,7 @@ impl jack::NotificationHandler for NotificationHandler {
 
         // If one of our ports got connected, check what we are connected to
         if (client.is_mine(&port_a) || client.is_mine(&port_b)) && are_connected {
-            self.sender.send( Message::new(0, MessageData::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) ) ).unwrap();
+            self.sender.send( TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7] ) ) ).unwrap();
         }
     }
 }

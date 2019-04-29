@@ -1,6 +1,5 @@
 
-use super::message::{Message, MessageData};
-use super::handlers::Writer;
+use super::message::Message;
 
 pub struct Grid {
     pub width: u8,
@@ -15,8 +14,8 @@ impl Grid {
         Grid { width, height, base_note, active_leds: vec![] }
     }
 
-    fn draw_led(channel: u8, note: u8, state: u8, frame: u32, writer: &mut Writer) {
-        writer.write(Message::new(frame, MessageData::Note([channel, note, state])));
+    fn draw_led(channel: u8, note: u8, state: u8) -> Message {
+        Message::Note([channel, note, state])
     }
 
     fn save_led_state(&mut self, led: u8, state: u8) {
@@ -32,38 +31,42 @@ impl Grid {
     }
 
     // Do not allow switching leds outside of grid
-    pub fn try_switch_led(&mut self, x: i32, y: i32, state: u8, frame: u32, writer: &mut Writer) {
+    pub fn try_switch_led(&mut self, x: i32, y: i32, state: u8) -> Option<Message> {
         if x >= self.width as i32 || x < 0 || y >= self.height as i32 || y < 0 {
-            ()
+            None
         } else {
-            self.switch_led(x as u8, y as u8, state, frame, writer);
+            Some(self.switch_led(x as u8, y as u8, state))
         }
     }
 
-    pub fn switch_led(&mut self, x: u8, y: u8, state: u8, frame: u32, writer: &mut Writer) {
+    pub fn switch_led(&mut self, x: u8, y: u8, state: u8) -> Message {
         self.save_led_state(y * self.width + x, state);
 
-        Grid::draw_led(0x90 + x, self.base_note + y, state, frame, writer);
+        Grid::draw_led(0x90 + x, self.base_note + y, state)
     }
 
-    fn clear_active(&mut self, frame: u32, writer: &mut Writer) {
-        self.active_leds.iter()
-            .for_each(|led| {
-                Grid::draw_led(0x90 + led % self.width, self.base_note + led / self.width, 0, frame, writer);
-            });
+    fn clear_active(&mut self) -> Vec<Message> {
+        let messages = self.active_leds.iter()
+            .map(|led| { Grid::draw_led(0x90 + led % self.width, self.base_note + led / self.width, 0) })
+            .collect();
 
         self.active_leds.clear();
+        messages
     }
 
-    pub fn clear(&mut self, frame: u32, force: bool, writer: &mut Writer) {
+    pub fn clear(&mut self, force: bool) -> Vec<Message> {
         if ! force {
-            self.clear_active(frame, writer)
+            self.clear_active()
         } else {
+            let mut messages = vec![];
+
             for y in 0..self.height {
                 for x in 0..self.width {
-                    self.switch_led(x, y, 0, frame, writer);
+                    messages.push(self.switch_led(x, y, 0));
                 }
             }
+
+            messages
         }
     }
 }

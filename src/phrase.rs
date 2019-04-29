@@ -2,8 +2,8 @@
 use super::TICKS_PER_BEAT;
 use super::pattern::Pattern;
 use super::note::NoteOff;
-use super::handlers::Writer;
 use super::cycle::Cycle;
+use super::message::TimedMessage;
 
 #[derive(Clone)]
 struct Play {
@@ -39,7 +39,7 @@ impl Phrase {
         }
     }
 
-    pub fn output_notes(&self, cycle: &Cycle, channel: u8, patterns: &Vec<Pattern>, writer: &mut Writer) -> Vec<NoteOff> {
+    pub fn note_on_messages(&self, cycle: &Cycle, channel: u8, patterns: &Vec<Pattern>, note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
         let ticks_per_bar = self.beats_per_bar * TICKS_PER_BEAT as u32;
         let ticks = self.bars * ticks_per_bar;
 
@@ -48,7 +48,7 @@ impl Phrase {
             .filter(|play| { play.bar < self.bars })
             // Play pattern
             .flat_map(|play| {
-                patterns[play.pattern].output_notes(cycle, channel, play.bar * ticks_per_bar, ticks, writer)
+                patterns[play.pattern].note_on_messages(cycle, channel, play.bar * ticks_per_bar, ticks, note_offs)
             })
             .collect()
     }

@@ -1,7 +1,6 @@
 
-use super::message::{Message, MessageData};
+use super::message::{TimedMessage, Message};
 use super::sequencer::Sequencer;
-use super::handlers::Writer;
 
 pub struct Controller {
     pub sequencer: Sequencer,
@@ -14,13 +13,13 @@ impl Controller {
         }
     }
 
-    fn key_pressed(&mut self, event: jack::RawMidi, client: &jack::Client, writer: &mut Writer) {
+    fn key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) -> Option<Vec<Message>> {
         // Output in hex so we can compare to apc40 manual easily
-        println!("0x{:X}, 0x{:X}, 0x{:X}", event.bytes[0], event.bytes[1], event.bytes[2]);
-        //println!("{}, {}, {}", event.bytes[0], event.bytes[1], event.bytes[2]);
+        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+        //println!("{}, {}, {}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
-        match event.bytes[1] {
-            0x5B => client.transport_start(),
+        match message.bytes[1] {
+            0x5B => { client.transport_start(); None },
             0x5C => {
                 let (state, _) = client.transport_query();
                 match state {
@@ -30,58 +29,67 @@ impl Controller {
                         client.transport_reposition(pos);
                     }
                 };
+                None
             },
-            0x33 => self.sequencer.switch_instrument(event.bytes[0] - 0x90, writer),
-            0x50 => self.sequencer.switch_group(writer),
-            0x30 => self.sequencer.toggle_instrument_active(event.bytes[0] - 0x90, writer),
-            _ => {},
-        };
-    }
-
-    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client, _writer: &mut Writer) {}
-
-    pub fn process_midi_event(
-        &mut self,
-        event: jack::RawMidi,
-        client: &jack::Client,
-        control_out: &mut Writer,
-    ) {
-        // Sysex events pass us a lot of data
-        // It's cleaner to check the first byte though
-        if event.bytes.len() > 3 {
-            self.process_sysex_message(event, control_out)
-        } else {
-            self.process_message(event, client, control_out)
+            0x33 => Some(self.sequencer.switch_instrument(message.bytes[0] - 0x90)),
+            0x50 => Some(self.sequencer.switch_group()),
+            0x30 => Some(self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90)),
+            _ => None,
         }
     }
 
-    fn process_sysex_message(&mut self, event: jack::RawMidi, control_out: &mut Writer) {
-        // 0x06 = inquiry message, 0x02 = inquiry response
-        if event.bytes[3] == 0x06 && event.bytes[4] == 0x02  {
-            // 0x47 = akai manufacturer, 0x73 = model nr
-            if event.bytes[5] == 0x47 && event.bytes[6] == 0x73 {
-                // Introduce ourselves to controller
-                let message = Message::new( 
-                    0, 
-                    MessageData::Introduction([0xF0, 0x47, event.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]),
-                );
+    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client) -> Option<Vec<Message>> {
+        None
+    }
 
-                control_out.write(message);
-                self.sequencer.clear(128, true, control_out);
-                self.sequencer.draw(128, control_out);
-            }
+    pub fn process_midi_messages<'a, I>(&mut self, messages: I, client: &jack::Client) -> Vec<TimedMessage>
+        where
+            I: Iterator<Item = jack::RawMidi<'a>>,
+    {
+        messages
+            .filter_map(|message| {
+                // Sysex events pass us a lot of data
+                // It's cleaner to check the first byte though
+                if message.bytes.len() > 3 {
+                    self.process_sysex_message(message)
+                } else {
+                    self.process_message(message, client).and_then(|messages| {
+                        Some(messages.into_iter().map(|message| { TimedMessage::new(0, message) }).collect())
+                    })
+                }
+            })
+            .flatten()
+            .collect()
+    }
+
+    fn process_sysex_message(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
+        // 0x06 = inquiry e, 0x02 = inquiry response
+        // 0x47 = akai manufacturer, 0x73 = model nr
+        if message.bytes[3] == 0x06 && message.bytes[4] == 0x02  
+            && message.bytes[5] == 0x47 && message.bytes[6] == 0x73 
+        {
+            // Introduce ourselves to controller
+            let introduction = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+
+            let mut timed_messages = vec![TimedMessage::new(0, introduction)];
+            let sequencer_messages: Vec<TimedMessage> = vec![ self.sequencer.clear(true), self.sequencer.draw() ]
+                .into_iter()
+                .flatten()
+                .map(|message| { TimedMessage::new(64, message) })
+                .collect();
+
+            timed_messages.extend(sequencer_messages);
+            Some(timed_messages)
         } else {
-            println!("Got unknown sysex message");
-            println!("{:?}", event);
+            None
         }
     }
 
-    fn process_message(&mut self, event: jack::RawMidi, client: &jack::Client, writer: &mut Writer) {
-
-        match event.bytes[0] {
-            0x90...0x97 => self.key_pressed(event, client, writer),
-            0x80...0x87 => self.key_released(event, client, writer),
-            _ => {},
+    fn process_message(&mut self, message: jack::RawMidi, client: &jack::Client) -> Option<Vec<Message>> {
+        match message.bytes[0] {
+            0x90...0x97 => self.key_pressed(message, client),
+            0x80...0x87 => self.key_released(message, client),
+            _ => None,
         }
     }
 }

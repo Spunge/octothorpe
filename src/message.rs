@@ -2,49 +2,49 @@
 use std::cmp::Ordering;
  
 #[derive(Debug, Eq, PartialEq)]
-pub enum MessageData {
+pub enum Message {
     Introduction([u8; 12]),
     Inquiry([u8; 6]),
     Note([u8; 3]),
 }
 
 #[derive(Debug, Eq)]
-pub struct Message {
+pub struct TimedMessage {
     pub time: u32,
-    data: MessageData,
+    message: Message,
 }
 
-impl Message {
-    pub fn new(time: u32, data: MessageData) -> Self {
-        Message { time, data, }
+impl TimedMessage {
+    pub fn new(time: u32, message: Message) -> Self {
+        TimedMessage { time, message, }
     }
 
     pub fn to_raw_midi(&self) -> jack::RawMidi {
-        match &self.data {
-            MessageData::Introduction(bytes) =>                                            
+        match &self.message {
+            Message::Introduction(bytes) =>                                            
                 jack::RawMidi{ time: self.time, bytes: bytes},
-            MessageData::Inquiry(bytes) =>                                                 
+            Message::Inquiry(bytes) =>                                                 
                 jack::RawMidi{ time: self.time, bytes: bytes},
-            MessageData::Note(bytes) =>                                                    
+            Message::Note(bytes) =>                                                    
                 jack::RawMidi{ time: self.time, bytes: bytes},
         }
     }
 }
 
-impl Ord for Message {
-    fn cmp(&self, other: &Message) -> Ordering {
+impl Ord for TimedMessage {
+    fn cmp(&self, other: &TimedMessage) -> Ordering {
         self.time.cmp(&other.time)
     }
 }
 
-impl PartialOrd for Message {
-    fn partial_cmp(&self, other: &Message) -> Option<Ordering> {
+impl PartialOrd for TimedMessage {
+    fn partial_cmp(&self, other: &TimedMessage) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for Message {
-    fn eq(&self, other: &Message) -> bool {
+impl PartialEq for TimedMessage {
+    fn eq(&self, other: &TimedMessage) -> bool {
         self.time == other.time
     }
 }

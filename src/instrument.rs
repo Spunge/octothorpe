@@ -1,21 +1,21 @@
 
 use super::pattern::Pattern;
 use super::phrase::Phrase;
-use super::handlers::Writer;
 use super::cycle::Cycle;
+use super::message::TimedMessage;
 use super::note::NoteOff;
 
 pub struct Instrument {
     pub is_active: bool,
+    channel: u8,
 
     patterns: Vec<Pattern>,
     phrases: Vec<Phrase>,
+    note_offs: Vec<NoteOff>,
+
     playing_phrase: usize,
     showing_phrase: usize,
     showing_pattern: usize,
-
-    note_offs: Vec<NoteOff>,
-    channel: u8,
 }
 
 impl Instrument {
@@ -50,37 +50,44 @@ impl Instrument {
         &mut self.patterns[self.showing_pattern]
     }
 
-    pub fn phrase(&mut self) -> &mut Phrase {
-        &mut self.phrases[self.showing_phrase]
+    pub fn phrase(&self) -> &Phrase {
+        &self.phrases[self.showing_phrase]
     }
 
-    pub fn output_note_offs(&mut self, cycle: &Cycle, writer: &mut Writer) {
+    pub fn note_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        let mut timed_messages = vec![];
         let channel = self.channel;
 
         self.note_offs.retain(|note_off| {
             match cycle.delta_frames_absolute(note_off.tick) {
                 Some(frames) => {
-                    writer.write(note_off.note.note_off(frames, channel));
+                    timed_messages.push(TimedMessage::new(frames, note_off.message(channel)));
                     false
                 },
                 None => true
             }
         });
+
+        timed_messages
     }
 
-    // Output midi
-    pub fn output(&mut self, cycle: &Cycle, writer: &mut Writer) {
-        self.output_note_offs(cycle, writer);
-
+    pub fn note_on_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
         if cycle.is_rolling && self.is_active {
+            let mut note_offs = vec![];
+
             // Get note offs by playing note_ons
-            self.note_offs.append(&mut self.phrases[self.playing_phrase]
-                                  .output_notes(cycle, self.channel, &self.patterns, writer));
+            let messages = self.phrase().note_on_messages(cycle, self.channel, &self.patterns, &mut note_offs);
+            
+            self.note_offs.extend(note_offs);
 
             // Remove first occurences of same key notes
             self.note_offs.sort();
             self.note_offs.reverse();
-            self.note_offs.dedup_by(|a, b| { a.note.key == b.note.key });
+            self.note_offs.dedup_by(|a, b| { a.key == b.key });
+
+            messages
+        } else {
+            vec![]
         }
     }
 }
