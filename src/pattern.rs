@@ -12,6 +12,7 @@ pub struct Pattern {
     zoom: u32,
     offset: u32,
 
+    channel: u8,
     notes: Vec<Note>,
 
     pattern_grid: Grid,
@@ -20,7 +21,7 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    fn create(notes: Vec<Note>) -> Self {
+    fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
             bars: 1,
             beats_per_bar: 4,
@@ -32,67 +33,70 @@ impl Pattern {
             length_grid: Grid::new(8, 1, 0x32),
             zoom_grid: Grid::new(8, 1, 0x31),
 
+            channel,
             notes,
         }
     }
 
-    pub fn new() -> Self {
-        Pattern::create(vec![])
+    pub fn new(channel: u8) -> Self {
+        Pattern::create(channel, vec![])
     }
 
-    pub fn default() -> Self {
+    pub fn default(channel: u8) -> Self {
         let ticks = TICKS_PER_BEAT as u32;
         let notes = vec![
-            Note::new(0, ticks, 72, 127),
-            Note::new(ticks, ticks, 69, 127),
-            Note::new(ticks * 2, ticks, 69, 127),
-            Note::new(ticks * 3, ticks, 69, 127),
+            Note::new(channel, 0, ticks, 72, 127),
+            Note::new(channel, ticks, ticks, 69, 127),
+            Note::new(channel, ticks * 2, ticks, 69, 127),
+            Note::new(channel, ticks * 3, ticks, 69, 127),
         ];
 
-        Pattern::create(notes)
+        Pattern::create(channel, notes)
     }
 
-    pub fn alternate_default() -> Self {
+    pub fn alternate_default(channel: u8) -> Self {
         let ticks = TICKS_PER_BEAT as u32;
         let offset = (TICKS_PER_BEAT * 0.5) as u32;
         let notes = vec![
-            Note::new(0 + offset, ticks / 2, 71, 127),
-            Note::new(ticks + offset, ticks / 2, 72, 127),
-            Note::new(ticks * 2 + offset, ticks / 2, 71, 127),
-            Note::new(ticks * 3 + offset, ticks / 2, 72, 127),
+            Note::new(channel, 0 + offset, ticks / 2, 71, 127),
+            Note::new(channel, ticks + offset, ticks / 2, 72, 127),
+            Note::new(channel, ticks * 2 + offset, ticks / 2, 71, 127),
+            Note::new(channel, ticks * 3 + offset, ticks / 2, 72, 127),
         ];
 
-        Pattern::create(notes)
+        Pattern::create(channel, notes)
     }
 
-    pub fn zoom(&mut self, button: u32) -> Vec<Message> {
-        let mut messages = vec![ self.pattern_grid.clear(false), self.zoom_grid.clear(false) ];
-
+    pub fn change_zoom(&mut self, button: u32) {
         match button {
             1 | 2 | 4 | 8 => { self.zoom = 8 / button; self.offset = 0; },
             5 => { self.zoom = 2; self.offset = 1; },
-            7 => { self.zoom = 4; self.offset = 3; }
+            7 => { self.zoom = 4; self.offset = 3; },
             3 | 6 => { self.zoom = 8; self.offset = button - 1; },
             _ => {},
         }
-
-        messages.extend(vec![ self.draw_pattern(), self.draw_zoom() ]);
-        messages.into_iter().flatten().collect()
     }
 
-    pub fn offset(&mut self, delta: i32) -> Vec<Message> {
-        let mut messages = vec![ self.pattern_grid.clear(false), self.zoom_grid.clear(false) ];
-
+    pub fn change_offset(&mut self, delta: i32) {
         let offset = self.offset as i32 + delta;
 
         if offset >= 0 && offset <= self.zoom as i32 - 1 {
             self.offset = offset as u32;
         }
-
-        messages.extend(vec![ self.draw_pattern(), self.draw_zoom() ]);
-        messages.into_iter().flatten().collect()
     }
     
+    pub fn change_length(&mut self, bars: u8) {
+        if bars > 0 && bars <= 8 {
+            self.bars = bars;
+        }
+    }
+
+    pub fn redraw(&mut self) -> Vec<Message> {
+        let mut messages = self.clear(false);
+        messages.extend(self.draw());
+        messages
+    }
+
     pub fn draw(&mut self) -> Vec<Message> {
         vec![ self.draw_pattern(), self.draw_length(), self.draw_zoom() ].into_iter().flatten().collect()
     }
@@ -149,7 +153,7 @@ impl Pattern {
             .collect()
     }
 
-    pub fn note_on_messages(&self, cycle: &Cycle, channel: u8, offset: u32, interval: u32, note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
+    pub fn note_on_messages(&self, cycle: &Cycle, offset: u32, interval: u32, note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
         // Clone so we can change the tick on notes for next pattern iteration
         self.notes.iter()
             // Pattern could contain notes that fall not within start & finish of pattern
@@ -160,7 +164,7 @@ impl Pattern {
                     Some(delta_ticks) => {
                         note_offs.push(note.note_off(cycle.absolute_start + delta_ticks));
 
-                        Some(TimedMessage::new(cycle.ticks_to_frames(delta_ticks), note.message(channel)))
+                        Some(TimedMessage::new(cycle.ticks_to_frames(delta_ticks), note.message()))
 
                     },
                     None => None,

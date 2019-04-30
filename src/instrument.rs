@@ -7,10 +7,10 @@ use super::note::NoteOff;
 
 pub struct Instrument {
     pub is_active: bool,
-    channel: u8,
 
-    patterns: Vec<Pattern>,
-    phrases: Vec<Phrase>,
+    // TODO - this is public as we're testing with premade patterns
+    pub patterns: [Pattern; 5],
+    phrases: [Phrase; 5],
     note_offs: Vec<NoteOff>,
 
     playing_phrase: usize,
@@ -19,7 +19,10 @@ pub struct Instrument {
 }
 
 impl Instrument {
-    fn create(channel: u8, patterns: Vec<Pattern>, phrases: Vec<Phrase>) -> Self {
+    pub fn new(c: u8) -> Self {
+        let patterns = [ Pattern::new(c), Pattern::new(c), Pattern::new(c), Pattern::new(c), Pattern::new(c), ];
+        let phrases = [ Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), ];
+
         Instrument {
             is_active: true,
 
@@ -30,20 +33,7 @@ impl Instrument {
             showing_pattern: 0,
 
             note_offs: vec![],
-            channel,
         }
-    }
-    
-    pub fn new(channel: u8) -> Self {
-        Instrument::create(channel, vec![Pattern::new()], vec![Phrase::new()])
-    }
-
-    pub fn default(channel: u8) -> Self {
-        Instrument::create(channel, vec![Pattern::default()], vec![Phrase::default()]) 
-    }
-
-    pub fn alternate_default(channel: u8) -> Self {
-        Instrument::create(channel, vec![Pattern::alternate_default()], vec![Phrase::default()]) 
     }
 
     pub fn pattern(&mut self) -> &mut Pattern {
@@ -56,12 +46,11 @@ impl Instrument {
 
     pub fn note_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
         let mut timed_messages = vec![];
-        let channel = self.channel;
 
         self.note_offs.retain(|note_off| {
             match cycle.delta_frames_absolute(note_off.tick) {
                 Some(frames) => {
-                    timed_messages.push(TimedMessage::new(frames, note_off.message(channel)));
+                    timed_messages.push(TimedMessage::new(frames, note_off.message()));
                     false
                 },
                 None => true
@@ -76,7 +65,7 @@ impl Instrument {
             let mut note_offs = vec![];
 
             // Get note offs by playing note_ons
-            let messages = self.phrase().note_on_messages(cycle, self.channel, &self.patterns, &mut note_offs);
+            let messages = self.phrase().note_on_messages(cycle, &self.patterns, &mut note_offs);
             
             self.note_offs.extend(note_offs);
 

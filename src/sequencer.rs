@@ -4,6 +4,7 @@ use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
 use super::TICKS_PER_BEAT;
 use super::grid::Grid;
+use super::pattern::Pattern;
 
 pub enum View {
     Pattern,
@@ -11,7 +12,7 @@ pub enum View {
 }
 
 pub struct Sequencer {
-    instruments: Vec<Instrument>,
+    instruments: [Instrument; 16],
     instrument: u8,
     group: u8,
     view: View,
@@ -24,9 +25,16 @@ pub struct Sequencer {
 
 impl Sequencer {
     pub fn new() -> Self {
-        let mut instruments = vec![Instrument::default(0), Instrument::alternate_default(1)];
-        instruments.append(&mut (2..16).map(|channel| { Instrument::new(channel) }).collect());
+        let mut instruments = [
+            Instrument::new(0), Instrument::new(1), Instrument::new(2), Instrument::new(3),
+            Instrument::new(4), Instrument::new(5), Instrument::new(6), Instrument::new(7),
+            Instrument::new(8), Instrument::new(9), Instrument::new(10), Instrument::new(11),
+            Instrument::new(12), Instrument::new(13), Instrument::new(14), Instrument::new(15),
+        ];
 
+        instruments[0].patterns[0] = Pattern::default(0);
+        instruments[1].patterns[0] = Pattern::alternate_default(0);
+    
         Sequencer{
             instruments,
             instrument: 0,
@@ -68,20 +76,34 @@ impl Sequencer {
         messages
     }
 
-    pub fn zoom(&mut self, zoom: u32) -> Vec<Message> {
+    pub fn change_zoom(&mut self, zoom: u32) {
         match self.view {
-            View::Pattern => { self.instrument().pattern().zoom(zoom) },
-            View::Phrase => { vec![] },
+            View::Pattern => { self.instrument().pattern().change_zoom(zoom) },
+            View::Phrase => { },
         }
     }
 
-    pub fn offset(&mut self, offset: i32) -> Vec<Message> {
+    pub fn change_offset(&mut self, offset: i32) {
         match self.view {
-            View::Pattern => { self.instrument().pattern().offset(offset) },
-            View::Phrase => { vec![] },
+            View::Pattern => { self.instrument().pattern().change_offset(offset) },
+            View::Phrase => { },
         }
     }
 
+    pub fn change_length(&mut self, length: u8) {
+        match self.view {
+            View::Pattern => { self.instrument().pattern().change_length(length) },
+            View::Phrase => { },
+        }
+    }
+
+    pub fn redraw(&mut self) -> Vec<Message> {
+        match self.view {
+            View::Pattern => { self.instrument().pattern().redraw() },
+            View::Phrase => { vec![] },
+        }
+    }
+    
     pub fn draw_active_grid(&mut self) -> Vec<Message> {
         let leds = self.active_grid.width;
 

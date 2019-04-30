@@ -22,24 +22,16 @@ impl Phrase {
         Phrase {
             bars: 4,
             beats_per_bar: 4,
-            plays: vec![],
-        }
-    }
-
-    pub fn default() -> Self {
-        Phrase {
-            bars: 4,
-            beats_per_bar: 4,
             plays: vec![
-                Play{ pattern: 0, bar: 0 },
-                Play{ pattern: 0, bar: 1 },
-                Play{ pattern: 0, bar: 2 },
-                Play{ pattern: 0, bar: 3 },
+                Play { pattern: 0, bar: 0 },
+                Play { pattern: 0, bar: 1 },
+                Play { pattern: 0, bar: 2 },
+                Play { pattern: 0, bar: 3 },
             ],
         }
     }
 
-    pub fn note_on_messages(&self, cycle: &Cycle, channel: u8, patterns: &Vec<Pattern>, note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
+    pub fn note_on_messages(&self, cycle: &Cycle, patterns: &[Pattern; 5], note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
         let ticks_per_bar = self.beats_per_bar * TICKS_PER_BEAT as u32;
         let ticks = self.bars * ticks_per_bar;
 
@@ -48,7 +40,7 @@ impl Phrase {
             .filter(|play| { play.bar < self.bars })
             // Play pattern
             .flat_map(|play| {
-                patterns[play.pattern].note_on_messages(cycle, channel, play.bar * ticks_per_bar, ticks, note_offs)
+                patterns[play.pattern].note_on_messages(cycle, play.bar * ticks_per_bar, ticks, note_offs)
             })
             .collect()
     }
