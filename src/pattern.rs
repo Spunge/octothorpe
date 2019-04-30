@@ -86,9 +86,17 @@ impl Pattern {
     }
     
     pub fn change_length(&mut self, bars: u8) {
-            println!("{}", bars);
-        if bars > 0 && bars <= 8 {
-            self.bars = bars;
+        match bars {
+            1 | 2 | 4 | 8  => {
+                // Calculate new zoom level to keep pattern grid view the same if possible
+                let zoom = self.zoom * bars as u32 / self.bars as u32;
+                self.bars = bars;
+                // Only set zoom when it's possible
+                if zoom > 0 && zoom <= 8 {
+                    self.zoom = zoom;
+                }
+            },
+            _ => {},
         }
     }
 
@@ -112,7 +120,7 @@ impl Pattern {
 
     pub fn draw_pattern(&mut self) -> Vec<Message> {
         //let start_tick = 0;
-        let led_ticks = (TICKS_PER_BEAT / 2.0) as u32 / self.zoom;
+        let led_ticks = (TICKS_PER_BEAT / 2.0) as u32 / self.zoom * self.bars as u32;
         let offset = self.pattern_grid.width as u32 * self.offset;
         let grid = &mut self.pattern_grid;
 
