@@ -19,7 +19,10 @@ impl Controller {
         //println!("{}, {}, {}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         match message.bytes[1] {
-            0x5B => { client.transport_start(); None },
+            0x5B => { 
+                client.transport_start(); 
+                None 
+            },
             0x5C => {
                 let (state, _) = client.transport_query();
                 match state {
@@ -31,10 +34,19 @@ impl Controller {
                 };
                 None
             },
-            0x33 => Some(self.sequencer.switch_instrument(message.bytes[0] - 0x90)),
-            0x50 => Some(self.sequencer.switch_group()),
-            0x30 => Some(self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90)),
-            _ => None,
+            _ => Some(self.sequencer_key_pressed(message, client)),
+        }
+    }
+
+    fn sequencer_key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) -> Vec<Message> {
+        match message.bytes[1] {
+            0x33 => self.sequencer.switch_instrument(message.bytes[0] - 0x90),
+            0x50 => self.sequencer.switch_group(),
+            0x30 => self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90),
+            0x31 => self.sequencer.zoom((message.bytes[0] - 0x90 + 1) as u32),
+            0x61 => self.sequencer.offset(-1),
+            0x60 => self.sequencer.offset(1),
+            _ => vec![],
         }
     }
 

@@ -68,6 +68,20 @@ impl Sequencer {
         messages
     }
 
+    pub fn zoom(&mut self, zoom: u32) -> Vec<Message> {
+        match self.view {
+            View::Pattern => { self.instrument().pattern().zoom(zoom) },
+            View::Phrase => { vec![] },
+        }
+    }
+
+    pub fn offset(&mut self, offset: i32) -> Vec<Message> {
+        match self.view {
+            View::Pattern => { self.instrument().pattern().offset(offset) },
+            View::Phrase => { vec![] },
+        }
+    }
+
     pub fn draw_active_grid(&mut self) -> Vec<Message> {
         let leds = self.active_grid.width;
 

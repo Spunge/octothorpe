@@ -9,8 +9,8 @@ pub struct Pattern {
     bars: u8,
     beats_per_bar: u32,
 
-    zoom_level: u32,
-    zoom_offset: u8,
+    zoom: u32,
+    offset: u32,
 
     notes: Vec<Note>,
 
@@ -25,8 +25,8 @@ impl Pattern {
             bars: 1,
             beats_per_bar: 4,
 
-            zoom_level: 1,
-            zoom_offset: 0,
+            zoom: 1, 
+            offset: 0,
 
             pattern_grid: Grid::new(8, 5, 0x35),
             length_grid: Grid::new(8, 1, 0x32),
@@ -54,16 +54,45 @@ impl Pattern {
 
     pub fn alternate_default() -> Self {
         let ticks = TICKS_PER_BEAT as u32;
+        let offset = (TICKS_PER_BEAT * 0.5) as u32;
         let notes = vec![
-            Note::new(0, ticks, 69, 127),
-            Note::new(ticks, ticks, 71, 127),
-            Note::new(ticks * 2, ticks, 69, 127),
-            Note::new(ticks * 3, ticks, 73, 127),
+            Note::new(0 + offset, ticks / 2, 71, 127),
+            Note::new(ticks + offset, ticks / 2, 72, 127),
+            Note::new(ticks * 2 + offset, ticks / 2, 71, 127),
+            Note::new(ticks * 3 + offset, ticks / 2, 72, 127),
         ];
 
         Pattern::create(notes)
     }
 
+    pub fn zoom(&mut self, button: u32) -> Vec<Message> {
+        let mut messages = vec![ self.pattern_grid.clear(false), self.zoom_grid.clear(false) ];
+
+        match button {
+            1 | 2 | 4 | 8 => { self.zoom = 8 / button; self.offset = 0; },
+            5 => { self.zoom = 2; self.offset = 1; },
+            7 => { self.zoom = 4; self.offset = 3; }
+            3 | 6 => { self.zoom = 8; self.offset = button - 1; },
+            _ => {},
+        }
+
+        messages.extend(vec![ self.draw_pattern(), self.draw_zoom() ]);
+        messages.into_iter().flatten().collect()
+    }
+
+    pub fn offset(&mut self, delta: i32) -> Vec<Message> {
+        let mut messages = vec![ self.pattern_grid.clear(false), self.zoom_grid.clear(false) ];
+
+        let offset = self.offset as i32 + delta;
+
+        if offset >= 0 && offset <= self.zoom as i32 - 1 {
+            self.offset = offset as u32;
+        }
+
+        messages.extend(vec![ self.draw_pattern(), self.draw_zoom() ]);
+        messages.into_iter().flatten().collect()
+    }
+    
     pub fn draw(&mut self) -> Vec<Message> {
         vec![ self.draw_pattern(), self.draw_length(), self.draw_zoom() ].into_iter().flatten().collect()
     }
@@ -77,17 +106,31 @@ impl Pattern {
     }
 
     pub fn draw_pattern(&mut self) -> Vec<Message> {
+        //let start_tick = 0;
+        let led_ticks = (TICKS_PER_BEAT / 2.0) as u32 / self.zoom;
+        let offset = self.pattern_grid.width as u32 * self.offset;
         let grid = &mut self.pattern_grid;
 
         self.notes.iter()
-            .filter_map(|note| {
+            .flat_map(|note| {
                 // TODO - mark all leds in length of note
-                let x = note.tick / TICKS_PER_BEAT as u32 * 2;
-                // Use A4 (69 in midi) as base note
-                let y = 69 - note.key as i32;
+                let absolute_led = note.tick as i32 / led_ticks as i32;
+                let x = absolute_led as i32 - offset as i32;
+                let y = 73 - note.key as i32;
+            
+                let mut leds = vec![ (x, y, 1) ];
 
-                // Add 4 to push grid 4 down
-                grid.try_switch_led(x as i32, y + 4, 1)
+                (1..(note.length / led_ticks)).for_each(|led| {
+                    leds.push((x + led as i32, y, 5))
+                });
+
+                leds
+            })
+            .filter_map(|pos| {
+                let (x, y, state) = pos;
+
+                // Add 4 to push grid 4 down, 69 as base A4 in midi
+                grid.try_switch_led(x, y, state)
             })
             .collect()
     }
@@ -97,9 +140,13 @@ impl Pattern {
     }
 
     pub fn draw_zoom(&mut self) -> Vec<Message> {
-        let divide_by = 2_u8.pow(self.zoom_level);
+        let length = 8 / self.zoom;
+        let from = self.offset * length;
+        let to = from + length;
 
-        (0..(8 / divide_by)).map(|x| { self.zoom_grid.switch_led(x, 0, 1) }).collect()
+        (from..to)
+            .map(|x| { self.zoom_grid.switch_led(x as u8, 0, 1) })
+            .collect()
     }
 
     pub fn note_on_messages(&self, cycle: &Cycle, channel: u8, offset: u32, interval: u32, note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
