@@ -86,6 +86,7 @@ impl Pattern {
     }
     
     pub fn change_length(&mut self, bars: u8) {
+            println!("{}", bars);
         if bars > 0 && bars <= 8 {
             self.bars = bars;
         }

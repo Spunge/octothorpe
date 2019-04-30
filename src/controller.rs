@@ -43,9 +43,10 @@ impl Controller {
             0x33 => self.sequencer.switch_instrument(message.bytes[0] - 0x90),
             0x50 => self.sequencer.switch_group(),
             0x30 => self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90),
-            0x31 | 0x60 | 0x61 => {
+            0x31 | 0x32 | 0x60 | 0x61 => {
                 match message.bytes[1] {
                     0x31 => self.sequencer.change_zoom((message.bytes[0] - 0x90 + 1) as u32),
+                    0x32 => self.sequencer.change_length(message.bytes[0] - 0x90 + 1),
                     0x61 => self.sequencer.change_offset(-1),
                     0x60 => self.sequencer.change_offset(1),
                     _ => {},
