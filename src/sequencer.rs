@@ -133,23 +133,26 @@ impl Sequencer {
             .collect()
     }
 
+    pub fn draw_playable_grid(&mut self) -> Message {
+        match self.view {
+            View::Pattern => { 
+                let pattern = self.instrument().pattern;
+                self.playable_grid.switch_led(0, pattern as u8, 1) 
+            },
+            View::Phrase => { 
+                let phrase = self.instrument().phrase;
+                self.playable_grid.switch_led(0, phrase as u8, 1) 
+            },
+        }
+    }
+
     // Called on start
     pub fn draw(&mut self) -> Vec<Message> {
-
         vec![
             vec![
                 self.instrument_grid.switch_led(self.instrument, 0, 1),
                 self.group_grid.switch_led(0, 0, self.group),
-                match self.view {
-                    View::Pattern => { 
-                        let pattern = self.instrument().pattern;
-                        self.playable_grid.switch_led(0, pattern as u8, 1) 
-                    },
-                    View::Phrase => { 
-                        let phrase = self.instrument().phrase;
-                        self.playable_grid.switch_led(0, phrase as u8, 1) 
-                    },
-                },
+                self.draw_playable_grid(),
             ],
             self.draw_active_grid(),
             match self.view {

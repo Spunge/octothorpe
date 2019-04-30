@@ -41,6 +41,7 @@ Effect knobs
 Improvements
 - [ ] Create one playable trait for pattern / phrase so we can treat them as one and don't have to use match everywhere
 - [ ] Don't check every note against the cycle
+- [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
 
 ### Idea / unsure about
 Velocity
