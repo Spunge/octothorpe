@@ -34,11 +34,11 @@ impl Controller {
                 };
                 None
             },
-            _ => Some(self.sequencer_key_pressed(message, client)),
+            _ => Some(self.sequencer_key_pressed(message)),
         }
     }
 
-    fn sequencer_key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) -> Vec<Message> {
+    fn sequencer_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
         match message.bytes[1] {
             0x33 => self.sequencer.switch_instrument(message.bytes[0] - 0x90),
             0x50 => self.sequencer.switch_group(),

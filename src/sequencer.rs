@@ -33,7 +33,7 @@ impl Sequencer {
         ];
 
         instruments[0].patterns[0] = Pattern::default(0);
-        instruments[1].patterns[0] = Pattern::alternate_default(0);
+        instruments[1].patterns[0] = Pattern::alternate_default(1);
     
         Sequencer{
             instruments,
