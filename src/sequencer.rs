@@ -27,6 +27,7 @@ pub struct Sequencer {
     instrument_grid: Grid,
     group_grid: Grid,
     active_grid: Grid,
+    playable_grid: Grid,
 }
 
 impl Sequencer {
@@ -56,6 +57,7 @@ impl Sequencer {
             // What are we currently showing?
             view: View::Pattern,
 
+            playable_grid: Grid::new(1, 5, 0x52),
             indicator_grid: Grid::new(8, 1, 0x34),
             instrument_grid: Grid::new(8, 1, 0x33),
             group_grid: Grid::new(1, 1, 0x50),
@@ -118,7 +120,7 @@ impl Sequencer {
             View::Phrase => { vec![] },
         }
     }
-    
+
     pub fn draw_active_grid(&mut self) -> Vec<Message> {
         let leds = self.active_grid.width;
 
@@ -133,10 +135,21 @@ impl Sequencer {
 
     // Called on start
     pub fn draw(&mut self) -> Vec<Message> {
+
         vec![
             vec![
                 self.instrument_grid.switch_led(self.instrument, 0, 1),
                 self.group_grid.switch_led(0, 0, self.group),
+                match self.view {
+                    View::Pattern => { 
+                        let pattern = self.instrument().pattern;
+                        self.playable_grid.switch_led(0, pattern as u8, 1) 
+                    },
+                    View::Phrase => { 
+                        let phrase = self.instrument().phrase;
+                        self.playable_grid.switch_led(0, phrase as u8, 1) 
+                    },
+                },
             ],
             self.draw_active_grid(),
             match self.view {

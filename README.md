@@ -12,8 +12,9 @@ Patterns
 - [ ] shift + row 0x32 -> change velocity level
 - [X] row 0x31 -> change zoom level
 - [ ] shift + row 0x31 -> move zoom viewport
-- [ ] bank select moves viewport in all directions, also moving zoom indicator
-- [ ] scene lauch row selects patterns
+- [ ] bank select moves viewport in horizontally, also moving zoom indicator
+- [ ] bank select moves viewport vertically
+- [ ] Indicator shows in currently playing pattern
 
 Phrases
 - [ ] Render phrases
@@ -22,6 +23,8 @@ Instruments
 - [X] track selection row switches between instuments
 - [X] master switches between first & second group of 8 instuments
 - [X] row 0x30 (record arm) -> instrument outputs yes/no
+- [ ] scene lauch row selects patterns in pattern view
+- [ ] scene lauch row selects phrases in phrase view
 
 Sequences
 - [ ] Pan, send A etc. show corresponding sequence

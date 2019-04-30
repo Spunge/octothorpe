@@ -12,9 +12,9 @@ pub struct Instrument {
     pub patterns: [Pattern; 5],
     phrases: [Phrase; 5],
     note_offs: Vec<NoteOff>,
-
-    showing_phrase: usize,
-    showing_pattern: usize,
+    
+    pub phrase: usize,
+    pub pattern: usize,
 }
 
 impl Instrument {
@@ -28,19 +28,19 @@ impl Instrument {
             phrases,
             patterns,
 
-            showing_phrase: 0,
-            showing_pattern: 0,
+            phrase: 0,
+            pattern: 0,
 
             note_offs: vec![],
         }
     }
 
     pub fn pattern(&mut self) -> &mut Pattern {
-        &mut self.patterns[self.showing_pattern]
+        &mut self.patterns[self.pattern]
     }
 
     pub fn phrase(&self) -> &Phrase {
-        &self.phrases[self.showing_phrase]
+        &self.phrases[self.phrase]
     }
 
     pub fn note_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
