@@ -11,6 +11,7 @@ pub mod phrase;
 pub mod pattern;
 pub mod note;
 pub mod grid;
+pub mod sequence;
 
 use std::io;
 use std::sync::mpsc::channel;

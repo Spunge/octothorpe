@@ -13,7 +13,6 @@ pub struct Instrument {
     phrases: [Phrase; 5],
     note_offs: Vec<NoteOff>,
 
-    playing_phrase: usize,
     showing_phrase: usize,
     showing_pattern: usize,
 }
@@ -26,9 +25,9 @@ impl Instrument {
         Instrument {
             is_active: true,
 
-            patterns,
             phrases,
-            playing_phrase: 0,
+            patterns,
+
             showing_phrase: 0,
             showing_pattern: 0,
 

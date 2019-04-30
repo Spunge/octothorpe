@@ -45,7 +45,7 @@ impl Pattern {
     pub fn default(channel: u8) -> Self {
         let ticks = TICKS_PER_BEAT as u32;
         let notes = vec![
-            Note::new(channel, 0, ticks, 72, 127),
+            Note::new(channel, 0, ticks, 73, 127),
             Note::new(channel, ticks, ticks, 69, 127),
             Note::new(channel, ticks * 2, ticks, 69, 127),
             Note::new(channel, ticks * 3, ticks, 69, 127),
@@ -56,12 +56,12 @@ impl Pattern {
 
     pub fn alternate_default(channel: u8) -> Self {
         let ticks = TICKS_PER_BEAT as u32;
-        let offset = (TICKS_PER_BEAT * 0.5) as u32;
+        let offset = ticks / 2;
         let notes = vec![
             Note::new(channel, 0 + offset, ticks / 2, 71, 127),
-            Note::new(channel, ticks + offset, ticks / 2, 72, 127),
-            Note::new(channel, ticks * 2 + offset, ticks / 2, 71, 127),
-            Note::new(channel, ticks * 3 + offset, ticks / 2, 72, 127),
+            Note::new(channel, ticks + offset, ticks / 2, 70, 127),
+            Note::new(channel, ticks * 2 + offset, ticks / 2, 72, 127),
+            Note::new(channel, ticks * 3 + offset, ticks / 2, 70, 127),
         ];
 
         Pattern::create(channel, notes)

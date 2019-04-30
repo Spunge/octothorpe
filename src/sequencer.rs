@@ -1,10 +1,11 @@
 
+use super::TICKS_PER_BEAT;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
-use super::instrument::Instrument;
-use super::TICKS_PER_BEAT;
 use super::grid::Grid;
+use super::instrument::Instrument;
 use super::pattern::Pattern;
+use super::sequence::Sequence;
 
 pub enum View {
     Pattern,
@@ -14,6 +15,11 @@ pub enum View {
 pub struct Sequencer {
     instruments: [Instrument; 16],
     instrument: u8,
+
+    sequences: [Sequence; 4],
+    sequence: u8,
+    queued_sequence: Option<u8>,
+
     group: u8,
     view: View,
 
@@ -25,20 +31,29 @@ pub struct Sequencer {
 
 impl Sequencer {
     pub fn new() -> Self {
+        // Build instruments for each midi channel
         let mut instruments = [
             Instrument::new(0), Instrument::new(1), Instrument::new(2), Instrument::new(3),
             Instrument::new(4), Instrument::new(5), Instrument::new(6), Instrument::new(7),
             Instrument::new(8), Instrument::new(9), Instrument::new(10), Instrument::new(11),
             Instrument::new(12), Instrument::new(13), Instrument::new(14), Instrument::new(15),
         ];
-
         instruments[0].patterns[0] = Pattern::default(0);
         instruments[1].patterns[0] = Pattern::alternate_default(1);
     
+        // Build sequence we can trigger
+        let sequences = [ Sequence::new(), Sequence::new(), Sequence::new(), Sequence::new(), ];
+
         Sequencer{
             instruments,
             instrument: 0,
             group: 0,
+
+            sequences,
+            sequence: 0,
+            queued_sequence: None,
+
+            // What are we currently showing?
             view: View::Pattern,
 
             indicator_grid: Grid::new(8, 1, 0x34),
