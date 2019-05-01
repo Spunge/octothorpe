@@ -43,6 +43,7 @@ pub struct Sequencer {
     playable_grid: Grid,
     detailview_grid: Grid,
     overview_grid: Grid,
+    sequence_grid: Grid,
 }
 
 impl Sequencer {
@@ -60,7 +61,7 @@ impl Sequencer {
         instruments[1].phrases[0] = Phrase::default();
     
         // Build sequence we can trigger
-        let sequences = [ Sequence::new(), Sequence::new(), Sequence::new(), Sequence::new(), ];
+        let sequences = [ Sequence::default(), Sequence::new(), Sequence::new(), Sequence::new(), ];
 
         Sequencer{
             instruments,
@@ -75,7 +76,7 @@ impl Sequencer {
 
             // What are we currently showing?
             detailview: DetailView::Pattern,
-            overview: OverView::Instrument,
+            overview: OverView::Sequence,
 
             // Only show in instrument overview
             playable_grid: Grid::new(1, 5, 0x52),
@@ -83,8 +84,9 @@ impl Sequencer {
 
             // Show in both overviews
             group_grid: Grid::new(1, 1, 0x50),
-            detailview_grid: Grid::new(1, 1, 0x3E),
+            sequence_grid: Grid::new(1, 4, 0x57),
             overview_grid: Grid::new(1, 1, 0x3A),
+            detailview_grid: Grid::new(1, 1, 0x3E),
             indicator_grid: Grid::new(8, 1, 0x34),
         }
     }
@@ -100,7 +102,6 @@ impl Sequencer {
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
         match message.bytes[1] {
             0x3E => self.switch_detailview(),
-            0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x31 | 0x32 | 0x60 | 0x61 => {
                 let should_redraw = match message.bytes[1] {
                     0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
@@ -117,7 +118,14 @@ impl Sequencer {
     }
 
     fn sequence_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
-        vec![]
+        match message.bytes[1] {
+            0x32 => {
+                let group = self.group;
+                self.sequence().toggle_active(message.bytes[0]- 0x90);
+                self.sequence().draw_active_grid(group)
+            },
+            _ => vec![],
+        }
     }
 
     pub fn key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
@@ -125,6 +133,8 @@ impl Sequencer {
             //0x30 => self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90),
             0x50 => self.switch_group(),
             0x3A => self.switch_overview(),
+            0x33 => self.switch_instrument(message.bytes[0] - 0x90),
+            0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             // Stuff for instruments
             0x3E | 0x31 | 0x33 | 0x32 | 0x60 | 0x61 => {
                 match self.overview {
@@ -136,6 +146,21 @@ impl Sequencer {
         }
     }
 
+    fn switch_sequence(&mut self, sequence: u8) -> Vec<Message> {
+        // Clear sequence stuff
+        let mut messages = self.clear_sequence(false);
+        messages.extend(self.sequence_grid.clear(false));
+        // If we're looking at instrument at the moment, clear that & switch to sequence
+        if let OverView::Instrument = self.overview {
+            messages.extend(self.clear_instrument(false));
+            self.toggle_overview();
+        }
+        // Set new sequence & draw
+        self.sequence = sequence;
+        messages.extend(self.draw_sequence());
+        messages
+    }
+
     fn switch_group(&mut self) -> Vec<Message> {
         let mut messages = self.clear(false);
         self.group = if self.group == 1 { 0 } else { 1 };
@@ -144,19 +169,29 @@ impl Sequencer {
     }
 
     fn switch_instrument(&mut self, instrument: u8) -> Vec<Message> {
+        // Clear instrument stuff
         let mut messages = self.clear_instrument(false);
+        // If we're looking @ sequence, clear that and toggle
+        if let OverView::Sequence = self.overview {
+            messages.extend(self.clear_sequence(false));
+            self.toggle_overview();
+        }
         self.instrument = instrument;
         messages.append(&mut self.draw_instrument());
         messages
     }
 
-    fn switch_overview(&mut self) -> Vec<Message> {
-        let mut messages = self.clear(false);
+    fn toggle_overview(&mut self) {
         match self.overview {
             OverView::Instrument => { self.overview = OverView::Sequence },
             OverView::Sequence => { self.overview = OverView::Instrument },
         }
-        messages.append(&mut self.draw());
+    }
+
+    fn switch_overview(&mut self) -> Vec<Message> {
+        let mut messages = self.clear(false);
+        self.toggle_overview();
+        messages.extend(self.draw());
         messages
     }
 
@@ -186,15 +221,15 @@ impl Sequencer {
 
     fn draw_sequencer(&mut self) -> Vec<Message> {
         vec![
+            self.sequence_grid.switch_led(0, self.sequence, 1),
             self.group_grid.switch_led(0, 0, self.group),
-            self.overview_grid.switch_led(0, 0, match self.overview { OverView::Instrument => 1, _ => 0, }),
         ]
     }
 
     fn clear_sequencer(&mut self, force: bool) -> Vec<Message> {
         vec![
+            self.sequence_grid.clear(force),
             self.group_grid.clear(force),
-            self.detailview_grid.clear(force),
             self.overview_grid.clear(force),
         ].into_iter().flatten().collect()
     }
@@ -207,17 +242,17 @@ impl Sequencer {
             _ => 0, 
         };
 
-        vec![
-            vec![
-                self.instrument_grid.switch_led(self.instrument, 0, 1),
-                self.playable_grid.switch_led(0, playable_led, 1),
-                self.detailview_grid.switch_led(0, 0, detailview_led),
-            ],
-            match self.detailview {
-                DetailView::Pattern => { self.instrument().pattern().draw() },
-                DetailView::Phrase => { self.instrument().phrase().draw() },
-            },
-        ].into_iter().flatten().collect()
+        let mut messages = match self.detailview {
+            DetailView::Pattern => { self.instrument().pattern().draw() },
+            DetailView::Phrase => { self.instrument().phrase().draw() },
+        };
+
+        messages.push(self.instrument_grid.switch_led(self.instrument, 0, 1));
+        messages.push(self.playable_grid.switch_led(0, playable_led, 1));
+        messages.push(self.detailview_grid.switch_led(0, 0, detailview_led));
+        let overview_state = match self.overview { OverView::Instrument => 1, _ => 0, };
+        messages.push(self.overview_grid.switch_led(0, 0, overview_state));
+        messages
     }
 
     fn redraw_instrument(&mut self) -> Vec<Message> {
@@ -248,11 +283,18 @@ impl Sequencer {
     }
 
     fn draw_sequence(&mut self) -> Vec<Message> {
-        vec![]
+        let group = self.group;
+        let mut messages = self.sequence().draw_sequence(group);
+        messages.extend(self.sequence().draw_active_grid(group));
+        messages.push(self.overview_grid.switch_led(0, 0, match self.overview { OverView::Instrument => 1, _ => 0, }));
+        messages.push(self.sequence_grid.switch_led(0, self.sequence, 1));
+        messages
     }
 
     fn clear_sequence(&mut self, force: bool) -> Vec<Message> {
-        vec![]
+        let mut messages = self.sequence().main_grid.clear(force);
+        messages.extend(self.sequence().active_grid.clear(force));
+        messages
     }
    
     fn draw_overview(&mut self) -> Vec<Message> {
