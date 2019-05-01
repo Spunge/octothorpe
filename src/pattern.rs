@@ -52,8 +52,8 @@ impl Pattern {
     pub fn draw_pattern(&mut self) -> Vec<Message> {
         //let start_tick = 0;
         let led_ticks = (TICKS_PER_BEAT / 2.0) as u32 / self.playable.zoom * self.playable.bars as u32;
-        let offset = self.playable.main_grid.width as u32 * self.playable.offset;
         let grid = &mut self.playable.main_grid;
+        let offset = grid.width as u32 * self.playable.offset;
 
         self.notes.iter()
             .flat_map(|note| {
@@ -77,12 +77,6 @@ impl Pattern {
                 grid.try_switch_led(x, y, state)
             })
             .collect()
-    }
-
-    pub fn redraw(&mut self) -> Vec<Message> {
-        let mut messages = self.clear(false);
-        messages.extend(self.draw());
-        messages
     }
 
     pub fn draw(&mut self) -> Vec<Message> {

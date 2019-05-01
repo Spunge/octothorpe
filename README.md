@@ -12,12 +12,13 @@ Patterns
 - [ ] shift + row 0x32 -> change velocity level
 - [X] row 0x31 -> change zoom level
 - [ ] shift + row 0x31 -> move zoom viewport
-- [ ] bank select moves viewport in horizontally, also moving zoom indicator
+- [X] bank select moves viewport in horizontally, also moving zoom indicator
 - [ ] bank select moves viewport vertically
 - [ ] Indicator shows in currently playing pattern
 
 Phrases
-- [ ] Render phrases
+- [X] Render phrases
+- [ ] Indicator shows in currently playing phrase
 
 Instruments
 - [X] track selection row switches between instuments
@@ -31,6 +32,7 @@ Sequences
 - [ ] Pan, send A etc. show corresponding sequence
 - [ ] Queue sequence by shift clicking sequence button
 - [ ] Queued sequence starts after sequence hits a common denominator for all playing phrases
+- [ ] Make indicator lights light up for notes played by instrument
 
 Tempo
 - [ ] Fix tap tempo
@@ -39,13 +41,15 @@ Effect knobs
 - [ ] Send knobs input to output directly for channel of selected instrument
 
 Improvements
-- [ ] Create one playable trait for pattern / phrase so we can treat them as one and don't have to use match everywhere
+- [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
 - [ ] Don't check every note against the cycle
 - [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
+
 
 ### Idea / unsure about
 Patterns / Phrases
 - We now have 5 phrases / patterns, 1 under every scene launch button, we could implement shift+up/down for scrolling through more of these
+- Fold pattern grid to notes in key / all notes
 
 Velocity
 - Show velocity of notes in grid by color of note?

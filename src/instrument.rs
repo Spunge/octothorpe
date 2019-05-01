@@ -7,11 +7,9 @@ use super::message::TimedMessage;
 use super::note::NoteOff;
 
 pub struct Instrument {
-    pub is_active: bool,
-
-    // TODO - this is public as we're testing with premade patterns
+    // TODO - these are public as we're testing with premade patterns
     pub patterns: [Pattern; 5],
-    phrases: [Phrase; 5],
+    pub phrases: [Phrase; 5],
     note_offs: Vec<NoteOff>,
     
     pub phrase: usize,
@@ -24,8 +22,6 @@ impl Instrument {
         let phrases = [ Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), ];
 
         Instrument {
-            is_active: true,
-
             phrases,
             patterns,
 
@@ -64,7 +60,7 @@ impl Instrument {
         vec![]
         /*
          * TODO - Fighting th borrow checker as always..., but we're going to change this logic and move it to sequence anyway
-        if cycle.is_rolling && self.is_active {
+        if cycle.is_rolling {
 
             let mut note_offs = vec![];
             let ticks_per_bar = BEATS_PER_BAR as u32 * TICKS_PER_BEAT as u32;
