@@ -3,32 +3,32 @@ use super::message::Message;
 use super::grid::Grid;
 
 pub struct Playable {
-    minimum_beats: u8,
-    pub beats: u8,
+    minimum_bars: u8,
+    pub bars: u8,
     pub zoom: u32,
     pub offset: u32,
 
-    pub pattern_grid: Grid,
+    pub main_grid: Grid,
     pub length_grid: Grid,
     pub zoom_grid: Grid,
 }
 
 impl Playable {
-    pub fn new(beats: u8, minimum_beats: u8) -> Self {
+    pub fn new(bars: u8, minimum_bars: u8) -> Self {
         Playable {
-            minimum_beats,
-            beats,
+            minimum_bars,
+            bars,
             zoom: 1, 
             offset: 0,
 
-            pattern_grid: Grid::new(8, 5, 0x35),
+            main_grid: Grid::new(8, 5, 0x35),
             length_grid: Grid::new(8, 1, 0x32),
             zoom_grid: Grid::new(8, 1, 0x31),
         }
     }
 
     fn length_modifier(&self) -> u8 {
-        self.beats / self.minimum_beats
+        self.bars / self.minimum_bars
     }
 
     pub fn change_zoom(&mut self, button: u32) {
@@ -54,7 +54,7 @@ impl Playable {
             1 | 2 | 4 | 8  => {
                 // Calculate new zoom level to keep pattern grid view the same if possible
                 let zoom = self.zoom * length_modifier as u32 / self.length_modifier() as u32;
-                self.beats = length_modifier * self.minimum_beats;
+                self.bars = length_modifier * self.minimum_bars;
                 // Only set zoom when it's possible
                 if zoom > 0 && zoom <= 8 {
                     self.zoom = zoom;

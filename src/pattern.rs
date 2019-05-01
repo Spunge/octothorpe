@@ -8,13 +8,13 @@ use super::playable::Playable;
 pub struct Pattern {
     pub playable: Playable,
     channel: u8,
-    notes: Vec<Note>,
+    pub notes: Vec<Note>,
 }
 
 impl Pattern {
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
-            playable: Playable::new(4, BEATS_PER_BAR),
+            playable: Playable::new(1, 1),
             channel,
             notes,
         }
@@ -49,33 +49,11 @@ impl Pattern {
         Pattern::create(channel, notes)
     }
 
-    pub fn redraw(&mut self) -> Vec<Message> {
-        let mut messages = self.clear(false);
-        messages.extend(self.draw());
-        messages
-    }
-
-    pub fn draw(&mut self) -> Vec<Message> {
-        vec![ 
-            self.draw_pattern(),
-            self.playable.draw_length(),
-            self.playable.draw_zoom() 
-        ].into_iter().flatten().collect()
-    }
-
-    pub fn clear(&mut self, force: bool) -> Vec<Message> {
-        vec![ 
-            self.playable.pattern_grid.clear(force), 
-            self.playable.length_grid.clear(force),
-            self.playable.zoom_grid.clear(force) 
-        ].into_iter().flatten().collect()
-    }
-
     pub fn draw_pattern(&mut self) -> Vec<Message> {
         //let start_tick = 0;
-        let led_ticks = (TICKS_PER_BEAT / 2.0) as u32 / self.playable.zoom * (self.playable.beats / BEATS_PER_BAR) as u32;
-        let offset = self.playable.pattern_grid.width as u32 * self.playable.offset;
-        let grid = &mut self.playable.pattern_grid;
+        let led_ticks = (TICKS_PER_BEAT / 2.0) as u32 / self.playable.zoom * self.playable.bars as u32;
+        let offset = self.playable.main_grid.width as u32 * self.playable.offset;
+        let grid = &mut self.playable.main_grid;
 
         self.notes.iter()
             .flat_map(|note| {
@@ -100,25 +78,27 @@ impl Pattern {
             })
             .collect()
     }
-    
-    pub fn note_on_messages(&self, cycle: &Cycle, offset: u32, interval: u32, note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
-        // Clone so we can change the tick on notes for next pattern iteration
-        self.notes.iter()
-            // Pattern could contain notes that fall not within start & finish of pattern
-            .filter(|note| { note.tick < self.playable.beats as u32 * TICKS_PER_BEAT as u32 })
-            // It, is, play it, queing note off
-            .filter_map(|note| {
-                match cycle.delta_ticks_recurring(note.tick + offset, interval) {
-                    Some(delta_ticks) => {
-                        note_offs.push(note.note_off(cycle.absolute_start + delta_ticks));
 
-                        Some(TimedMessage::new(cycle.ticks_to_frames(delta_ticks), note.message()))
+    pub fn redraw(&mut self) -> Vec<Message> {
+        let mut messages = self.clear(false);
+        messages.extend(self.draw());
+        messages
+    }
 
-                    },
-                    None => None,
-                }
-            })
-            .collect()
+    pub fn draw(&mut self) -> Vec<Message> {
+        vec![ 
+            self.draw_pattern(),
+            self.playable.draw_length(),
+            self.playable.draw_zoom() 
+        ].into_iter().flatten().collect()
+    }
+
+    pub fn clear(&mut self, force: bool) -> Vec<Message> {
+        vec![ 
+            self.playable.main_grid.clear(force), 
+            self.playable.length_grid.clear(force),
+            self.playable.zoom_grid.clear(force) 
+        ].into_iter().flatten().collect()
     }
 }
 

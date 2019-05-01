@@ -1,27 +1,27 @@
 
-use super::TICKS_PER_BEAT;
+use super::{BEATS_PER_BAR, TICKS_PER_BEAT};
 use super::pattern::Pattern;
 use super::note::NoteOff;
 use super::cycle::Cycle;
 use super::message::TimedMessage;
+use super::playable::Playable;
+use super::message::Message;
 
 #[derive(Clone)]
-struct Play {
-    pattern: usize,
-    bar: u32,
+pub struct Play {
+    pub pattern: usize,
+    pub bar: u32,
 }
 
 pub struct Phrase {
-    bars: u32,
-    beats_per_bar: u32,
-    plays: Vec<Play>,
+    pub playable: Playable,
+    pub plays: Vec<Play>,
 }
 
 impl Phrase {
     pub fn new() -> Self {
         Phrase {
-            bars: 4,
-            beats_per_bar: 4,
+            playable: Playable::new(4, 4),
             plays: vec![
                 Play { pattern: 0, bar: 0 },
                 Play { pattern: 0, bar: 1 },
@@ -31,17 +31,29 @@ impl Phrase {
         }
     }
 
-    pub fn note_on_messages(&self, cycle: &Cycle, patterns: &[Pattern; 5], note_offs: &mut Vec<NoteOff>) -> Vec<TimedMessage> {
-        let ticks_per_bar = self.beats_per_bar * TICKS_PER_BEAT as u32;
-        let ticks = self.bars * ticks_per_bar;
+    pub fn redraw(&mut self) -> Vec<Message> {
+        let mut messages = self.clear(false);
+        messages.extend(self.draw());
+        messages
+    }
 
-        self.plays.iter()
-            // Is play located within phrase?
-            .filter(|play| { play.bar < self.bars })
-            // Play pattern
-            .flat_map(|play| {
-                patterns[play.pattern].note_on_messages(cycle, play.bar * ticks_per_bar, ticks, note_offs)
-            })
-            .collect()
+    pub fn draw_phrase(&mut self) -> Vec<Message> {
+        vec![]
+    }
+
+    pub fn draw(&mut self) -> Vec<Message> {
+        vec![ 
+            self.draw_phrase(),
+            self.playable.draw_length(),
+            self.playable.draw_zoom() 
+        ].into_iter().flatten().collect()
+    }
+
+    pub fn clear(&mut self, force: bool) -> Vec<Message> {
+        vec![ 
+            self.playable.main_grid.clear(force), 
+            self.playable.length_grid.clear(force),
+            self.playable.zoom_grid.clear(force) 
+        ].into_iter().flatten().collect()
     }
 }

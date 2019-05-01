@@ -105,21 +105,21 @@ impl Sequencer {
     pub fn change_zoom(&mut self, zoom: u32) {
         match self.view {
             View::Pattern => { self.instrument().pattern().playable.change_zoom(zoom) },
-            View::Phrase => { },
+            View::Phrase => { self.instrument().phrase().playable.change_zoom(zoom) },
         }
     }
 
     pub fn change_offset(&mut self, offset: i32) {
         match self.view {
             View::Pattern => { self.instrument().pattern().playable.change_offset(offset) },
-            View::Phrase => { },
+            View::Phrase => { self.instrument().phrase().playable.change_offset(offset) },
         }
     }
 
     pub fn change_length(&mut self, length: u8) {
         match self.view {
             View::Pattern => { self.instrument().pattern().playable.change_length(length) },
-            View::Phrase => { },
+            View::Phrase => { self.instrument().phrase().playable.change_length(length) },
         }
     }
 
