@@ -31,25 +31,28 @@ impl Playable {
         self.bars / self.minimum_bars
     }
 
-    pub fn change_zoom(&mut self, button: u32) {
+    pub fn change_zoom(&mut self, button: u32) -> bool {
         match button {
-            1 | 2 | 4 | 8 => { self.zoom = 8 / button; self.offset = 0; },
-            5 => { self.zoom = 2; self.offset = 1; },
-            7 => { self.zoom = 4; self.offset = 3; },
-            3 | 6 => { self.zoom = 8; self.offset = button - 1; },
-            _ => {},
+            1 | 2 | 4 | 8 => { self.zoom = 8 / button; self.offset = 0; true },
+            5 => { self.zoom = 2; self.offset = 1; true },
+            7 => { self.zoom = 4; self.offset = 3; true },
+            3 | 6 => { self.zoom = 8; self.offset = button - 1; true },
+            _ => false
         }
     }
 
-    pub fn change_offset(&mut self, delta: i32) {
+    pub fn change_offset(&mut self, delta: i32) -> bool {
         let offset = self.offset as i32 + delta;
 
         if offset >= 0 && offset <= self.zoom as i32 - 1 {
             self.offset = offset as u32;
+            true
+        } else {
+            false
         }
     }
     
-    pub fn change_length(&mut self, length_modifier: u8) {
+    pub fn change_length(&mut self, length_modifier: u8) -> bool {
         match length_modifier {
             1 | 2 | 4 | 8  => {
                 // Calculate new zoom level to keep pattern grid view the same if possible
@@ -59,8 +62,9 @@ impl Playable {
                 if zoom > 0 && zoom <= 8 {
                     self.zoom = zoom;
                 }
+                true
             },
-            _ => {},
+            _ => false,
         }
     }
 

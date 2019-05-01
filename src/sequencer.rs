@@ -20,19 +20,23 @@ pub enum DetailView {
 }
 
 pub struct Sequencer {
+    group: u8,
+
     instruments: [Instrument; 16],
     instrument: u8,
 
     sequences: [Sequence; 4],
     sequence: u8,
 
+    // What is playing?
     playing_sequence: u8,
     queued_sequence: Option<u8>,
 
-    group: u8,
+    // What are we showing?
     overview: OverView,
     detailview: DetailView,
 
+    // Various indicators
     indicator_grid: Grid,
     instrument_grid: Grid,
     group_grid: Grid,
@@ -85,12 +89,12 @@ impl Sequencer {
         }
     }
 
-    fn instrument_by_index(&mut self, index: u8) -> &mut Instrument {
-        &mut self.instruments[(self.group * 8 + index) as usize]
+    fn instrument(&mut self) -> &mut Instrument {
+        &mut self.instruments[(self.group * 8 + self.instrument) as usize]
     }
 
-    fn instrument(&mut self) -> &mut Instrument {
-        self.instrument_by_index(self.instrument)
+    fn sequence(&mut self) -> &mut Sequence {
+        &mut self.sequences[self.sequence as usize]
     }
 
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
@@ -98,15 +102,15 @@ impl Sequencer {
             0x3E => self.switch_detailview(),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x31 | 0x32 | 0x60 | 0x61 => {
-                match message.bytes[1] {
+                let should_redraw = match message.bytes[1] {
                     0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
                     0x32 => self.playable().change_length(message.bytes[0] - 0x90 + 1),
                     0x61 => self.playable().change_offset(-1),
                     0x60 => self.playable().change_offset(1),
-                    _ => {},
+                    _ => false,
                 };
 
-                self.redraw_instrument()
+                if should_redraw { self.redraw_instrument() } else { vec![] }
             },
             _ => vec![],
         }
