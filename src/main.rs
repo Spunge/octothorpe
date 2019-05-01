@@ -12,6 +12,7 @@ pub mod pattern;
 pub mod note;
 pub mod grid;
 pub mod sequence;
+pub mod playable;
 
 use std::io;
 use std::sync::mpsc::channel;
@@ -19,6 +20,7 @@ use controller::Controller;
 use handlers::*;
 
 const TICKS_PER_BEAT: f64 = 1920.0;
+const BEATS_PER_BAR: u8 = 4;
 
 fn main() {
     // Setup client

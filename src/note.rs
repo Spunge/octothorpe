@@ -18,8 +18,8 @@ impl Note {
         Note { channel, tick, length, key, velocity, }
     }
 
-    pub fn note_off(&self, tick: u32) -> NoteOff {
-        NoteOff::new(self.channel, tick + self.length, self.key, self.velocity)
+    pub fn note_off(&self, absolute_tick: u32) -> NoteOff {
+        NoteOff::new(self.channel, absolute_tick + self.length, self.key, self.velocity)
     }
 
     pub fn message(&self) -> Message {

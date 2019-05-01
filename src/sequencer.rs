@@ -7,6 +7,15 @@ use super::instrument::Instrument;
 use super::pattern::Pattern;
 use super::sequence::Sequence;
 
+pub trait Playable {
+    fn redraw(&mut self) -> Vec<Message> { vec![] }
+    fn draw(&mut self) -> Vec<Message> { vec![] }
+    fn clear(&mut self, force: bool) -> Vec<Message> { vec![] }
+    fn draw_pattern(&mut self) -> Vec<Message> { vec![] }
+    fn draw_length(&mut self) -> Vec<Message> { vec![] }
+    fn draw_zoom(&mut self) -> Vec<Message> { vec![] }
+}
+
 pub enum View {
     Pattern,
     Phrase,
@@ -95,21 +104,21 @@ impl Sequencer {
 
     pub fn change_zoom(&mut self, zoom: u32) {
         match self.view {
-            View::Pattern => { self.instrument().pattern().change_zoom(zoom) },
+            View::Pattern => { self.instrument().pattern().playable.change_zoom(zoom) },
             View::Phrase => { },
         }
     }
 
     pub fn change_offset(&mut self, offset: i32) {
         match self.view {
-            View::Pattern => { self.instrument().pattern().change_offset(offset) },
+            View::Pattern => { self.instrument().pattern().playable.change_offset(offset) },
             View::Phrase => { },
         }
     }
 
     pub fn change_length(&mut self, length: u8) {
         match self.view {
-            View::Pattern => { self.instrument().pattern().change_length(length) },
+            View::Pattern => { self.instrument().pattern().playable.change_length(length) },
             View::Phrase => { },
         }
     }

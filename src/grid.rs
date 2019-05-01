@@ -41,13 +41,14 @@ impl Grid {
 
     pub fn switch_led(&mut self, x: u8, y: u8, state: u8) -> Message {
         self.save_led_state(y * self.width + x, state);
-
         Grid::draw_led(0x90 + x, self.base_note + y, state)
     }
 
     fn clear_active(&mut self) -> Vec<Message> {
         let messages = self.active_leds.iter()
-            .map(|led| { Grid::draw_led(0x90 + led % self.width, self.base_note + led / self.width, 0) })
+            .map(|led| { 
+                Grid::draw_led(0x90 + led % self.width, self.base_note + led / self.width, 0) 
+            })
             .collect();
 
         self.active_leds.clear();
