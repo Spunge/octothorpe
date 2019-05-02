@@ -1,5 +1,4 @@
 
-use super::TICKS_PER_BEAT;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::grid::Grid;
@@ -8,6 +7,7 @@ use super::phrase::Phrase;
 use super::pattern::Pattern;
 use super::sequence::Sequence;
 use super::playable::Playable;
+use super::note::NoteOff;
 
 pub enum OverView {
     Instrument,
@@ -22,6 +22,8 @@ pub enum DetailView {
 pub struct Sequencer {
     group: u8,
 
+    note_offs: Vec<NoteOff>,
+
     instruments: [Instrument; 16],
     instrument: u8,
 
@@ -29,8 +31,8 @@ pub struct Sequencer {
     sequence: u8,
 
     // What is playing?
-    playing_sequence: u8,
-    queued_sequence: Option<u8>,
+    sequence_playing: usize,
+    sequence_queued: Option<usize>,
 
     // What are we showing?
     overview: OverView,
@@ -61,18 +63,20 @@ impl Sequencer {
         instruments[1].phrases[0] = Phrase::default();
     
         // Build sequence we can trigger
-        let sequences = [ Sequence::default(), Sequence::new(), Sequence::new(), Sequence::new(), ];
+        let sequences = [ Sequence::default(), Sequence::alternate_default(), Sequence::new(), Sequence::new(), ];
 
         Sequencer{
             instruments,
             instrument: 0,
             group: 0,
 
+            note_offs: vec![],
+
             sequences,
             sequence: 0,
 
-            playing_sequence: 0,
-            queued_sequence: None,
+            sequence_playing: 0,
+            sequence_queued: Some(0),
 
             // What are we currently showing?
             detailview: DetailView::Pattern,
@@ -136,7 +140,7 @@ impl Sequencer {
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             // Stuff for instruments
-            0x3E | 0x31 | 0x33 | 0x32 | 0x60 | 0x61 => {
+            0x3E | 0x31 | 0x32 | 0x60 | 0x61 => {
                 match self.overview {
                     OverView::Instrument => self.instrument_key_pressed(message),
                     OverView::Sequence => self.sequence_key_pressed(message),
@@ -324,6 +328,7 @@ impl Sequencer {
         messages
     }
 
+    /*
     fn draw_indicator(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
         // TODO - Show 1 bar pattern over the whole grid, doubling the steps
         let steps = 8;
@@ -381,14 +386,105 @@ impl Sequencer {
             None
         }
     }
+    */
+
+    fn set_sequence_as_playing(&mut self, sequence: usize) {
+        self.sequence_playing = sequence;
+        self.sequence_queued = None;
+    }
+
+    fn current_playing_sequences(&self, cycle: &Cycle) -> Option<Vec<usize>> {
+        // Get current sequence as we definitely have to play that
+        let current_sequence = &self.sequences[self.sequence_playing];
+        // Can we play current sequence?
+        if let Some(ticks) = current_sequence.ticks(&self.instruments) {
+            // If we can, play it
+            let mut sequences = vec![];
+            sequences.push(self.sequence_playing);
+
+            // If cycle covers current sequence and next
+            if cycle.start % ticks > cycle.end % ticks {
+                if let Some(index) = self.sequence_queued {
+                    //self.set_sequence_as_playing(index);
+                    sequences.push(index);
+                } else {
+                    sequences.push(self.sequence_playing);
+                }
+            }
+
+            Some(sequences)
+        } else {
+            None
+        }
+    }
+
+    fn playing_sequences(&mut self, cycle: &Cycle) -> Option<Vec<usize>> {
+         if let Some(sequences) = self.current_playing_sequences(cycle) {
+            if sequences.len() > 1 {
+                if sequences[0] != sequences[1] {
+                    println!("switching sequence");
+                    self.set_sequence_as_playing(sequences[1]);
+                } else {
+                    println!("repeating sequence");
+                }
+            }
+
+            Some(sequences)
+        } else {
+            if let Some(index) = self.sequence_queued {
+                self.set_sequence_as_playing(index);
+                self.current_playing_sequences(cycle)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn note_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        let mut timed_messages = vec![];
+
+        self.note_offs.retain(|note_off| {
+            match cycle.delta_frames_absolute(note_off.tick) {
+                Some(frames) => {
+                    timed_messages.push(TimedMessage::new(frames, note_off.message()));
+                    false
+                },
+                None => true
+            }
+        });
+
+        timed_messages
+    }
 
     pub fn output(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        self.instruments.iter_mut()
-            .flat_map(|instrument| {
-                let mut messages = instrument.note_off_messages(cycle);
-                messages.extend(instrument.note_on_messages(cycle));
-                messages
-            })
-            .collect()
+        // First notes off
+        let mut messages = self.note_off_messages(cycle);
+        
+        // Next notes on
+        if cycle.is_rolling {
+            if let Some(sequences) = self.playing_sequences(cycle) {
+                // Get phrases that are playing in sequence
+                // ( instrument, phrase )
+                let phrases: Vec<(usize, usize)> = sequences.iter()
+                    .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
+                    .collect();
+                    
+                // Get patterns that are playingg
+                // (phrase length, pattern start, pattern)
+                let notes: Vec<(TimedMessage, NoteOff)> = phrases.iter()
+                    .flat_map(|(instrument, phrase)| {
+                        self.instruments[*instrument].phrases[*phrase].playing_notes(cycle, &self.instruments[*instrument].patterns)
+                    })
+                    .collect();
+
+
+                notes.into_iter().for_each(|(message, note_off)| {
+                    self.note_offs.push(note_off);
+                    messages.push(message);
+                })
+            }
+        }
+
+        messages
     }
 }

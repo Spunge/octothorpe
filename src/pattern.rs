@@ -1,8 +1,7 @@
 
-use super::{TICKS_PER_BEAT, BEATS_PER_BAR};
-use super::note::{Note, NoteOff};
-use super::message::{Message, TimedMessage};
-use super::cycle::Cycle;
+use super::TICKS_PER_BEAT;
+use super::note::Note;
+use super::message::Message;
 use super::playable::Playable;
 
 pub struct Pattern {

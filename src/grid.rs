@@ -1,6 +1,7 @@
 
 use super::message::Message;
 
+#[derive(Debug)]
 pub struct Grid {
     pub width: u8,
     pub height: u8,

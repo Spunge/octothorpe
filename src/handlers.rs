@@ -122,9 +122,9 @@ impl jack::ProcessHandler for ProcessHandler {
         // Process incoming midi and build a vec of control output
         let mut control_messages = self.controller.process_midi_messages(self.control_in.iter(process_scope), client);
 
-        if let Some(messages) = self.controller.sequencer.draw_dynamic(&cycle) {
-            control_messages.extend(messages);
-        }
+        //if let Some(messages) = self.controller.sequencer.draw_dynamic(&cycle) {
+            //control_messages.extend(messages);
+        //}
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
             control_messages.push(message);
