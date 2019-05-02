@@ -120,9 +120,16 @@ impl Sequencer {
         &mut self.sequences[self.sequence as usize]
     }
 
+    fn is_shift_pressed(&self) -> bool {
+        self.keys_pressed.iter().any(|keypress| {
+            keypress.note == 0x62 && keypress.velocity == 0x7F && keypress.channel == 0x90
+        })
+    }
+
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
         match message.bytes[1] {
             0x3E | 0x51 => self.switch_detailview(),
+            // Playable grid
             0x52 ... 0x56 => self.switch_playable(message.bytes[1] - 0x52),
             // TODO - Grid should add notes & add phrases
             0x35 ... 0x39 => {
@@ -144,6 +151,7 @@ impl Sequencer {
                     DetailView::Phrase => self.instrument().phrase().toggle_pattern(from..to, message.bytes[1] - 0x35),
                 }
             },
+            // Up / down 
             0x5E | 0x5F => {
                 if let DetailView::Pattern = self.detailview {
                     let should_redraw = match message.bytes[1] {
@@ -266,6 +274,15 @@ impl Sequencer {
             DetailView::Pattern => { self.instrument().pattern = playable as usize },
             DetailView::Phrase => { self.instrument().phrase = playable as usize },
         }
+
+        // Reset pattern on shift click
+        if self.is_shift_pressed() {
+            match self.detailview {
+                DetailView::Pattern => { self.instrument().pattern().reset() },
+                DetailView::Phrase => { self.instrument().phrase().reset() },
+            }
+        }
+
         messages.append(&mut self.draw_instrument());
         messages
     }

@@ -7,6 +7,8 @@ use super::message::Message;
 use super::playable::Playable;
 use super::sequencer::KeyPress;
 
+const BASE_NOTE: u8 = 73;
+
 pub struct Pattern {
     pub playable: Playable,
     channel: u8,
@@ -22,7 +24,7 @@ impl Pattern {
             notes,
             // TODO - Use scales for this
             // Put a4 in center of grid
-            base_note: 71,
+            base_note: BASE_NOTE,
         }
     }
 
@@ -38,6 +40,11 @@ impl Pattern {
             Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(3.5), 69, 127),
         ];
         Pattern::create(channel, notes)
+    }
+
+    pub fn reset(&mut self) {
+        self.notes = vec![];
+        self.base_note = BASE_NOTE;
     }
 
     pub fn change_base_note(&mut self, delta: i32) -> bool {

@@ -40,6 +40,10 @@ impl Phrase {
         ])
     }
 
+    pub fn reset(&mut self) {
+        self.played_patterns = vec![];
+    }
+
     pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) -> Vec<Message> {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
