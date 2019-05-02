@@ -19,8 +19,20 @@ use std::sync::mpsc::channel;
 use controller::Controller;
 use handlers::*;
 
-const TICKS_PER_BEAT: f64 = 1920.0;
-const BEATS_PER_BAR: u8 = 4;
+const TICKS_PER_BEAT: u32 = 1920;
+const BEATS_PER_BAR: u32 = 4;
+
+fn beats_to_ticks(beats: u32) -> u32 {
+    beats * TICKS_PER_BEAT
+}
+
+fn bars_to_beats(bars: u32) -> u32 {
+    bars * BEATS_PER_BAR
+}
+
+fn bars_to_ticks(bars: u32) -> u32 {
+    bars_to_beats(bars) * TICKS_PER_BEAT
+}
 
 fn main() {
     // Setup client

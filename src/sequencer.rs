@@ -98,7 +98,7 @@ impl Sequencer {
             sequence_queued: Some(0),
 
             // What are we currently showing?
-            detailview: DetailView::Pattern,
+            detailview: DetailView::Phrase,
             overview: OverView::Instrument,
 
             // Only show in instrument overview

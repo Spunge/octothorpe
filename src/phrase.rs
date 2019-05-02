@@ -1,29 +1,30 @@
 
 use std::ops::Range;
 
-use super::{BEATS_PER_BAR, TICKS_PER_BEAT};
+use super::bars_to_ticks;
 use super::pattern::Pattern;
 use super::note::NoteOff;
 use super::cycle::Cycle;
 use super::message::TimedMessage;
 use super::playable::Playable;
 use super::message::Message;
-use super::sequencer::KeyPress;
 
 #[derive(Clone)]
 pub struct PlayedPattern {
     pub index: usize,
-    pub bar: u32,
+    // Start & end in ticks
+    pub start: u32,
+    pub end: u32,
 }
 
 pub struct Phrase {
     pub playable: Playable,
-    pub patterns: Vec<PlayedPattern>,
+    pub played_patterns: Vec<PlayedPattern>,
 }
 
 impl Phrase {
-    fn create(patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { playable: Playable::new(4, 4), patterns, }
+    fn create(played_patterns: Vec<PlayedPattern>) -> Self {
+        Phrase { playable: Playable::new(4, 4), played_patterns, }
     }
 
     pub fn new() -> Self {
@@ -32,10 +33,10 @@ impl Phrase {
     
     pub fn default() -> Self {
         Phrase::create(vec![
-            PlayedPattern { index: 0, bar: 0 },
-            PlayedPattern { index: 0, bar: 1 },
-            PlayedPattern { index: 0, bar: 2 },
-            PlayedPattern { index: 0, bar: 3 },
+            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(1) },
+            PlayedPattern { index: 0, start: bars_to_ticks(1), end: bars_to_ticks(2) },
+            PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
+            PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
         ])
     }
 
@@ -44,29 +45,13 @@ impl Phrase {
     }
    
     pub fn draw_phrase(&mut self) -> Vec<Message> {
-        let grid = &mut self.playable.main_grid;
-        let leds_per_bar = 8 * self.playable.zoom / self.playable.bars as u32;
-        let offset = grid.width as u32 * self.playable.offset;
-
-        self.patterns.iter()
+        let played_pattern_coords = self.played_patterns.iter()
             .map(|pattern| {
-                let absolute_led = pattern.bar as i32 * leds_per_bar as i32;
-                let x = absolute_led as i32 - offset as i32;
-                let y = pattern.index as i32;
-
-                let head = (x, y, 1);
-                let tail: Vec<(i32, i32, u8)> = (1..leds_per_bar).map(|led| (x + led as i32, y, 5)).collect();
-
-                let mut messages = vec![head];
-                messages.extend(tail);
-                messages
+                (pattern.start, pattern.end, pattern.index as i32)
             })
-            .flatten()
-            .filter_map(|led| {
-                let (x, y, state) = led;
-                grid.try_switch_led(x, y, state)
-            })
-            .collect()
+            .collect();
+
+        self.playable.try_switch_coords(played_pattern_coords)
     }
 
     pub fn draw(&mut self) -> Vec<Message> {
@@ -86,22 +71,16 @@ impl Phrase {
     }
 
     pub fn playing_notes(&self, cycle: &Cycle, patterns: &[Pattern]) -> Vec<(TimedMessage, NoteOff)> {
-        let ticks_per_bar = BEATS_PER_BAR as u32 * TICKS_PER_BEAT as u32;
-        let phrase_ticks = ticks_per_bar * self.playable.bars as u32;
-        
-        self.patterns.iter()
+        self.played_patterns.iter()
             .filter_map(|pattern| {
-                let pattern_ticks = patterns[pattern.index].playable.bars as u32 * ticks_per_bar;
-                let start = pattern.bar * ticks_per_bar;
-                let end = start + pattern_ticks;
-                let cycle_start = cycle.start % phrase_ticks;
+                let cycle_start = cycle.start % self.playable.ticks;
                 let cycle_end = cycle_start + cycle.ticks;
 
                 // Is pattern playing?
-                if start < cycle_end && end > cycle_start {
+                if pattern.start < cycle_end && pattern.end > cycle_start {
                     let notes = patterns[pattern.index].notes.iter()
                         .filter_map(move |note| {
-                            let note_start = note.tick + start;
+                            let note_start = note.tick + pattern.start;
 
                             // Does note fall in cycle?
                             if note_start >= cycle_start && note_start < cycle_end {

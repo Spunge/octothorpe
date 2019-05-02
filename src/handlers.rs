@@ -39,7 +39,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
             // Only update timebase when we are asked for it, or when our state changed
             if is_new_pos || ! self.is_up_to_date {
                 (*pos).beats_per_bar = self.beats_per_bar as f32;
-                (*pos).ticks_per_beat = TICKS_PER_BEAT;
+                (*pos).ticks_per_beat = TICKS_PER_BEAT as f64;
                 (*pos).beat_type = self.beat_type as f32;
                 (*pos).beats_per_minute = self.beats_per_minute;
                 

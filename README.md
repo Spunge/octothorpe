@@ -49,7 +49,7 @@ Improvements
 - [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
 - [X] Don't check every note against the cycle
 - [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
-
+- [ ] Save state to file
 
 ### Idea / unsure about
 Patterns / Phrases

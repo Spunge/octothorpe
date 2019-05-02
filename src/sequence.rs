@@ -1,5 +1,4 @@
 
-use super::{BEATS_PER_BAR, TICKS_PER_BEAT};
 use super::message::Message;
 use super::instrument::Instrument;
 use super::grid::Grid;
@@ -55,17 +54,12 @@ impl Sequence {
     }
 
     // Get bars of sequence based on the longest phrase it's playing
-    pub fn bars(&self, instruments: &[Instrument; 16]) -> Option<u8> {
+    pub fn ticks(&self, instruments: &[Instrument; 16]) -> Option<u32> {
         self.active_phrases()
             .map(|(instrument, phrase)| {
-                instruments[instrument].phrases[phrase].playable.bars
+                instruments[instrument].phrases[phrase].playable.ticks
             })
             .max()
-    }
-
-    pub fn ticks(&self, instruments: &[Instrument; 16]) -> Option<u32> {
-        self.bars(instruments)
-            .and_then(|bars| Some(bars as u32 * BEATS_PER_BAR as u32 * TICKS_PER_BEAT as u32))
     }
 
     pub fn draw_sequence(&mut self, group: u8) -> Vec<Message> {
