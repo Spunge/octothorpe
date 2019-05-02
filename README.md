@@ -28,8 +28,8 @@ Instruments
 - [ ] scene lauch row selects phrases in phrase view
 
 Sequences
-- [ ] Sequences are played
-- [ ] Pan, send A etc. show corresponding sequence
+- [X] Sequences are played
+- [X] Pan, send A etc. show corresponding sequence
 - [ ] Queue sequence by shift clicking sequence button
 - [ ] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [ ] Make indicator lights light up for notes played by instrument
@@ -42,7 +42,7 @@ Effect knobs
 
 Improvements
 - [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
-- [ ] Don't check every note against the cycle
+- [X] Don't check every note against the cycle
 - [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
 
 
