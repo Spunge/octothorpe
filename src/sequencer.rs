@@ -80,7 +80,7 @@ impl Sequencer {
 
             // What are we currently showing?
             detailview: DetailView::Pattern,
-            overview: OverView::Sequence,
+            overview: OverView::Instrument,
 
             // Only show in instrument overview
             playable_grid: Grid::new(1, 5, 0x52),
@@ -106,6 +106,7 @@ impl Sequencer {
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
         match message.bytes[1] {
             0x3E => self.switch_detailview(),
+            0x52 | 0x53 | 0x54 | 0x55 | 0x56 => self.switch_playable(message.bytes[1] - 0x52),
             0x31 | 0x32 | 0x60 | 0x61 => {
                 let should_redraw = match message.bytes[1] {
                     0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
@@ -140,7 +141,7 @@ impl Sequencer {
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             // Stuff for instruments
-            0x3E | 0x31 | 0x32 | 0x60 | 0x61 => {
+            0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x52 | 0x53 | 0x54 | 0x55 | 0x56 => {
                 match self.overview {
                     OverView::Instrument => self.instrument_key_pressed(message),
                     OverView::Sequence => self.sequence_key_pressed(message),
@@ -181,6 +182,16 @@ impl Sequencer {
             self.toggle_overview();
         }
         self.instrument = instrument;
+        messages.append(&mut self.draw_instrument());
+        messages
+    }
+
+    fn switch_playable(&mut self, playable: u8) -> Vec<Message> {
+        let mut messages = self.clear_instrument(false);
+        match self.detailview {
+            DetailView::Pattern => { self.instrument().pattern = playable as usize },
+            DetailView::Phrase => { self.instrument().phrase = playable as usize },
+        }
         messages.append(&mut self.draw_instrument());
         messages
     }
@@ -441,19 +452,19 @@ impl Sequencer {
     }
 
     pub fn note_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        let mut timed_messages = vec![];
+        let mut messages = vec![];
 
         self.note_offs.retain(|note_off| {
             match cycle.delta_frames_absolute(note_off.tick) {
                 Some(frames) => {
-                    timed_messages.push(TimedMessage::new(frames, note_off.message()));
+                    messages.push(TimedMessage::new(frames, note_off.message()));
                     false
                 },
                 None => true
             }
         });
 
-        timed_messages
+        messages
     }
 
     pub fn output(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
