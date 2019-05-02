@@ -6,17 +6,19 @@ Turn your APC40 into a step sequencer
 
 ### TODO 
 Patterns
-- [ ] Pattern click activates / deactivates note with current velocity
-- [ ] While holding first note down, change note length by clicking a following note in the same key
+- [X] Pattern click activates / deactivates note with current velocity
+- [X] While holding first note down, change note length by clicking a following note in the same key
 - [X] row 0x32 -> change pattern length
 - [ ] row 0x30 -> change velocity level
 - [X] row 0x31 -> change zoom level
 - [X] bank select moves viewport in horizontally, also moving zoom indicator
-- [ ] bank select moves viewport vertically
+- [X] bank select moves viewport vertically
 - [ ] Indicator shows in currently playing pattern
+- [ ] Use pattern indicator as indicator of base note offset for a second, switching back to selected pattern
 
 Phrases
 - [X] Render phrases
+- [ ] Toggle phrases
 - [ ] Handle changing pattern length in phrases by keeping pattern end around
 - [ ] Indicator shows progress in currently playing phrase
 
@@ -26,6 +28,7 @@ Instruments
 - [X] scene lauch row selects patterns in pattern view
 - [X] scene lauch row selects phrases in phrase view
 - [ ] Copy playables by holding playable key & clicking other playable key
+- [ ] Clear pattern / phrase button
 
 Sequences
 - [X] Sequences are played
@@ -46,7 +49,6 @@ Improvements
 - [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
 - [X] Don't check every note against the cycle
 - [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
-- [ ] Clear pattern / phrase button
 
 
 ### Idea / unsure about
@@ -55,7 +57,6 @@ Patterns / Phrases
 - Fold pattern grid to notes in key / all notes
 - shift + row 0x31 -> move zoom viewport
 - Make it possible to offset pattern start in phrase
-- Use pattern indicator as indicator of base note offset?
 
 Velocity
 - Show velocity of notes in grid by color of note?
