@@ -3,7 +3,7 @@ use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::grid::Grid;
 use super::instrument::Instrument;
-use super::phrase::Phrase;
+use super::phrase::{Phrase, PlayedPattern};
 use super::pattern::Pattern;
 use super::sequence::Sequence;
 use super::playable::Playable;
@@ -40,6 +40,7 @@ pub struct Sequencer {
     group: u8,
 
     note_offs: Vec<NoteOff>,
+    control_offs: Vec<(u32, u8)>,
     keys_pressed: Vec<KeyPress>,
 
     instruments: [Instrument; 16],
@@ -88,6 +89,7 @@ impl Sequencer {
 
             keys_pressed: vec![],
             note_offs: vec![],
+            control_offs: vec![],
 
             sequences,
             sequence: 0,
@@ -461,7 +463,6 @@ impl Sequencer {
             .collect()
     }
 
-    // TODO - Move this logic to indicator func
     pub fn draw_dynamic(&mut self, cycle: &Cycle) -> Option<Vec<TimedMessage>> {
         if cycle.was_repositioned || cycle.is_rolling {
             match self.detailview {
@@ -568,19 +569,31 @@ impl Sequencer {
                 // Get phrases that are playing in sequence
                 // ( instrument, phrase )
                 let phrases: Vec<(usize, usize)> = sequences.iter()
+                //sequences.iter()
                     .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
                     .collect();
                     
                 // Get patterns that are playingg
-                // (phrase length, pattern start, pattern)
-                let notes: Vec<(TimedMessage, NoteOff)> = phrases.iter()
+                let patterns: Vec<(usize, PlayedPattern)> = phrases.iter()
                     .flat_map(|(instrument, phrase)| {
-                        self.instruments[*instrument].phrases[*phrase].playing_notes(cycle, &self.instruments[*instrument].patterns)
+                        self.instruments[*instrument].phrases[*phrase]
+                            .playing_patterns(cycle, &self.instruments[*instrument].patterns)
+                            .into_iter()
+                            .map(move |played_pattern| {
+                                (*instrument, played_pattern)
+                            })
                     })
                     .collect();
 
+                let notes: Vec<(TimedMessage, NoteOff)> = patterns.iter()
+                    .flat_map(|(instrument, played_pattern)| {
+                        self.instruments[*instrument].patterns[played_pattern.index]
+                            .playing_notes(cycle, played_pattern.start, played_pattern.end)
+                    })
+                    .collect();
 
-                notes.into_iter().for_each(|(message, note_off)| {
+                notes.into_iter()
+                    .for_each(|(message, note_off)| {
                     self.note_offs.push(note_off);
                     messages.push(message);
                 })

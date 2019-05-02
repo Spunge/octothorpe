@@ -2,10 +2,10 @@
 use std::ops::Range;
 
 use super::beats_to_ticks;
-use super::note::Note;
-use super::message::Message;
+use super::note::{Note, NoteOff};
+use super::message::{TimedMessage, Message};
 use super::playable::Playable;
-use super::sequencer::KeyPress;
+use super::cycle::Cycle;
 
 const BASE_NOTE: u8 = 73;
 
@@ -106,6 +106,27 @@ impl Pattern {
             self.playable.length_grid.clear(force),
             self.playable.zoom_grid.clear(force) 
         ].into_iter().flatten().collect()
+    }
+
+    pub fn playing_notes(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(TimedMessage, NoteOff)> {
+        self.notes.iter()
+            .filter_map(move |note| {
+                let note_start = note.start + start;
+
+                // Does note fall in cycle?
+                if note_start >= cycle.start && note_start < cycle.end && note_start < end {
+                    let delta_ticks = note_start - cycle.start;
+                    let delta_frames = (delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
+
+                    let message = TimedMessage::new(delta_frames, note.message());
+                    let note_off = note.note_off(cycle.absolute_start + delta_ticks);
+
+                    Some((message, note_off))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
