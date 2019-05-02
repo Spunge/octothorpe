@@ -33,10 +33,10 @@ impl Phrase {
     
     pub fn default() -> Self {
         Phrase::create(vec![
-            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(1) },
-            PlayedPattern { index: 0, start: bars_to_ticks(1), end: bars_to_ticks(2) },
-            PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
-            PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
+            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(4) },
+            //PlayedPattern { index: 0, start: bars_to_ticks(1), end: bars_to_ticks(2) },
+            //PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
+            //PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
         ])
     }
 
@@ -87,29 +87,37 @@ impl Phrase {
 
     pub fn playing_notes(&self, cycle: &Cycle, patterns: &[Pattern]) -> Vec<(TimedMessage, NoteOff)> {
         self.played_patterns.iter()
-            .filter_map(|pattern| {
+            .filter_map(|played_pattern| {
                 let cycle_start = cycle.start % self.playable.ticks;
                 let cycle_end = cycle_start + cycle.ticks;
 
                 // Is pattern playing?
-                if pattern.start < cycle_end && pattern.end > cycle_start {
-                    let notes = patterns[pattern.index].notes.iter()
-                        .filter_map(move |note| {
-                            let note_start = note.start + pattern.start;
+                if played_pattern.start < cycle_end && played_pattern.end > cycle_start {
+                    let played_pattern_length = (played_pattern.end - played_pattern.start);
+                    let pattern_length = patterns[played_pattern.index].playable.ticks;
+                    // Dirty way to round up
+                    let loops = (played_pattern_length + pattern_length - 1) / pattern_length;
 
-                            // Does note fall in cycle?
-                            if note_start >= cycle_start && note_start < cycle_end {
-                                let delta_ticks = note_start - cycle_start;
-                                let delta_frames = (delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
+                    let notes = (0..loops).flat_map(move |iteration| {
+                        patterns[played_pattern.index].notes.iter()
+                            .filter_map(move |note| {
+                                let note_start = note.start + played_pattern.start + iteration * pattern_length;
 
-                                let message = TimedMessage::new(delta_frames, note.message());
-                                let note_off = note.note_off(cycle.absolute_start + delta_ticks);
+                                // Does note fall in cycle?
+                                if note_start >= cycle_start && note_start < cycle_end {
+                                    let delta_ticks = note_start - cycle_start;
+                                    let delta_frames = (delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
 
-                                Some((message, note_off ))
-                            } else {
-                                None
-                            }
-                        });
+                                    let message = TimedMessage::new(delta_frames, note.message());
+                                    let note_off = note.note_off(cycle.absolute_start + delta_ticks);
+
+                                    Some((message, note_off ))
+                                } else {
+                                    None
+                                }
+                            })
+                    });
+
                     
                     Some(notes)
                 } else {

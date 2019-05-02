@@ -76,9 +76,7 @@ impl Sequencer {
             Instrument::new(12), Instrument::new(13), Instrument::new(14), Instrument::new(15),
         ];
         instruments[0].patterns[0] = Pattern::default(0);
-        instruments[1].patterns[0] = Pattern::alternate_default(1);
         instruments[0].phrases[0] = Phrase::default();
-        instruments[1].phrases[0] = Phrase::default();
     
         // Build sequence we can trigger
         let sequences = [ Sequence::default(), Sequence::alternate_default(), Sequence::new(), Sequence::new(), ];

@@ -32,23 +32,11 @@ impl Pattern {
 
     pub fn default(channel: u8) -> Self {
         let notes = vec![
-            Note::new(channel, beats_to_ticks(0.0), beats_to_ticks(1.0), 73, 127),
-            Note::new(channel, beats_to_ticks(1.0), beats_to_ticks(2.0), 69, 127),
-            Note::new(channel, beats_to_ticks(2.0), beats_to_ticks(3.0), 69, 127),
-            Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(4.0), 69, 127),
+            Note::new(channel, beats_to_ticks(0.0), beats_to_ticks(0.5), 73, 127),
+            Note::new(channel, beats_to_ticks(1.0), beats_to_ticks(1.5), 69, 127),
+            Note::new(channel, beats_to_ticks(2.0), beats_to_ticks(2.5), 69, 127),
+            Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(3.5), 69, 127),
         ];
-
-        Pattern::create(channel, notes)
-    }
-
-    pub fn alternate_default(channel: u8) -> Self {
-        let notes = vec![
-            Note::new(channel, beats_to_ticks(0.5), beats_to_ticks(1.0), 71, 127),
-            Note::new(channel, beats_to_ticks(1.5), beats_to_ticks(2.0), 70, 127),
-            Note::new(channel, beats_to_ticks(2.5), beats_to_ticks(3.0), 72, 127),
-            Note::new(channel, beats_to_ticks(3.5), beats_to_ticks(4.0), 70, 127),
-        ];
-
         Pattern::create(channel, notes)
     }
 
