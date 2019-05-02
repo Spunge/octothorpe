@@ -105,8 +105,10 @@ impl Sequencer {
 
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
         match message.bytes[1] {
-            0x3E => self.switch_detailview(),
-            0x52 | 0x53 | 0x54 | 0x55 | 0x56 => self.switch_playable(message.bytes[1] - 0x52),
+            0x3E | 0x51 => self.switch_detailview(),
+            0x52 ... 0x56 => self.switch_playable(message.bytes[1] - 0x52),
+            // TODO - Grid should add notes & add phrases
+            0x35 ... 0x39 => vec![],
             0x31 | 0x32 | 0x60 | 0x61 => {
                 let should_redraw = match message.bytes[1] {
                     0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
@@ -133,6 +135,13 @@ impl Sequencer {
         }
     }
 
+    pub fn shared_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
+        match self.overview {
+            OverView::Instrument => self.instrument_key_pressed(message),
+            OverView::Sequence => self.sequence_key_pressed(message),
+        }
+    }
+
     pub fn key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
         match message.bytes[1] {
             //0x30 => self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90),
@@ -140,13 +149,11 @@ impl Sequencer {
             0x3A => self.switch_overview(),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
-            // Stuff for instruments
-            0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x52 | 0x53 | 0x54 | 0x55 | 0x56 => {
-                match self.overview {
-                    OverView::Instrument => self.instrument_key_pressed(message),
-                    OverView::Sequence => self.sequence_key_pressed(message),
-                }
-            }
+            0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 => self.shared_key_pressed(message),
+            // Playable select
+            0x52 ... 0x56 => self.shared_key_pressed(message),
+            // Main grid
+            0x35 ... 0x39 => self.shared_key_pressed(message),
             _ => vec![],
         }
     }
