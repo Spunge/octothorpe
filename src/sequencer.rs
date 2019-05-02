@@ -19,10 +19,28 @@ pub enum DetailView {
     Phrase,
 }
 
+#[derive(Debug, Clone)]
+pub struct KeyPress {
+    channel: u8,
+    note: u8,
+    velocity: u8,
+}
+
+impl KeyPress {
+    fn new(message: jack::RawMidi) -> Self {
+        KeyPress {
+            channel: message.bytes[0],
+            note: message.bytes[1],
+            velocity: message.bytes[2],
+        }
+    }
+}
+
 pub struct Sequencer {
     group: u8,
 
     note_offs: Vec<NoteOff>,
+    keys_pressed: Vec<KeyPress>,
 
     instruments: [Instrument; 16],
     instrument: u8,
@@ -70,6 +88,7 @@ impl Sequencer {
             instrument: 0,
             group: 0,
 
+            keys_pressed: vec![],
             note_offs: vec![],
 
             sequences,
@@ -108,7 +127,44 @@ impl Sequencer {
             0x3E | 0x51 => self.switch_detailview(),
             0x52 ... 0x56 => self.switch_playable(message.bytes[1] - 0x52),
             // TODO - Grid should add notes & add phrases
-            0x35 ... 0x39 => vec![],
+            0x35 ... 0x39 => {
+                // Get start & end in grid of pressed keys
+                let from = self.keys_pressed.iter()
+                    .filter(|keypress| keypress.note == message.bytes[1])
+                    .min_by_key(|keypress| keypress.channel)
+                    .unwrap()
+                    .channel - 0x90;
+
+                let to = self.keys_pressed.iter()
+                    .filter(|keypress| keypress.note == message.bytes[1])
+                    .max_by_key(|keypress| keypress.channel)
+                    .unwrap()
+                    .channel - 0x90;
+
+                match self.detailview {
+                    DetailView::Pattern => self.instrument().pattern().toggle_note(from..to, message.bytes[1] - 0x35),
+                    DetailView::Phrase => self.instrument().phrase().toggle_pattern(from..to, message.bytes[1] - 0x35),
+                }
+            },
+            0x5E | 0x5F => {
+                if let DetailView::Pattern = self.detailview {
+                    let should_redraw = match message.bytes[1] {
+                        0x5E => self.instrument().pattern().change_base_note(4),
+                        0x5F => self.instrument().pattern().change_base_note(-4),
+                        _ => false,
+                    };
+
+                    if should_redraw { 
+                        let mut messages = self.instrument().pattern().playable.main_grid.clear(false);
+                        messages.extend(self.instrument().pattern().draw_pattern());
+                        messages
+                    } else { 
+                        vec![] 
+                    }
+                } else {
+                    vec![]
+                }
+            },
             0x31 | 0x32 | 0x60 | 0x61 => {
                 let should_redraw = match message.bytes[1] {
                     0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
@@ -143,19 +199,32 @@ impl Sequencer {
     }
 
     pub fn key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
+        // Remember remember
+        self.keys_pressed.push(KeyPress::new(message));
+
         match message.bytes[1] {
             //0x30 => self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90),
             0x50 => self.switch_group(),
             0x3A => self.switch_overview(),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
-            0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 => self.shared_key_pressed(message),
+            0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
             // Playable select
             0x52 ... 0x56 => self.shared_key_pressed(message),
             // Main grid
             0x35 ... 0x39 => self.shared_key_pressed(message),
             _ => vec![],
         }
+    }
+
+    // Key released is 0x80 + channel instead of 0x90 + channel
+    pub fn key_released(&mut self, message: jack::RawMidi) -> Option<Vec<Message>> {
+        self.keys_pressed.retain(|key_pressed| {
+            key_pressed.channel != message.bytes[0] + 16
+                || key_pressed.note != message.bytes[1]
+                || key_pressed.velocity != message.bytes[2]
+        });
+        None
     }
 
     fn switch_sequence(&mut self, sequence: u8) -> Vec<Message> {
@@ -406,7 +475,7 @@ impl Sequencer {
     }
     */
 
-    fn set_sequence_as_playing(&mut self, sequence: usize) {
+    fn set_playing_sequence(&mut self, sequence: usize) {
         self.sequence_playing = sequence;
         self.sequence_queued = None;
     }
@@ -423,7 +492,7 @@ impl Sequencer {
             // If cycle covers current sequence and next
             if cycle.start % ticks > cycle.end % ticks {
                 if let Some(index) = self.sequence_queued {
-                    //self.set_sequence_as_playing(index);
+                    //self.set_playing_sequence(index);
                     sequences.push(index);
                 } else {
                     sequences.push(self.sequence_playing);
@@ -441,7 +510,7 @@ impl Sequencer {
             if sequences.len() > 1 {
                 if sequences[0] != sequences[1] {
                     println!("switching sequence");
-                    self.set_sequence_as_playing(sequences[1]);
+                    self.set_playing_sequence(sequences[1]);
                 } else {
                     println!("repeating sequence");
                 }
@@ -450,7 +519,7 @@ impl Sequencer {
             Some(sequences)
         } else {
             if let Some(index) = self.sequence_queued {
-                self.set_sequence_as_playing(index);
+                self.set_playing_sequence(index);
                 self.current_playing_sequences(cycle)
             } else {
                 None

@@ -38,8 +38,8 @@ impl Controller {
         }
     }
 
-    fn key_released(&mut self, _event: jack::RawMidi, _client: &jack::Client) -> Option<Vec<Message>> {
-        None
+    fn key_released(&mut self, message: jack::RawMidi) -> Option<Vec<Message>> {
+        self.sequencer.key_released(message)
     }
 
     pub fn process_midi_messages<'a, I>(&mut self, messages: I, client: &jack::Client) -> Vec<TimedMessage>
@@ -88,7 +88,7 @@ impl Controller {
     fn process_message(&mut self, message: jack::RawMidi, client: &jack::Client) -> Option<Vec<Message>> {
         match message.bytes[0] {
             0x90...0x97 => self.key_pressed(message, client),
-            0x80...0x87 => self.key_released(message, client),
+            0x80...0x87 => self.key_released(message),
             _ => None,
         }
     }

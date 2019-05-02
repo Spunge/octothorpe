@@ -1,4 +1,6 @@
 
+use std::ops::Range;
+
 use super::{BEATS_PER_BAR, TICKS_PER_BEAT};
 use super::pattern::Pattern;
 use super::note::NoteOff;
@@ -6,6 +8,7 @@ use super::cycle::Cycle;
 use super::message::TimedMessage;
 use super::playable::Playable;
 use super::message::Message;
+use super::sequencer::KeyPress;
 
 #[derive(Clone)]
 pub struct PlayedPattern {
@@ -36,6 +39,10 @@ impl Phrase {
         ])
     }
 
+    pub fn toggle_pattern(&mut self, x: Range<u8>, y: u8) -> Vec<Message> {
+        vec![]
+    }
+   
     pub fn draw_phrase(&mut self) -> Vec<Message> {
         let grid = &mut self.playable.main_grid;
         let leds_per_bar = 8 * self.playable.zoom / self.playable.bars as u32;

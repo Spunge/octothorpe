@@ -5,7 +5,7 @@ use super::message::Message;
 pub struct Grid {
     pub width: u8,
     pub height: u8,
-    base_note: u8,
+    pub base_note: u8,
     active_leds: Vec<u8>,
 }
 
