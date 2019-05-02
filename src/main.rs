@@ -22,8 +22,8 @@ use handlers::*;
 const TICKS_PER_BEAT: u32 = 1920;
 const BEATS_PER_BAR: u32 = 4;
 
-fn beats_to_ticks(beats: u32) -> u32 {
-    beats * TICKS_PER_BEAT
+fn beats_to_ticks(beats: f64) -> u32 {
+    (beats * TICKS_PER_BEAT as f64) as u32
 }
 
 fn bars_to_beats(bars: u32) -> u32 {

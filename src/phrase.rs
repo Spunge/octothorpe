@@ -40,8 +40,23 @@ impl Phrase {
         ])
     }
 
-    pub fn toggle_pattern(&mut self, x: Range<u8>, y: u8) -> Vec<Message> {
-        vec![]
+    pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) -> Vec<Message> {
+        let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
+        let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
+
+        let patterns = self.played_patterns.len();
+        
+        self.played_patterns.retain(|played_pattern| {
+            (played_pattern.start < start || played_pattern.start >= end) || played_pattern.index != index as usize
+        });
+
+        if patterns == self.played_patterns.len() || x.start != x.end {
+            self.played_patterns.push(PlayedPattern { index: index as usize, start, end });
+        }
+
+        let mut messages = self.playable.main_grid.clear(false);
+        messages.extend(self.draw_phrase());
+        messages
     }
    
     pub fn draw_phrase(&mut self) -> Vec<Message> {
@@ -80,7 +95,7 @@ impl Phrase {
                 if pattern.start < cycle_end && pattern.end > cycle_start {
                     let notes = patterns[pattern.index].notes.iter()
                         .filter_map(move |note| {
-                            let note_start = note.tick + pattern.start;
+                            let note_start = note.start + pattern.start;
 
                             // Does note fall in cycle?
                             if note_start >= cycle_start && note_start < cycle_end {

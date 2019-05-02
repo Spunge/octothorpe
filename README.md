@@ -15,12 +15,15 @@ Patterns
 - [X] bank select moves viewport vertically
 - [ ] Indicator shows in currently playing pattern
 - [ ] Use pattern indicator as indicator of base note offset for a second, switching back to selected pattern
+- [ ] Notes in grid shouldn't be able to overlap
 
 Phrases
 - [X] Render phrases
-- [ ] Toggle phrases
-- [ ] Handle changing pattern length in phrases by keeping pattern end around
+- [X] Toggle phrases
+- [X] Handle changing pattern length in phrases by keeping pattern end around
+- [ ] Play notes in pattern for PlayedPatterns that are longer as pattern
 - [ ] Indicator shows progress in currently playing phrase
+- [ ] Phrases shouldn't be able to overlap
 
 Instruments
 - [X] track selection row switches between instuments

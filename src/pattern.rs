@@ -32,23 +32,21 @@ impl Pattern {
 
     pub fn default(channel: u8) -> Self {
         let notes = vec![
-            Note::new(channel, beats_to_ticks(0), beats_to_ticks(1), 73, 127),
-            Note::new(channel, beats_to_ticks(1), beats_to_ticks(1), 69, 127),
-            Note::new(channel, beats_to_ticks(2), beats_to_ticks(1), 69, 127),
-            Note::new(channel, beats_to_ticks(3), beats_to_ticks(1), 69, 127),
+            Note::new(channel, beats_to_ticks(0.0), beats_to_ticks(1.0), 73, 127),
+            Note::new(channel, beats_to_ticks(1.0), beats_to_ticks(2.0), 69, 127),
+            Note::new(channel, beats_to_ticks(2.0), beats_to_ticks(3.0), 69, 127),
+            Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(4.0), 69, 127),
         ];
 
         Pattern::create(channel, notes)
     }
 
     pub fn alternate_default(channel: u8) -> Self {
-        let s = beats_to_ticks(1);
-        let l = s / 2;
         let notes = vec![
-            Note::new(channel, 0 + l, l, 71, 127),
-            Note::new(channel, s + l, l, 70, 127),
-            Note::new(channel, s * 2 + l, l, 72, 127),
-            Note::new(channel, s * 3 + l, l, 70, 127),
+            Note::new(channel, beats_to_ticks(0.5), beats_to_ticks(1.0), 71, 127),
+            Note::new(channel, beats_to_ticks(1.5), beats_to_ticks(2.0), 70, 127),
+            Note::new(channel, beats_to_ticks(2.5), beats_to_ticks(3.0), 72, 127),
+            Note::new(channel, beats_to_ticks(3.5), beats_to_ticks(4.0), 70, 127),
         ];
 
         Pattern::create(channel, notes)
@@ -76,13 +74,13 @@ impl Pattern {
         let notes = self.notes.len();
         
         self.notes.retain(|note| {
-            (note.tick < start_tick || note.tick >= end_tick) || note.key != key
+            (note.start < start_tick || note.start >= end_tick) || note.key != key
         });
 
         // No notes were removed, add new note, when note is longer as 1, the 1 note from the
         // previous keypress is removed, so ignore that
         if notes == self.notes.len() || x.start != x.end {
-            self.notes.push(Note::new(self.channel, start_tick, end_tick - start_tick, key, 127));
+            self.notes.push(Note::new(self.channel, start_tick, end_tick, key, 127));
         }
 
         let mut messages = self.playable.main_grid.clear(false);
@@ -93,7 +91,7 @@ impl Pattern {
     pub fn draw_pattern(&mut self) -> Vec<Message> {
         let note_coords = self.notes.iter()
             // start, end, y
-            .map(|note| (note.tick, note.tick + note.length, self.base_note as i32 - note.key as i32))
+            .map(|note| (note.start, note.end, self.base_note as i32 - note.key as i32))
             .collect();
 
         self.playable.try_switch_coords(note_coords)
