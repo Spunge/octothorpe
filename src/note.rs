@@ -8,8 +8,8 @@ pub struct Note {
     pub start: u32,
     pub end: u32,
     pub key: u8,
-    velocity: u8,
-    channel: u8,
+    pub velocity: u8,
+    pub channel: u8,
 }
 
 impl Note {
@@ -19,7 +19,7 @@ impl Note {
     }
 
     pub fn note_off(&self, absolute_tick: u32) -> NoteOff {
-        NoteOff::new(self.channel, absolute_tick + (self.end - self.start), self.key, self.velocity)
+        NoteOff::new(self.channel, absolute_tick, self.key, self.velocity)
     }
 
     pub fn message(&self) -> Message {
@@ -31,8 +31,8 @@ impl Note {
 pub struct NoteOff {
     pub tick: u32,
     pub key: u8,
-    velocity: u8,
-    channel: u8,
+    pub velocity: u8,
+    pub channel: u8,
 }
 
 impl NoteOff {

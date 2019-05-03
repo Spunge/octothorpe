@@ -1,4 +1,5 @@
 
+use super::beats_to_ticks;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::grid::Grid;
@@ -432,64 +433,96 @@ impl Sequencer {
         messages
     }
 
-    /*
-    fn draw_indicator(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        // TODO - Show 1 bar pattern over the whole grid, doubling the steps
-        let steps = 8;
-        let ticks = steps * TICKS_PER_BEAT as u32 / 2;
+    fn draw_indicator_grid(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        if let Some(sequences) = self.playing_sequences(cycle) {
+            // Get phrases that are playing in sequence
+            // ( instrument, phrase )
+            let phrases: Vec<(usize, usize)> = sequences.iter()
+                .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
+                .collect();
 
-        (0..steps)
-            .filter_map(|beat| { 
-                let tick = beat * TICKS_PER_BEAT as u32 / 2;
-
-                cycle.delta_ticks_recurring(tick, ticks)
-                    .and_then(|delta_ticks| {
-                        let mut messages = self.indicator_grid.clear(false);
-                        if let Some(message) = self.indicator_grid.try_switch_led(beat as i32, 0, 1) {
-                            messages.push(message);
-                        }
-    
-                        let mut timed_messages = vec![];
-    
-                        let frame = cycle.ticks_to_frames(delta_ticks);
-                        for message in messages.into_iter() {
-                            timed_messages.push(TimedMessage::new(frame, message))
-                        }
-
-                        Some(timed_messages)
-                    })
-            })
-            .flatten()
-            .collect()
-    }
-
-    pub fn draw_dynamic(&mut self, cycle: &Cycle) -> Option<Vec<TimedMessage>> {
-        if cycle.was_repositioned || cycle.is_rolling {
             match self.detailview {
                 DetailView::Pattern => {
+                    // Get patterns that are playingg
+                    // Instrument & played pattern
+                    let mut patterns: Vec<(usize, PlayedPattern)> = phrases.iter()
+                        .flat_map(|(instrument, phrase)| {
+                            self.instruments[*instrument].phrases[*phrase]
+                                .playing_patterns(cycle, &self.instruments[*instrument].patterns)
+                                .into_iter()
+                                .map(move |played_pattern| {
+                                    (*instrument, played_pattern)
+                                })
+                        })
+                        .collect();
+
+                    patterns = patterns.into_iter()
+                        .filter(|(instrument, played_pattern)| {
+                            *instrument == self.instrument as usize && played_pattern.index == self.instrument().pattern
+                        })
+                        .collect();
+
+                    let ticks_offset = self.playable().ticks_offset();
+                    let ticks_per_led = self.playable().ticks_per_led();
+
                     let mut messages = vec![];
 
-                    if cycle.was_repositioned {
-                        let beat_start = (cycle.start / TICKS_PER_BEAT as u32) * TICKS_PER_BEAT as u32;
-                        let reposition_cycle = cycle.repositioned(beat_start);
+                    for (_, played_pattern) in patterns.iter() {
+                        let pattern_length = played_pattern.end - played_pattern.start;
 
-                        messages.extend(self.draw_indicator(&reposition_cycle));
+                        for increment in 0..(pattern_length / ticks_per_led) {
+                            let tick = played_pattern.start + increment * ticks_per_led + ticks_offset;
+                        
+                            if let Some(frames) = cycle.delta_frames(tick) {
+                                messages.extend(self.indicator_grid.clear(false).into_iter().map(|message| TimedMessage::new(frames, message)));
+
+                                if let Some(message) = self.indicator_grid.try_switch_led(increment as i32, 0, 1) {
+                                    messages.push(TimedMessage::new(frames, message));
+                                }
+                            }
+                        }
                     }
 
-                    // Update grid when running, after repositioning
-                    if cycle.is_rolling {
-                        messages.extend(self.draw_indicator(cycle));
-                    }
-
-                    Some(messages)
+                    messages
                 },
-                DetailView::Phrase => None,
+                DetailView::Phrase => {
+                    let should_draw = phrases.iter()
+                        .any(|(instrument, phrase)| {
+                            *instrument == self.instrument as usize && *phrase == self.instrument().phrase
+                        });
+
+                    if should_draw {
+                        //println!("should draw phrase");
+                        vec![]
+                    } else {
+                        vec![]
+                    }
+                }
             }
         } else {
-            None
+            vec![]
         }
     }
-    */
+
+    fn draw_indicator(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        let mut messages = vec![];
+
+        if cycle.was_repositioned || cycle.is_rolling {
+            if cycle.was_repositioned {
+                let beat_start = (cycle.start / beats_to_ticks(1.0)) * beats_to_ticks(1.0) as u32;
+                let reposition_cycle = cycle.repositioned(beat_start);
+
+                messages.extend(self.draw_indicator_grid(&reposition_cycle));
+            }
+
+            // Update grid when running, after repositioning
+            if cycle.is_rolling {
+                messages.extend(self.draw_indicator_grid(cycle));
+            }
+        }
+
+        messages
+    }
 
     fn set_playing_sequence(&mut self, sequence: usize) {
         self.sequence_playing = sequence;
@@ -525,10 +558,7 @@ impl Sequencer {
          if let Some(sequences) = self.current_playing_sequences(cycle) {
             if sequences.len() > 1 {
                 if sequences[0] != sequences[1] {
-                    println!("switching sequence");
                     self.set_playing_sequence(sequences[1]);
-                } else {
-                    println!("repeating sequence");
                 }
             }
 
@@ -559,9 +589,26 @@ impl Sequencer {
         messages
     }
 
-    pub fn output(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+    pub fn control_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        let mut messages = vec![];
+
+        self.control_offs.retain(|(tick, channel)| {
+            match cycle.delta_frames_absolute(*tick) {
+                Some(frames) => {
+                    messages.push(TimedMessage::new(frames, Message::Note([0x90 + *channel, 0x34, 0])));
+                    false
+                },
+                None => true
+            }
+        });
+
+        messages
+    }
+
+    pub fn output(&mut self, cycle: &Cycle) -> (Vec<TimedMessage>, Vec<TimedMessage>) {
         // First notes off
         let mut messages = self.note_off_messages(cycle);
+        let mut control_messages = self.control_off_messages(cycle);
         
         // Next notes on
         if cycle.is_rolling {
@@ -574,6 +621,7 @@ impl Sequencer {
                     .collect();
                     
                 // Get patterns that are playingg
+                // Instrument & played pattern
                 let patterns: Vec<(usize, PlayedPattern)> = phrases.iter()
                     .flat_map(|(instrument, phrase)| {
                         self.instruments[*instrument].phrases[*phrase]
@@ -594,12 +642,35 @@ impl Sequencer {
 
                 notes.into_iter()
                     .for_each(|(message, note_off)| {
-                    self.note_offs.push(note_off);
-                    messages.push(message);
-                })
+                        // Remember control off so we can show sequence indicator
+                        self.note_offs.push(note_off);
+                        messages.push(message);
+                    });
+
+                // Draw sequence indicator
+                if let OverView::Sequence = self.overview {
+                    let sequence_indications: Vec<(TimedMessage, (u32, u8))> = patterns.iter()
+                        .flat_map(|(instrument, played_pattern)| {
+                            self.instruments[*instrument].patterns[played_pattern.index]
+                                .playing_indicators(cycle, played_pattern.start, played_pattern.end)
+                        })
+                        .collect();
+
+                    sequence_indications.into_iter()
+                        .for_each(|(message, note_off)| {
+                            // Remember control off so we can show sequence indicator
+                            self.control_offs.push(note_off);
+                            control_messages.push(message);
+                        });
+                }
             }
         }
 
-        messages
+        // Draw pattern or phrase indicator
+        if let OverView::Instrument = self.overview {
+            control_messages.extend(self.draw_indicator(cycle));
+        }
+
+        (control_messages, messages)
     }
 }

@@ -108,8 +108,8 @@ impl Pattern {
         ].into_iter().flatten().collect()
     }
 
-    pub fn playing_notes(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(TimedMessage, NoteOff)> {
-        self.notes.iter()
+    fn playing_speedable_notes(&self, cycle: &Cycle, start: u32, end: u32, modifier: u32) -> Vec<(TimedMessage, NoteOff)> {
+         self.notes.iter()
             .filter_map(move |note| {
                 let note_start = note.start + start;
 
@@ -119,7 +119,7 @@ impl Pattern {
                     let delta_frames = (delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
 
                     let message = TimedMessage::new(delta_frames, note.message());
-                    let note_off = note.note_off(cycle.absolute_start + delta_ticks);
+                    let note_off = note.note_off(cycle.absolute_start + delta_ticks + ((note.end - note.start) / modifier));
 
                     Some((message, note_off))
                 } else {
@@ -127,6 +127,25 @@ impl Pattern {
                 }
             })
             .collect()
+    }
+
+    pub fn playing_indicators(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(TimedMessage, (u32, u8))> {
+        self.playing_speedable_notes(cycle, start, end, 2).into_iter()
+            // Overwrite note & velocity for indicator
+            .map(|(mut message, noteoff)| {
+                if let Message::Note(mut bytes) = message.message {
+                    bytes[1] = 0x34;
+                    bytes[2] = 0x01;
+                    message.message = Message::Note(bytes);
+                }
+
+                (message, (noteoff.tick, noteoff.channel))
+            })
+            .collect()
+    }
+
+    pub fn playing_notes(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(TimedMessage, NoteOff)> {
+        self.playing_speedable_notes(cycle, start, end, 1)
     }
 }
 

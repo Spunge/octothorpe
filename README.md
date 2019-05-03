@@ -13,9 +13,9 @@ Patterns
 - [X] row 0x31 -> change zoom level
 - [X] bank select moves viewport in horizontally, also moving zoom indicator
 - [X] bank select moves viewport vertically
-- [ ] Indicator shows in currently playing pattern
+- [X] Indicator shows in currently playing pattern
 - [ ] Use pattern indicator as indicator of base note offset for a second, switching back to selected pattern
-- [ ] Notes in grid shouldn't be able to overlap
+- [ ] Notes in grid shouldn't be able to overlap, shorten previous note
 
 Phrases
 - [X] Render phrases
@@ -23,7 +23,7 @@ Phrases
 - [X] Handle changing pattern length in phrases by keeping pattern end around
 - [ ] Play notes in pattern for PlayedPatterns that are longer as pattern
 - [ ] Indicator shows progress in currently playing phrase
-- [ ] Phrases shouldn't be able to overlap
+- [ ] Phrases shouldn't be able to overlap, shorten previous phrase
 
 Instruments
 - [X] track selection row switches between instuments
@@ -31,7 +31,7 @@ Instruments
 - [X] scene lauch row selects patterns in pattern view
 - [X] scene lauch row selects phrases in phrase view
 - [ ] Copy playables by holding playable key & clicking other playable key
-- [ ] Clear pattern / phrase button
+- [X] Shift + playable clears pattern / phrase
 
 Sequences
 - [X] Sequences are played
@@ -40,7 +40,7 @@ Sequences
 - [ ] Show queued sequence by blinking sequence light in sequence grid
 - [X] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [X] row 0x32 -> instrument outputs yes/no
-- [ ] Make indicator lights light up for notes played by instrument
+- [X] Make indicator lights light up for notes played by instrument
 
 Tempo
 - [ ] Fix tap tempo
@@ -59,7 +59,6 @@ Patterns / Phrases
 - We now have 5 phrases / patterns, 1 under every scene launch button, we could implement shift+up/down for scrolling through more of these
 - Fold pattern grid to notes in key / all notes
 - shift + row 0x31 -> move zoom viewport
-- Make it possible to offset pattern start in phrase
 
 Velocity
 - Show velocity of notes in grid by color of note?

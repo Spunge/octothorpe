@@ -11,7 +11,7 @@ pub enum Message {
 #[derive(Debug, Eq)]
 pub struct TimedMessage {
     pub time: u32,
-    message: Message,
+    pub message: Message,
 }
 
 impl TimedMessage {
