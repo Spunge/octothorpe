@@ -24,6 +24,7 @@ Phrases
 - [X] Play notes in pattern for PlayedPatterns that are longer as pattern
 - [ ] Indicator shows progress in currently playing phrase
 - [ ] Phrases shouldn't be able to overlap, shorten previous phrase
+- [ ] Make phrases red instead of green
 
 Instruments
 - [X] track selection row switches between instuments
@@ -32,15 +33,17 @@ Instruments
 - [X] scene lauch row selects phrases in phrase view
 - [ ] Copy playables by holding playable key & clicking other playable key
 - [X] Shift + playable clears pattern / phrase
+- [ ] Keep base note value of grid in instrument, not per pattern
 
 Sequences
 - [X] Sequences are played
 - [X] Pan, send A etc. show corresponding sequence
 - [X] Queue sequence by shift clicking sequence button
-- [ ] Show queued sequence by blinking sequence light in sequence grid
+- [ ] Show active sequence by blinking sequence light in sequence grid
 - [X] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [X] row 0x32 -> instrument outputs yes/no
 - [X] Make indicator lights light up for notes played by instrument
+- [ ] Don't switch sequence on shift click
 
 Tempo
 - [ ] Fix tap tempo
