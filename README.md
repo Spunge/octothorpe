@@ -21,7 +21,7 @@ Phrases
 - [X] Render phrases
 - [X] Toggle phrases
 - [X] Handle changing pattern length in phrases by keeping pattern end around
-- [ ] Play notes in pattern for PlayedPatterns that are longer as pattern
+- [X] Play notes in pattern for PlayedPatterns that are longer as pattern
 - [ ] Indicator shows progress in currently playing phrase
 - [ ] Phrases shouldn't be able to overlap, shorten previous phrase
 
