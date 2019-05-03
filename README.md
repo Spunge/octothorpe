@@ -53,6 +53,7 @@ Improvements
 - [X] Don't check every note against the cycle
 - [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
 - [ ] Save state to file
+- [ ] Move grid not instantly?
 
 ### Idea / unsure about
 Patterns / Phrases

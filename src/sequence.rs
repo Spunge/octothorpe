@@ -88,6 +88,18 @@ impl Sequence {
             .collect()
     }
 
+    pub fn toggle_phrase(&mut self, instrument: u8, phrase: u8) {
+        self.phrases[instrument as usize] = if let Some(old_phrase) = self.phrases[instrument as usize] {
+            if old_phrase == phrase as usize {
+                None
+            } else {
+                Some(phrase as usize)
+            }
+        } else {
+            Some(phrase as usize)
+        }
+    }
+
     pub fn toggle_active(&mut self, instrument: u8) {
         self.active[instrument as usize] = ! self.active[instrument as usize];
     }

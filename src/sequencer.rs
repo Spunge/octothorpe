@@ -193,8 +193,15 @@ impl Sequencer {
         match message.bytes[1] {
             0x32 => {
                 let group = self.group;
-                self.sequence().toggle_active(message.bytes[0]- 0x90);
+                self.sequence().toggle_active(message.bytes[0] - 0x90);
                 self.sequence().draw_active_grid(group)
+            },
+            0x35 ... 0x39 => {
+                let group = self.group;
+                self.sequence().toggle_phrase(message.bytes[0] - 0x90 + group * 8, message.bytes[1] - 0x35);
+                let mut messages = self.sequence().main_grid.clear(false);
+                messages.extend(self.sequence().draw_sequence(group));
+                messages
             },
             _ => vec![],
         }
