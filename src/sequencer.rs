@@ -244,6 +244,9 @@ impl Sequencer {
     }
 
     fn switch_sequence(&mut self, sequence: u8) -> Vec<Message> {
+        if self.is_shift_pressed() {
+            self.sequence_queued = Some(sequence as usize);
+        }
         // Clear sequence stuff
         let mut messages = self.clear_sequence(false);
         messages.extend(self.sequence_grid.clear(false));

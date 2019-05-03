@@ -36,7 +36,7 @@ Instruments
 Sequences
 - [X] Sequences are played
 - [X] Pan, send A etc. show corresponding sequence
-- [ ] Queue sequence by shift clicking sequence button
+- [X] Queue sequence by shift clicking sequence button
 - [ ] Show queued sequence by blinking sequence light in sequence grid
 - [X] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [X] row 0x32 -> instrument outputs yes/no
