@@ -37,7 +37,7 @@ impl Playable {
         8 * self.offset * self.visible_ticks()
     }
 
-    pub fn coords_to_leds(&self, coords: Vec<(u32, u32, i32)>) -> Vec<(i32, i32, u8)> {
+    pub fn led_states(&self, coords: Vec<(u32, u32, i32)>) -> Vec<(i32, i32, u8)> {
         return coords.into_iter()
             .flat_map(|(start, end, y)| {
                 let start_led = (start as i32 - self.ticks_offset() as i32) / self.ticks_per_led() as i32;

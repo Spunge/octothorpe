@@ -8,7 +8,7 @@ pub struct MainGrid {
 }
 
 impl Grid for MainGrid {
-    pub fn new() -> Self {
+    fn new() -> Self {
         MainGrid { width: 8, current: [0; 40], next: [0; 40] }
     }
 }
@@ -20,7 +20,7 @@ pub struct RowGrid {
 }
 
 impl Grid for RowGrid {
-    pub fn new() -> Self {
+    fn new() -> Self {
         RowGrid { width: 8, current: [0; 8], next: [0; 8] }
     }
 }
@@ -32,7 +32,7 @@ pub struct SequenceGrid {
 }
 
 impl Grid for SequenceGrid {
-    pub fn new() -> Self {
+    fn new() -> Self {
         SequenceGrid { width: 1, current: [0; 4], next: [0; 4] }
     }
 }
@@ -44,7 +44,7 @@ pub struct SingleGrid {
 }
 
 impl Grid for SingleGrid {
-    pub fn new() -> Self {
+    fn new() -> Self {
         SingleGrid { width: 1, current: [0; 1], next: [0; 1] }
     }
 }
@@ -56,13 +56,13 @@ pub struct PlayableGrid {
 }
 
 impl Grid for PlayableGrid {
-    pub fn new() -> Self {
+    fn new() -> Self {
         PlayableGrid { width: 1, current: [0; 5], next: [0; 5] }
     }
 }
 
 // TODO - undraw & redraw?
-trait Grid {
+pub trait Grid {
     pub fn new() -> Self;
 
     pub fn switch_led(&mut self, x: u8, y: u8, state: u8) {
@@ -73,8 +73,8 @@ trait Grid {
     }
 
     pub fn led_states(&mut self) -> Vec<(u8, u8, u8)> {
-        // Generate messages to change current state to next state
-        let messages = (0..self.next.len() as u8)
+        // Generate ledstates to change current state to next state
+        let led_states = (0..self.next.len() as u8)
             .filter(|index| self.next[index as usize] != self.current[index as usize])
             .map(|index| {
                 let x = index % self.width;
@@ -87,7 +87,7 @@ trait Grid {
         // Make current state match next state as we're outputting that right now
         self.current = self.next.clone();
         
-        // All the messages
-        messages
+        // All the led_states
+        led_states
     }
 }

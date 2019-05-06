@@ -183,14 +183,14 @@ impl Sequencer {
         }
     }
 
-    pub fn shared_key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
+    pub fn shared_key_pressed(&mut self, message: jack::RawMidi) {
         match self.overview {
             OverView::Instrument => self.instrument_key_pressed(message),
             OverView::Sequence => self.sequence_key_pressed(message),
         }
     }
 
-    pub fn key_pressed(&mut self, message: jack::RawMidi) -> Vec<Message> {
+    pub fn key_pressed(&mut self, message: jack::RawMidi) {
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
 
@@ -210,16 +210,15 @@ impl Sequencer {
     }
 
     // Key released is 0x80 + channel instead of 0x90 + channel
-    pub fn key_released(&mut self, message: jack::RawMidi) -> Option<Vec<Message>> {
+    pub fn key_released(&mut self, message: jack::RawMidi) {
         self.keys_pressed.retain(|key_pressed| {
             key_pressed.channel != message.bytes[0] + 16
                 || key_pressed.note != message.bytes[1]
                 || key_pressed.velocity != message.bytes[2]
         });
-        None
     }
 
-    fn switch_sequence(&mut self, sequence: u8) -> Vec<Message> {
+    fn switch_sequence(&mut self, sequence: u8) {
         // Queue sequence
         if self.is_shift_pressed() {
             self.sequence_queued = Some(sequence as usize);
@@ -232,7 +231,7 @@ impl Sequencer {
         self.sequence = sequence;
     }
 
-    fn switch_group(&mut self) -> Vec<Message> {
+    fn switch_group(&mut self) {
         self.group = if self.group == 1 { 0 } else { 1 };
     }
 
@@ -244,7 +243,7 @@ impl Sequencer {
         self.instrument = instrument;
     }
 
-    fn switch_playable(&mut self, playable: u8) -> Vec<Message> {
+    fn switch_playable(&mut self, playable: u8) {
         match self.detailview {
             DetailView::Pattern => self.instrument().pattern = playable as usize,
             DetailView::Phrase => self.instrument().phrase = playable as usize,
@@ -275,56 +274,33 @@ impl Sequencer {
 
     fn playable(&mut self) -> &mut Playable {
         match self.detailview {
-            DetailView::Pattern => { &mut self.instrument().pattern().playable },
-            DetailView::Phrase => { &mut self.instrument().phrase().playable },
+            DetailView::Pattern => &mut self.instrument().pattern().playable,
+            DetailView::Phrase => &mut self.instrument().phrase().playable,
         }
     }
 
-    fn draw_length(&mut self, length: u8) {
+    fn draw_length_grid(&mut self, length: u8) {
         (0..length).for_each(|x| { self.length_grid.switch_led(x as u8, 0, 1) })
     }
 
-    fn draw_zoom(&mut self) {
-        let length = 8 / self.zoom;
-        let from = self.offset * length;
+    fn draw_zoom_grid(&mut self) {
+        let length = 8 / self.playable().zoom;
+        let from = self.playable().offset * length;
         let to = from + length;
 
         (from..to).for_each(|x| self.zoom_grid.switch_led(x as u8, 0, 1))
     }
 
-    fn draw_pattern(&mut self) {
-        let coords = self.notes.iter()
-            // start, end, y
-            .map(|note| (note.start, note.end, self.base_note as i32 - note.key as i32))
-            .collect();
+    fn draw_main_grid(&mut self) {
+        let led_states = match self.overview {
+            OverView::Instrument => match self.detailview {
+                DetailView::Pattern => self.instrument().pattern().led_states(),
+                DetailView::Phrase => self.instrument().phrase().led_states(),
+            }
+            OverView::Sequence => self.sequence().led_states(self.group),
+        };
 
-        self.playable().coords_to_leds(coords).iter()
-            .for_each(|(x, y, state)| self.main_grid.try_switch_led(x, y, state));
-    }
-
-    fn draw_phrase(&mut self) {
-        let coords = self.played_patterns.iter()
-            .map(|pattern| {
-                (pattern.start, pattern.end, pattern.index as i32)
-            })
-            .collect();
-
-        self.playable().coords_to_leds(coords).iter()
-            .for_each(|(x, y, state)| self.main_grid.switch_led(x, y, state));
-    }
-
-    fn draw_sequence(&mut self, group: u8) -> Vec<Message> {
-        let grid = &mut self.main_grid;
-        let start = grid.width * group;
-        let end = start + grid.width;
-
-        self.sequence().phrases[start as usize .. end as usize].iter()
-            .enumerate()
-            .filter(|(_, phrase)| phrase.is_some())
-            .map(|(instrument, phrase)| {
-                grid.switch_led(instrument as u8, phrase.unwrap() as u8, 1)
-            })
-            .collect()
+        // Todo draw ledstates
     }
 
     /*
@@ -340,19 +316,6 @@ impl Sequencer {
             .collect()
     }
     */
-
-    // Draw all the things
-    pub fn draw(&mut self) -> Vec<Message> {
-        let mut messages = self.draw_sequencer();
-        messages.extend(self.draw_overview());
-        messages
-    }
-
-    pub fn clear(&mut self, force: bool) -> Vec<Message> {
-        let mut messages = self.clear_sequencer(force);
-        messages.extend(self.clear_overview(force));
-        messages
-    }
 
     /*
     fn draw_indicator_grid(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {

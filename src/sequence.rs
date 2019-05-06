@@ -7,7 +7,7 @@ use super::grid::Grid;
 pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
     phrases: [Option<usize>; 16],
-    active: [bool; 16],
+    pub active: [bool; 16],
 }
 
 impl Sequence {
@@ -36,6 +36,19 @@ impl Sequence {
         phrases[1] = Some(1);
 
         Sequence::create(phrases)
+    }
+
+    pub fn led_states(&mut self, group: u8) -> Vec<(i32, i32, u8)> {
+        let start = 8 * group;
+        let end = start + 8;
+
+        self.phrases[start as usize .. end as usize].iter()
+            .enumerate()
+            .filter(|(_, phrase)| phrase.is_some())
+            .map(|(instrument, phrase)| {
+                (instrument as i32, phrase.unwrap() as i32, 1)
+            })
+            .collect()
     }
 
     pub fn active_phrases<'a>(&'a self) -> impl Iterator<Item=(usize, usize)> + 'a {

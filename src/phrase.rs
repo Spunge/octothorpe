@@ -5,7 +5,6 @@ use super::bars_to_ticks;
 use super::pattern::Pattern;
 use super::cycle::Cycle;
 use super::playable::Playable;
-use super::message::Message;
 
 #[derive(Debug, Clone)]
 pub struct PlayedPattern {
@@ -22,7 +21,7 @@ pub struct Phrase {
 
 impl Phrase {
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { playable: Playable::new(bars_to_ticks(4), bars_to_ticks(4)), played_patterns, }
+        Phrase { playable: Playable::new(bars_to_ticks(4), bars_to_ticks(4), 3, 5), played_patterns, }
     }
 
     pub fn new() -> Self {
@@ -42,7 +41,17 @@ impl Phrase {
         self.played_patterns = vec![];
     }
 
-    pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) -> Vec<Message> {
+    pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
+        let coords = self.played_patterns.iter()
+            .map(|pattern| {
+                (pattern.start, pattern.end, pattern.index as i32)
+            })
+            .collect();
+
+        self.playable.led_states(coords)
+    }
+
+    pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
 
@@ -55,10 +64,6 @@ impl Phrase {
         if patterns == self.played_patterns.len() || x.start != x.end {
             self.played_patterns.push(PlayedPattern { index: index as usize, start, end });
         }
-
-        let mut messages = self.playable.main_grid.clear(false);
-        messages.extend(self.draw_phrase());
-        messages
     }
    
     pub fn playing_patterns(&self, cycle: &Cycle, patterns: &[Pattern]) -> Vec<PlayedPattern> {

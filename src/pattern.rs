@@ -19,7 +19,7 @@ pub struct Pattern {
 impl Pattern {
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
-            playable: Playable::new(bars_to_ticks(1), bars_to_ticks(1)),
+            playable: Playable::new(bars_to_ticks(1), bars_to_ticks(1), 1, 5),
             channel,
             notes,
             // TODO - Use scales for this
@@ -40,6 +40,15 @@ impl Pattern {
             Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(3.5), 69, 127),
         ];
         Pattern::create(channel, notes)
+    }
+    
+    pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
+        let coords = self.notes.iter()
+            // start, end, y
+            .map(|note| (note.start, note.end, self.base_note as i32 - note.key as i32))
+            .collect();
+
+        self.playable.led_states(coords)
     }
 
     pub fn reset(&mut self) {
