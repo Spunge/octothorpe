@@ -61,32 +61,6 @@ impl Phrase {
         messages
     }
    
-    pub fn draw_phrase(&mut self) -> Vec<Message> {
-        let played_pattern_coords = self.played_patterns.iter()
-            .map(|pattern| {
-                (pattern.start, pattern.end, pattern.index as i32)
-            })
-            .collect();
-
-        self.playable.try_switch_coords(played_pattern_coords)
-    }
-
-    pub fn draw(&mut self) -> Vec<Message> {
-        vec![ 
-            self.draw_phrase(),
-            self.playable.draw_length(),
-            self.playable.draw_zoom() 
-        ].into_iter().flatten().collect()
-    }
-
-    pub fn clear(&mut self, force: bool) -> Vec<Message> {
-        vec![ 
-            self.playable.main_grid.clear(force), 
-            self.playable.length_grid.clear(force),
-            self.playable.zoom_grid.clear(force) 
-        ].into_iter().flatten().collect()
-    }
-
     pub fn playing_patterns(&self, cycle: &Cycle, patterns: &[Pattern]) -> Vec<PlayedPattern> {
         // Fill up patterns that are larger as 1 iterationn of pattern with multiple playedpatterns
         // of the same kind

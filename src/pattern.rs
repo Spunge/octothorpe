@@ -47,19 +47,16 @@ impl Pattern {
         self.base_note = BASE_NOTE;
     }
 
-    pub fn change_base_note(&mut self, delta: i32) -> bool {
+    pub fn change_base_note(&mut self, delta: i32) {
         let base_note = self.base_note as i32 + delta;
 
         // 21 is A0
         if base_note >= 25 && base_note <= 127 {
             self.base_note = base_note as u8;
-            true
-        } else {
-            false
         }
     }
 
-    pub fn toggle_note(&mut self, x: Range<u8>, y: u8) -> Vec<Message> {
+    pub fn toggle_note(&mut self, x: Range<u8>, y: u8) {
         let start_tick = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end_tick = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
 
@@ -77,35 +74,6 @@ impl Pattern {
         if notes == self.notes.len() || x.start != x.end {
             self.notes.push(Note::new(self.channel, start_tick, end_tick, key, 127));
         }
-
-        let mut messages = self.playable.main_grid.clear(false);
-        messages.extend(self.draw_pattern());
-        messages
-    }
-
-    pub fn draw_pattern(&mut self) -> Vec<Message> {
-        let note_coords = self.notes.iter()
-            // start, end, y
-            .map(|note| (note.start, note.end, self.base_note as i32 - note.key as i32))
-            .collect();
-
-        self.playable.try_switch_coords(note_coords)
-    }
-
-    pub fn draw(&mut self) -> Vec<Message> {
-        vec![ 
-            self.draw_pattern(),
-            self.playable.draw_length(),
-            self.playable.draw_zoom() 
-        ].into_iter().flatten().collect()
-    }
-
-    pub fn clear(&mut self, force: bool) -> Vec<Message> {
-        vec![ 
-            self.playable.main_grid.clear(force), 
-            self.playable.length_grid.clear(force),
-            self.playable.zoom_grid.clear(force) 
-        ].into_iter().flatten().collect()
     }
 
     fn playing_speedable_notes(&self, cycle: &Cycle, start: u32, end: u32, modifier: u32) -> Vec<(TimedMessage, NoteOff)> {

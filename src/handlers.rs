@@ -119,8 +119,10 @@ impl jack::ProcessHandler for ProcessHandler {
         self.ticks_elapsed += cycle.ticks;
         self.was_repositioned = cycle.is_repositioned;
 
-        // Process incoming midi and build a vec of control output
-        let mut control_messages = self.controller.process_midi_messages(self.control_in.iter(process_scope), client);
+        // Process incoming midi
+        let mut control_messages = self.controller.process_midi_messages(self.control_in.iter(process_scope), client)
+            .map(|message| TimedMessage::new(0, message))
+            .collect()
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
@@ -128,11 +130,11 @@ impl jack::ProcessHandler for ProcessHandler {
         }
 
         // Get cycle based control & midi
-        let (control_out, midi_out) = self.controller.sequencer.output(&cycle);
+        let (control_out, midi_out) = ;
         control_messages.extend(control_out);
 
         self.control_out.write(process_scope, control_messages);
-        self.midi_out.write(process_scope, midi_out);
+        self.midi_out.write(process_scope, self.controller.sequencer.output(&cycle));
 
         jack::Control::Continue
     }

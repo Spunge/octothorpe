@@ -8,9 +8,6 @@ pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
     phrases: [Option<usize>; 16],
     active: [bool; 16],
-
-    pub active_grid: Grid,
-    pub main_grid: Grid,
 }
 
 impl Sequence {
@@ -18,9 +15,6 @@ impl Sequence {
         Sequence {
             phrases,
             active: [true; 16],
-
-            active_grid: Grid::new(8, 1, 0x32),
-            main_grid: Grid::new(8, 5, 0x35),
         }
     }
 
@@ -60,32 +54,6 @@ impl Sequence {
                 instruments[instrument].phrases[phrase].playable.ticks
             })
             .max()
-    }
-
-    pub fn draw_sequence(&mut self, group: u8) -> Vec<Message> {
-        let grid = &mut self.main_grid;
-        let start = grid.width * group;
-        let end = start + grid.width;
-
-        self.phrases[start as usize .. end as usize].iter()
-            .enumerate()
-            .filter(|(_, phrase)| phrase.is_some())
-            .map(|(instrument, phrase)| {
-                grid.switch_led(instrument as u8, phrase.unwrap() as u8, 1)
-            })
-            .collect()
-    }
-
-    pub fn draw_active_grid(&mut self, group: u8) -> Vec<Message> {
-        let leds = self.active_grid.width;
-
-        (0..leds)
-            .map(|led| {
-                let is_active = self.active[(led + group * 8) as usize];
-                let state = if is_active { 1 } else { 0 };
-                self.active_grid.switch_led(led, 0, state)
-            })
-            .collect()
     }
 
     pub fn toggle_phrase(&mut self, instrument: u8, phrase: u8) {
