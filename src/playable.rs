@@ -1,6 +1,4 @@
 
-use super::message::Message;
-
 pub struct Playable {
     minimum_ticks: u32,
     pub ticks: u32,
@@ -61,18 +59,15 @@ impl Playable {
         }
     }
 
-    pub fn change_offset(&mut self, delta: i32) -> bool {
+    pub fn change_offset(&mut self, delta: i32) {
         let offset = self.offset as i32 + delta;
 
         if offset >= 0 && offset <= self.zoom as i32 - 1 {
             self.offset = offset as u32;
-            true
-        } else {
-            false
         }
     }
     
-    pub fn change_length(&mut self, length_modifier: u8) -> bool {
+    pub fn change_length(&mut self, length_modifier: u8) {
         match length_modifier {
             1 | 2 | 4 | 8  => {
                 // Calculate new zoom level to keep pattern grid view the same if possible
@@ -82,9 +77,8 @@ impl Playable {
                 if zoom > 0 && zoom <= 8 {
                     self.zoom = zoom;
                 }
-                true
             },
-            _ => false,
+            _ => (),
         }
     }
 

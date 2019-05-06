@@ -1,7 +1,5 @@
 
-use super::message::Message;
 use super::instrument::Instrument;
-use super::grid::Grid;
 
 #[derive(Debug)]
 pub struct Sequence {

@@ -39,7 +39,7 @@ impl Controller {
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
-        let output = input
+        input
             .filter_map(|message| {
                 // Sysex events pass us a lot of data
                 // It's cleaner to check the first byte though

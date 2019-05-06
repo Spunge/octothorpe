@@ -1,8 +1,7 @@
 
-use super::beats_to_ticks;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
-use super::grid::Grid;
+use super::grid::{RowGrid, MainGrid, SequenceGrid, SingleGrid, PlayableGrid};
 use super::instrument::Instrument;
 use super::phrase::{Phrase, PlayedPattern};
 use super::pattern::Pattern;
@@ -107,22 +106,22 @@ impl Sequencer {
             overview: OverView::Instrument,
 
             // Only show in instrument overview
-            playable_grid: Grid::new(1, 5, 0x52),
-            instrument_grid: Grid::new(8, 1, 0x33),
-            length_grid: Grid::new(8, 1, 0x32),
-            zoom_grid: Grid::new(8, 1, 0x31),
+            playable_grid: PlayableGrid::new(),
+            instrument_grid: RowGrid::new(),
+            length_grid: RowGrid::new(),
+            zoom_grid: RowGrid::new(),
 
 
             // Show in both overviews
-            main_grid: Grid::new(8, 5, 0x35),
-            group_grid: Grid::new(1, 1, 0x50),
-            sequence_grid: Grid::new(1, 4, 0x57),
-            overview_grid: Grid::new(1, 1, 0x3A),
-            detailview_grid: Grid::new(1, 1, 0x3E),
-            indicator_grid: Grid::new(8, 1, 0x34),
+            main_grid: MainGrid::new(),
+            group_grid: SingleGrid::new(),
+            sequence_grid: SequenceGrid::new(),
+            overview_grid: SingleGrid::new(),
+            detailview_grid: SingleGrid::new(),
+            indicator_grid: RowGrid::new(),
 
             // Only for sequences
-            active_grid: Grid::new(8, 1, 0x32),
+            active_grid: RowGrid::new(),
         }
     }
 
@@ -171,14 +170,14 @@ impl Sequencer {
             0x32 => self.playable().change_length(message.bytes[0] - 0x90 + 1),
             0x61 => self.playable().change_offset(-1),
             0x60 => self.playable().change_offset(1),
-            _ => vec![],
+            _ => (),
         }
     }
 
     fn sequence_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90),
-            0x35 ... 0x39 => self.sequence().toggle_phrase(message.bytes[0] - 0x90 + group * 8, message.bytes[1] - 0x35),
+            0x35 ... 0x39 => self.sequence().toggle_phrase(message.bytes[0] - 0x90 + self.group * 8, message.bytes[1] - 0x35),
             _ => (),
         }
     }
