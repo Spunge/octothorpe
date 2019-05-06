@@ -1,60 +1,54 @@
 
-use super::{TICKS_PER_BEAT, BEATS_PER_BAR};
 use super::message::Message;
 
 pub struct Playable {
     minimum_ticks: u32,
     pub ticks: u32,
+
     pub zoom: u32,
     pub offset: u32,
-}
 
-fn bars_to_ticks(bars: u8) -> u32 {
-    bars as u32 * BEATS_PER_BAR as u32 * TICKS_PER_BEAT as u32
+    // led states for head & tail
+    head: u8,
+    tail: u8,
 }
 
 impl Playable {
-    pub fn new(bars: u8, minimum_bars: u8) -> Self {
+    pub fn new(ticks: u32, minimum_ticks: u32, head: u8, tail: u8) -> Self {
         Playable {
-            minimum_ticks: bars_to_ticks(minimum_bars),
-            ticks: bars_to_ticks(bars),
+            minimum_ticks,
+            ticks,
             zoom: 1, 
             offset: 0,
+            head,
+            tail,
         }
     }
 
-    pub fn ticks_per_led(&self, leds: u32) -> u32 {
-        self.ticks / self.zoom / leds
+    pub fn visible_ticks(&self) -> u32 {
+        self.ticks / self.zoom
     }
 
-    pub fn ticks_offset(&self, leds: u32) -> u32 {
-        leds * self.offset * self.ticks_per_led()
+    pub fn ticks_per_led(&self) -> u32 {
+        self.visible_ticks() / 8
     }
 
-    pub fn beats(&self) -> u32 {
-        self.ticks / TICKS_PER_BEAT as u32
+    pub fn ticks_offset(&self) -> u32 {
+        8 * self.offset * self.visible_ticks()
     }
 
-    pub fn bars(&self) -> u32 {
-        self.beats() / BEATS_PER_BAR as u32
-    }
-
-    pub fn coords_to_leds(&self, coords: Vec<(u32, u32, i32)>, leds: u32) -> Vec<(i32, i32, u8)> {
+    pub fn coords_to_leds(&self, coords: Vec<(u32, u32, i32)>) -> Vec<(i32, i32, u8)> {
         return coords.into_iter()
             .flat_map(|(start, end, y)| {
-                let start_led = (start as i32 - self.ticks_offset(leds) as i32) / self.ticks_per_led(leds) as i32;
-                let total_leds = (end - start) / self.ticks_per_led(leds);
+                let start_led = (start as i32 - self.ticks_offset() as i32) / self.ticks_per_led() as i32;
+                let total_leds = (end - start) / self.ticks_per_led();
 
-                let mut head = vec![(start_led, y, 1)];
-                let tail: Vec<(i32, i32, u8)> = (1..total_leds).map(|led| (start_led + led as i32, y, 5)).collect();
+                let mut head = vec![(start_led, y, self.head)];
+                let tail: Vec<(i32, i32, u8)> = (1..total_leds).map(|led| (start_led + led as i32, y, self.tail)).collect();
                 head.extend(tail);
                 head
             })
             .collect()
-    }
-
-    fn length_modifier(&self) -> u32 {
-        self.ticks / self.minimum_ticks
     }
 
     pub fn change_zoom(&mut self, button: u32) {
@@ -82,7 +76,7 @@ impl Playable {
         match length_modifier {
             1 | 2 | 4 | 8  => {
                 // Calculate new zoom level to keep pattern grid view the same if possible
-                let zoom = self.zoom * length_modifier as u32 / self.length_modifier() as u32;
+                let zoom = self.zoom * length_modifier as u32 / self.ticks / self.minimum_ticks;
                 self.ticks = length_modifier as u32 * self.minimum_ticks;
                 // Only set zoom when it's possible
                 if zoom > 0 && zoom <= 8 {

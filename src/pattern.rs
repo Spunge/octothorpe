@@ -1,7 +1,7 @@
 
 use std::ops::Range;
 
-use super::beats_to_ticks;
+use super::{beats_to_ticks, bars_to_ticks};
 use super::note::{Note, NoteOff};
 use super::message::{TimedMessage, Message};
 use super::playable::Playable;
@@ -19,7 +19,7 @@ pub struct Pattern {
 impl Pattern {
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
-            playable: Playable::new(1, 1),
+            playable: Playable::new(bars_to_ticks(1), bars_to_ticks(1)),
             channel,
             notes,
             // TODO - Use scales for this

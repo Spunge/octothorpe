@@ -22,7 +22,7 @@ pub struct Phrase {
 
 impl Phrase {
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { playable: Playable::new(4, 4), played_patterns, }
+        Phrase { playable: Playable::new(bars_to_ticks(4), bars_to_ticks(4)), played_patterns, }
     }
 
     pub fn new() -> Self {

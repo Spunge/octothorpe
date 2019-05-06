@@ -59,17 +59,17 @@ pub struct Sequencer {
     detailview: DetailView,
 
     // Various indicators
-    indicator_grid: Grid,
-    instrument_grid: Grid,
-    group_grid: Grid,
-    playable_grid: Grid,
-    detailview_grid: Grid,
-    overview_grid: Grid,
-    sequence_grid: Grid,
-    main_grid: Grid,
-    length_grid: Grid,
-    zoom_grid: Grid,
-    active_grid: Grid,
+    indicator_grid: RowGrid,
+    instrument_grid: RowGrid,
+    group_grid: SingleGrid,
+    playable_grid: PlayableGrid,
+    detailview_grid: SingleGrid,
+    overview_grid: SingleGrid,
+    sequence_grid: SequenceGrid,
+    main_grid: MainGrid,
+    length_grid: RowGrid,
+    zoom_grid: RowGrid,
+    active_grid: RowGrid,
 }
 
 impl Sequencer {
@@ -298,7 +298,7 @@ impl Sequencer {
             .map(|note| (note.start, note.end, self.base_note as i32 - note.key as i32))
             .collect();
 
-        self.playable().coords_to_leds(coords, self.main_grid.width).iter()
+        self.playable().coords_to_leds(coords).iter()
             .for_each(|(x, y, state)| self.main_grid.try_switch_led(x, y, state));
     }
 
@@ -309,11 +309,11 @@ impl Sequencer {
             })
             .collect();
 
-        self.playable().coords_to_leds(coords, self.main_grid.width).iter()
+        self.playable().coords_to_leds(coords).iter()
             .for_each(|(x, y, state)| self.main_grid.switch_led(x, y, state));
     }
 
-    pub fn draw_sequence(&mut self, group: u8) -> Vec<Message> {
+    fn draw_sequence(&mut self, group: u8) -> Vec<Message> {
         let grid = &mut self.main_grid;
         let start = grid.width * group;
         let end = start + grid.width;
@@ -327,6 +327,7 @@ impl Sequencer {
             .collect()
     }
 
+    /*
     pub fn draw_active_grid(&mut self, group: u8) -> Vec<Message> {
         let leds = self.active_grid.width;
 
@@ -338,7 +339,7 @@ impl Sequencer {
             })
             .collect()
     }
-
+    */
 
     // Draw all the things
     pub fn draw(&mut self) -> Vec<Message> {
