@@ -35,7 +35,7 @@ impl Controller {
         self.sequencer.key_released(message)
     }
 
-    pub fn process_midi_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<Message>
+    pub fn process_midi_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
@@ -53,14 +53,16 @@ impl Controller {
             .collect()
     }
 
-    fn process_sysex_message(&mut self, message: jack::RawMidi) -> Option<Message> {
+    fn process_sysex_message(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
         // 0x06 = inquiry e, 0x02 = inquiry response
         // 0x47 = akai manufacturer, 0x73 = model nr
         if message.bytes[3] == 0x06 && message.bytes[4] == 0x02  
             && message.bytes[5] == 0x47 && message.bytes[6] == 0x73 
         {
             // Introduce ourselves to controller
-            Some(Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]))
+            let message = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+            let introduction = TimedMessage::new(0, message);
+            Some(introduction)
         } else {
             None
         }

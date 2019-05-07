@@ -1,13 +1,39 @@
 
+use std::ops::Range;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
-use super::grid::{RowGrid, MainGrid, SequenceGrid, SingleGrid, PlayableGrid};
 use super::instrument::Instrument;
 use super::phrase::{Phrase, PlayedPattern};
 use super::pattern::Pattern;
 use super::sequence::Sequence;
 use super::playable::Playable;
 use super::note::NoteOff;
+
+struct ButtonState {
+    frame: u8,
+    state: u8,
+    key: u8,
+    channel: u8,
+}
+
+struct States {
+    current: [u8; 92],
+    next: [u8; 92],
+}
+
+struct Grids {
+    indicator: Range<usize>,
+    instruments: Range<usize>,
+    group: Range<usize>,
+    playables: Range<usize>,
+    detailview: Range<usize>,
+    overview: Range<usize>,
+    sequences: Range<usize>,
+    main: Range<usize>,
+    green: Range<usize>,
+    blue: Range<usize>,
+    red: Range<usize>,
+}
 
 pub enum OverView {
     Instrument,
@@ -36,6 +62,7 @@ impl KeyPress {
     }
 }
 
+
 pub struct Sequencer {
     group: u8,
 
@@ -57,18 +84,8 @@ pub struct Sequencer {
     overview: OverView,
     detailview: DetailView,
 
-    // Various indicators
-    indicator_grid: RowGrid,
-    instrument_grid: RowGrid,
-    group_grid: SingleGrid,
-    playable_grid: PlayableGrid,
-    detailview_grid: SingleGrid,
-    overview_grid: SingleGrid,
-    sequence_grid: SequenceGrid,
-    main_grid: MainGrid,
-    length_grid: RowGrid,
-    zoom_grid: RowGrid,
-    active_grid: RowGrid,
+    states: States,
+    grids: Grids,
 }
 
 impl Sequencer {
@@ -105,23 +122,25 @@ impl Sequencer {
             detailview: DetailView::Phrase,
             overview: OverView::Instrument,
 
-            // Only show in instrument overview
-            playable_grid: PlayableGrid::new(),
-            instrument_grid: RowGrid::new(),
-            length_grid: RowGrid::new(),
-            zoom_grid: RowGrid::new(),
+            states: States {
+                current: [0; 92],
+                next: [0; 92],
+            },
 
-
-            // Show in both overviews
-            main_grid: MainGrid::new(),
-            group_grid: SingleGrid::new(),
-            sequence_grid: SequenceGrid::new(),
-            overview_grid: SingleGrid::new(),
-            detailview_grid: SingleGrid::new(),
-            indicator_grid: RowGrid::new(),
-
-            // Only for sequences
-            active_grid: RowGrid::new(),
+            // Range of buttons in States buffer
+            grids: Grids {
+                main: 0..40,
+                indicator: 40..48,
+                instruments: 48..56,
+                green: 56..64,
+                blue: 64..72,
+                red: 72..80,
+                playables: 80..85,
+                sequences: 85..89,
+                group: 89..90,
+                detailview: 90..91,
+                overview: 91..92,
+            },
         }
     }
 
@@ -177,7 +196,10 @@ impl Sequencer {
     fn sequence_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90),
-            0x35 ... 0x39 => self.sequence().toggle_phrase(message.bytes[0] - 0x90 + self.group * 8, message.bytes[1] - 0x35),
+            0x35 ... 0x39 => {
+                let instrument = message.bytes[0] - 0x90 + self.group * 8;
+                self.sequence().toggle_phrase(instrument, message.bytes[1] - 0x35);
+            },
             _ => (),
         }
     }
@@ -278,29 +300,67 @@ impl Sequencer {
         }
     }
 
+    /*
+    fn switch_led(&mut self, width: u8, buffer: &mut [u8], x: u8, y: u8, state: u8) {
+        // Do not allow switching outside of grid
+        if x < width as i32 || x >= 0 || y < (buffer.len() / width) as i32 || y >= 0 {
+            buffer[(x * self.width + y) as usize] = state;
+        }
+    }
+    */
+
     fn draw_length_grid(&mut self, length: u8) {
-        (0..length).for_each(|x| { self.length_grid.switch_led(x as u8, 0, 1) })
+        let length = self.playable().length_modifier();
+
+        for index in self.grids.green.clone() {
+            let led = index - self.grids.green.start;
+
+            self.states.next[index] = if led < length as usize { 1 } else { 0 };
+        }
     }
 
     fn draw_zoom_grid(&mut self) {
-        let length = 8 / self.playable().zoom;
-        let from = self.playable().offset * length;
-        let to = from + length;
+        let length = 8 / self.playable().zoom as usize;
+        let start = self.playable().offset as usize * length;
+        let end = start + length;
 
-        (from..to).for_each(|x| self.zoom_grid.switch_led(x as u8, 0, 1))
+        for index in self.grids.blue.clone() {
+            let led = index - self.grids.blue.start;
+
+            self.states.next[index] = if led >= start && led < end { 1 } else { 0 };
+        }
     }
 
-    fn draw_main_grid(&mut self) {
-        let led_states = match self.overview {
-            OverView::Instrument => match self.detailview {
-                DetailView::Pattern => self.instrument().pattern().led_states(),
-                DetailView::Phrase => self.instrument().phrase().led_states(),
+    pub fn output_control(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        // Draw new state
+
+        // Output length
+        let mut output = vec![];
+
+        for index in self.grids.green.clone() {
+            if self.states.current[index] != self.states.next[index] {
+                let led = (index - self.grids.green.start) as u8;
+
+                output.push(TimedMessage::new(0, Message::Note([0x90 + led, 0x32, self.states.next[index]])))
             }
-            OverView::Sequence => self.sequence().led_states(self.group),
+        }
+
+        output
+    }
+
+    /*
+    fn draw_main_grid(&mut self) {
+        let states = match self.overview {
+            OverView::Instrument => match self.detailview {
+                DetailView::Pattern => self.instrument().pattern().states(),
+                DetailView::Phrase => self.instrument().phrase().states(),
+            }
+            OverView::Sequence => self.sequence().states(self.group),
         };
 
         // Todo draw ledstates
     }
+    */
 
     /*
     pub fn draw_active_grid(&mut self, group: u8) -> Vec<Message> {
@@ -516,7 +576,7 @@ impl Sequencer {
     }
     */
 
-    pub fn output(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+    pub fn output_midi(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
         // First notes off
         let mut messages = self.note_off_messages(cycle);
         
