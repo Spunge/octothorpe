@@ -1,6 +1,6 @@
 
 pub struct Playable {
-    minimum_ticks: u32,
+    pub minimum_ticks: u32,
     pub ticks: u32,
 
     pub zoom: u32,

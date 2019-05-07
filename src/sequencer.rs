@@ -123,7 +123,8 @@ impl Sequencer {
             overview: OverView::Instrument,
 
             states: States {
-                current: [0; 92],
+                // Current state is all leds on, this way we always clear grid on start
+                current: [1; 92],
                 next: [0; 92],
             },
 
@@ -309,13 +310,13 @@ impl Sequencer {
     }
     */
 
-    fn draw_length_grid(&mut self, length: u8) {
-        let length = self.playable().length_modifier();
+    fn draw_length_grid(&mut self) {
+        let length = (self.playable().ticks / self.playable().minimum_ticks) as usize;
 
         for index in self.grids.green.clone() {
             let led = index - self.grids.green.start;
-
-            self.states.next[index] = if led < length as usize { 1 } else { 0 };
+            
+            self.states.next[index] = if led < length { 1 } else { 0 };
         }
     }
 
@@ -331,9 +332,7 @@ impl Sequencer {
         }
     }
 
-    pub fn output_control(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        // Draw new state
-
+    pub fn output_static_control(&mut self) -> Vec<Message> {
         // Output length
         let mut output = vec![];
 
@@ -341,11 +340,35 @@ impl Sequencer {
             if self.states.current[index] != self.states.next[index] {
                 let led = (index - self.grids.green.start) as u8;
 
-                output.push(TimedMessage::new(0, Message::Note([0x90 + led, 0x32, self.states.next[index]])))
+                output.push(Message::Note([0x90 + led, 0x32, self.states.next[index]]));
             }
         }
 
+        for index in self.grids.blue.clone() {
+            if self.states.current[index] != self.states.next[index] {
+                let led = (index - self.grids.blue.start) as u8;
+
+                output.push(Message::Note([0x90 + led, 0x31, self.states.next[index]]));
+            }
+        }
+
+        self.states.current = self.states.next;
+ 
+        if output.len() > 0 {
+            println!("{:?}", output);
+        }
+
         output
+    }
+
+    pub fn output_control(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+        // Draw new state
+        self.draw_length_grid();
+        self.draw_zoom_grid();
+
+        let messages = self.output_static_control();
+
+        messages.into_iter().map(|message| TimedMessage::new(0, message)).collect()
     }
 
     /*
