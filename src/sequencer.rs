@@ -130,6 +130,7 @@ impl Sequencer {
 
             // Range of buttons in States buffer
             grids: Grids {
+                // This must live @ 0..40 as we hack the led states into that range aswell
                 main: 0..40,
                 indicator: 40..48,
                 instruments: 48..56,
@@ -310,6 +311,34 @@ impl Sequencer {
     }
     */
 
+    fn draw_main_grid(&mut self) {
+        // Why do i have to do this?
+        let group = self.group;
+
+        // Clear grid
+        for index in self.grids.main.clone() {
+            self.states.next[index] = 0;
+        }
+
+        let states = match self.overview {
+            OverView::Instrument => match self.detailview {
+                DetailView::Pattern => self.instrument().pattern().led_states(),
+                DetailView::Phrase => self.instrument().phrase().led_states(),
+            }
+            OverView::Sequence => self.sequence().led_states(group),
+        };
+
+        // Get states that are within grid
+        let valid_states = states.into_iter().filter(|(x, y, state)| {
+                x < &8 || x >= &0 || y < &5 || y >= &0
+        });
+
+        for (x, y, state) in valid_states {
+            //println!("{}, {}, {}", y, x, state);
+            self.states.next[y as usize * 8 + x as usize] = state;
+        }
+    }
+
     fn draw_length_grid(&mut self) {
         let length = (self.playable().ticks / self.playable().minimum_ticks) as usize;
 
@@ -332,37 +361,37 @@ impl Sequencer {
         }
     }
 
-    pub fn output_static_control(&mut self) -> Vec<Message> {
-        // Output length
+    // Output a message for each changed state in the grid
+    pub fn output_grid(&self, range: Range<usize>, y: u8, x: u8) -> Vec<Message> {
         let mut output = vec![];
+        let start = range.start;
 
-        for index in self.grids.green.clone() {
+        for index in range {
             if self.states.current[index] != self.states.next[index] {
-                let led = (index - self.grids.green.start) as u8;
+                let led = (index - start) as u8;
 
-                output.push(Message::Note([0x90 + led, 0x32, self.states.next[index]]));
+                output.push(Message::Note([y + led, x, self.states.next[index]]));
             }
-        }
-
-        for index in self.grids.blue.clone() {
-            if self.states.current[index] != self.states.next[index] {
-                let led = (index - self.grids.blue.start) as u8;
-
-                output.push(Message::Note([0x90 + led, 0x31, self.states.next[index]]));
-            }
-        }
-
-        self.states.current = self.states.next;
- 
-        if output.len() > 0 {
-            println!("{:?}", output);
         }
 
         output
     }
 
+    pub fn output_static_control(&mut self) -> Vec<Message> {
+        // Output length
+        let mut output: Vec<Message> = self.output_grid(self.grids.green.clone(), 0x90, 0x32);
+        output.extend(self.output_grid(self.grids.blue.clone(), 0x90, 0x31));
+        output.extend(self.output_grid(self.grids.main.clone(), 0x90, 0x36));
+
+        // As we've outputted all the diffs, 
+        self.states.current = self.states.next;
+ 
+        output
+    }
+
     pub fn output_control(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
         // Draw new state
+        self.draw_main_grid();
         self.draw_length_grid();
         self.draw_zoom_grid();
 
@@ -371,19 +400,6 @@ impl Sequencer {
         messages.into_iter().map(|message| TimedMessage::new(0, message)).collect()
     }
 
-    /*
-    fn draw_main_grid(&mut self) {
-        let states = match self.overview {
-            OverView::Instrument => match self.detailview {
-                DetailView::Pattern => self.instrument().pattern().states(),
-                DetailView::Phrase => self.instrument().phrase().states(),
-            }
-            OverView::Sequence => self.sequence().states(self.group),
-        };
-
-        // Todo draw ledstates
-    }
-    */
 
     /*
     pub fn draw_active_grid(&mut self, group: u8) -> Vec<Message> {

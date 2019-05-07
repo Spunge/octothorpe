@@ -72,8 +72,6 @@ impl Controller {
             let clear: Vec<TimedMessage> = self.sequencer.output_static_control().into_iter()
                 .map(|message| TimedMessage::new(128, message)).collect();
 
-            println!("{:?}", clear);
-
             let mut messages = vec![introduction];
             messages.extend(clear);
 
