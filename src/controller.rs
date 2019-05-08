@@ -4,12 +4,14 @@ use super::sequencer::Sequencer;
 
 pub struct Controller {
     pub sequencer: Sequencer,
+    pub is_introduced: bool,
 }
 
 impl Controller {
     pub fn new() -> Self {
         Controller {
             sequencer: Sequencer::new(),
+            is_introduced: false,
         }
     }
 
@@ -60,6 +62,9 @@ impl Controller {
         if message.bytes[3] == 0x06 && message.bytes[4] == 0x02  
             && message.bytes[5] == 0x47 && message.bytes[6] == 0x73 
         {
+            // We're introducing
+            self.is_introduced = true;
+
             // Introduce ourselves to controller
             let message = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
             let introduction = TimedMessage::new(0, message);
