@@ -66,22 +66,29 @@ impl Pattern {
     }
 
     pub fn toggle_note(&mut self, x: Range<u8>, y: u8) {
-        let start_tick = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
-        let end_tick = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
+        let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
+        let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
 
         let key = self.base_note - y;
         // TODO Velocity
 
         let notes = self.notes.len();
         
+        // Shorten pattern when a button is clicked that falls in the range of the note
+        for note in &mut self.notes {
+            if note.start < start && note.end > start && note.key == key {
+                note.end = start;
+            }
+        }
+
         self.notes.retain(|note| {
-            (note.start < start_tick || note.start >= end_tick) || note.key != key
+            (note.start < start && note.end <= start || note.start >= end) || note.key != key
         });
 
         // No notes were removed, add new note, when note is longer as 1, the 1 note from the
         // previous keypress is removed, so ignore that
         if notes == self.notes.len() || x.start != x.end {
-            self.notes.push(Note::new(self.channel, start_tick, end_tick, key, 127));
+            self.notes.push(Note::new(self.channel, start, end, key, 127));
         }
     }
 

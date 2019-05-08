@@ -57,8 +57,15 @@ impl Phrase {
 
         let patterns = self.played_patterns.len();
         
-        self.played_patterns.retain(|played_pattern| {
-            (played_pattern.start < start || played_pattern.start >= end) || played_pattern.index != index as usize
+        // Shorten pattern when a button is clicked that falls in the range of the note
+        for play in &mut self.played_patterns {
+            if play.start < start && play.end > start && play.index == index as usize {
+                play.end = start;
+            }
+        }
+
+        self.played_patterns.retain(|play| {
+            (play.start < start || play.start >= end) || play.index != index as usize
         });
 
         if patterns == self.played_patterns.len() || x.start != x.end {
