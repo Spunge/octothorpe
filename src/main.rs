@@ -47,7 +47,7 @@ fn main() {
     let notificationhandler = NotificationHandler::new(sender);
 
     // Activate client
-    client
+    let _async_client = client
         .activate_async(notificationhandler, processhandler, timebasehandler)
         .unwrap();
 

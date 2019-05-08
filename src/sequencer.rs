@@ -7,7 +7,7 @@ use super::phrase::{Phrase, PlayedPattern};
 use super::pattern::Pattern;
 use super::sequence::Sequence;
 use super::playable::Playable;
-use super::note::NoteOff;
+use super::note::{Note, NoteOff};
 
 pub enum OverView {
     Instrument,
@@ -574,7 +574,7 @@ impl Sequencer {
     fn current_playing_sequences(&self, cycle: &Cycle) -> Option<Vec<usize>> {
         // Get current sequence as we definitely have to play that
         let current_sequence = &self.sequences[self.sequence_playing];
-        // Can we play current sequence?
+        // Can we play current sequence, could be it has length 0 for no phrases playing
         if let Some(ticks) = current_sequence.ticks(&self.instruments) {
             // If we can, play it
             let mut sequences = vec![];
@@ -671,42 +671,62 @@ impl Sequencer {
     }
     */
 
+    fn get_midi_output(&mut self, cycle: &Cycle) -> Option<(Vec<TimedMessage>, Vec<NoteOff>)> {
+        // Get playing sequences
+        if let Some(sequences) = self.playing_sequences(cycle) {
+            // Get phrases that are playing in sequence
+            // ( instrument, phrase )
+            let notes: Vec<(u32, &Note)> = sequences.iter()
+                .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
+                // Get patterns that are playing for Instrument & played pattern
+                .flat_map(|(instrument, phrase)| {
+                    self.instruments[instrument].phrases[phrase]
+                        .playing_patterns(cycle, &self.instruments[instrument].patterns)
+                        .into_iter()
+                        .map(move |played_pattern| {
+                            (instrument, played_pattern)
+                        })
+                })
+                // Next, get notes for each instrument / played pattern
+                .flat_map(|(instrument, played_pattern)| {
+                    self.instruments[instrument].patterns[played_pattern.index]
+                        .playing_notes(cycle, played_pattern.start, played_pattern.end)
+                })
+                .collect();
+
+            let note_offs = notes.iter()
+                .map(|(delta_ticks, note)| {
+                    note.note_off(cycle.absolute_start + delta_ticks + (note.end - note.start))
+                })
+                .collect();
+
+            let note_ons = notes.iter()
+                .map(|(delta_ticks, note)| {
+                    let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
+                    TimedMessage::new(delta_frames, note.message())
+                })
+                .collect();
+
+            Some((note_ons, note_offs))
+        } else {
+            None
+        }
+    }
+
     pub fn output_midi(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        // First notes off
+        // Play notes
         let mut messages = self.note_off_messages(cycle);
-        
+
         // Next notes on
         if cycle.is_rolling {
-            if let Some(sequences) = self.playing_sequences(cycle) {
-                // Get phrases that are playing in sequence
-                // ( instrument, phrase )
-                let notes: Vec<(TimedMessage, NoteOff)> = sequences.iter()
-                    .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
-                    // Get patterns that are playing for Instrument & played pattern
-                    .flat_map(|(instrument, phrase)| {
-                        self.instruments[instrument].phrases[phrase]
-                            .playing_patterns(cycle, &self.instruments[instrument].patterns)
-                            .into_iter()
-                            .map(move |played_pattern| {
-                                (instrument, played_pattern)
-                            })
-                    })
-                    // Next, get notes for each instrument / played pattern
-                    .flat_map(|(instrument, played_pattern)| {
-                        self.instruments[instrument].patterns[played_pattern.index]
-                            .playing_notes(cycle, played_pattern.start, played_pattern.end)
-                    })
-                    .collect();
-
-                notes.into_iter()
-                    .for_each(|(message, note_off)| {
-                        // Remember control off so we can show sequence indicator
-                        self.note_offs.push(note_off);
-                        messages.push(message);
-                    });
+            if let Some((note_ons, note_offs)) = self.get_midi_output(cycle) {
+                messages.extend(note_ons);
+                // Append new note offs
+                self.note_offs.extend(note_offs);
             }
         }
 
+        // Return messages
         messages
     }
 }
