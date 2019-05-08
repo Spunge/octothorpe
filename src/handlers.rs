@@ -127,9 +127,7 @@ impl jack::ProcessHandler for ProcessHandler {
         }
 
         // Control out when there's somebody listening
-        if self.controller.is_introduced {
-            control_messages.extend(self.controller.sequencer.output_control(&cycle));
-        }
+        control_messages.extend(self.controller.sequencer.output_control(&cycle));
 
         // Process incoming midi
         control_messages.extend(self.controller.process_midi_messages(self.control_in.iter(process_scope), client));

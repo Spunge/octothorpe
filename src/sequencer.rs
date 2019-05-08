@@ -85,7 +85,6 @@ pub struct Sequencer {
     detailview: DetailView,
 
     pub should_render: bool,
-    pub should_output: bool,
     states: States,
     grids: Grids,
 }
@@ -125,10 +124,9 @@ impl Sequencer {
             overview: OverView::Instrument,
 
             should_render: false,
-            should_output: true,
             states: States {
                 // Current state is all leds on, this way we always clear grid on start
-                current: [1; 92],
+                current: [0; 92],
                 next: [0; 92],
             },
 
@@ -235,7 +233,6 @@ impl Sequencer {
             _ => (),
         };
 
-        self.should_output = true;
         self.should_render = true;
     }
 
@@ -309,14 +306,13 @@ impl Sequencer {
         }
     }
 
-    /*
-    fn switch_led(&mut self, width: u8, buffer: &mut [u8], x: u8, y: u8, state: u8) {
-        // Do not allow switching outside of grid
-        if x < width as i32 || x >= 0 || y < (buffer.len() / width) as i32 || y >= 0 {
-            buffer[(x * self.width + y) as usize] = state;
-        }
+    pub fn reset(&mut self) {
+        // Use non-existant state to always redraw
+        self.states.current = [9; 92];
+        self.states.next = [0; 92];
+
+        self.should_render = true;
     }
-    */
 
     fn draw_main_grid(&mut self) {
         // Why do i have to do this?
@@ -345,18 +341,30 @@ impl Sequencer {
         }
     }
 
-    fn draw_length_grid(&mut self) {
-        let length = (self.playable().ticks / self.playable().minimum_ticks) as usize;
-
+    fn draw_green_grid(&mut self) {
         for index in self.grids.green.clone() {
             let led = index - self.grids.green.start;
 
-            self.states.next[index] = if led < length { 1 } else { 0 };
+            self.states.next[index] = match self.overview {
+                // In instrument, green grid shows length of playable
+                OverView::Instrument => {
+                    let length = (self.playable().ticks / self.playable().minimum_ticks) as usize;
+                    if led < length { 1 } else { 0 }
+                },
+                // In Sequence, green grid shows active instruments
+                OverView::Sequence => {
+                    let instrument = self.group as usize * 8 + led;
+                    if self.sequence().active[instrument] { 1 } else { 0 }
+                }
+            }
         }
     }
 
-    fn draw_zoom_grid(&mut self) {
-        let length = 8 / self.playable().zoom as usize;
+    fn draw_blue_grid(&mut self) {
+        let length = match self.overview {
+            OverView::Instrument => 8 / self.playable().zoom as usize,
+            _ => 0,
+        };
         let start = self.playable().offset as usize * length;
         let end = start + length;
 
@@ -389,21 +397,18 @@ impl Sequencer {
         // Draw if we have to
         if self.should_render {
             self.draw_main_grid();
-            self.draw_length_grid();
-            self.draw_zoom_grid();
+            self.draw_green_grid();
+            self.draw_blue_grid();
 
-            self.should_render = false;
-        }
+            println!("rendering");
 
-        if self.should_output {
             output.extend(self.output_grid(self.grids.green.clone(), 0x90, 0x32));
             output.extend(self.output_grid(self.grids.blue.clone(), 0x90, 0x31));
             output.extend(self.output_grid(self.grids.main.clone(), 0x90, 0x35));
 
             // Switch buffer
             self.states.current = self.states.next;
-
-            self.should_output = false;
+            self.should_render = false;
         }
  
         output
@@ -639,27 +644,20 @@ impl Sequencer {
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Get phrases that are playing in sequence
                 // ( instrument, phrase )
-                let phrases: Vec<(usize, usize)> = sequences.iter()
-                //sequences.iter()
+                let notes: Vec<(TimedMessage, NoteOff)> = sequences.iter()
                     .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
-                    .collect();
-                    
-                // Get patterns that are playingg
-                // Instrument & played pattern
-                let patterns: Vec<(usize, PlayedPattern)> = phrases.iter()
+                    // Get patterns that are playing for Instrument & played pattern
                     .flat_map(|(instrument, phrase)| {
-                        self.instruments[*instrument].phrases[*phrase]
-                            .playing_patterns(cycle, &self.instruments[*instrument].patterns)
+                        self.instruments[instrument].phrases[phrase]
+                            .playing_patterns(cycle, &self.instruments[instrument].patterns)
                             .into_iter()
                             .map(move |played_pattern| {
-                                (*instrument, played_pattern)
+                                (instrument, played_pattern)
                             })
                     })
-                    .collect();
-
-                let notes: Vec<(TimedMessage, NoteOff)> = patterns.iter()
+                    // Next, get notes for each instrument / played pattern
                     .flat_map(|(instrument, played_pattern)| {
-                        self.instruments[*instrument].patterns[played_pattern.index]
+                        self.instruments[instrument].patterns[played_pattern.index]
                             .playing_notes(cycle, played_pattern.start, played_pattern.end)
                     })
                     .collect();
