@@ -32,9 +32,10 @@ impl Playable {
     }
 
     pub fn ticks_offset(&self) -> u32 {
-        8 * self.offset * self.visible_ticks()
+        self.offset * self.visible_ticks()
     }
 
+    // Takes start-tick, end-tick, y
     pub fn led_states(&self, coords: Vec<(u32, u32, i32)>) -> Vec<(i32, i32, u8)> {
         return coords.into_iter()
             .flat_map(|(start, end, y)| {
