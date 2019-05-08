@@ -71,11 +71,15 @@ impl Playable {
         match length_modifier {
             1 | 2 | 4 | 8  => {
                 // Calculate new zoom level to keep pattern grid view the same if possible
-                let zoom = self.zoom * length_modifier as u32 / self.ticks / self.minimum_ticks;
+                let zoom = self.zoom * length_modifier as u32 / (self.ticks / self.minimum_ticks);
                 self.ticks = length_modifier as u32 * self.minimum_ticks;
                 // Only set zoom when it's possible
                 if zoom > 0 && zoom <= 8 {
                     self.zoom = zoom;
+                }
+                // Check if offset is still okay
+                if self.offset > self.zoom - 1 {
+                    self.offset = self.zoom - 1;
                 }
             },
             _ => (),

@@ -337,7 +337,7 @@ impl Sequencer {
 
         // Get states that are within grid
         let valid_states = states.into_iter().filter(|(x, y, state)| {
-            x < &8 || x >= &0 || y < &5 || y >= &0
+            x < &8 && x >= &0 && y < &5 && y >= &0
         });
 
         for (x, y, state) in valid_states {
