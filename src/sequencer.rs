@@ -175,6 +175,8 @@ impl Sequencer {
             0x5E => self.instrument().pattern().change_base_note(4),
             0x5F => self.instrument().pattern().change_base_note(-4),
             0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
+            // TODO - when shortening length, notes or phrases that are longer as playable length
+            // should be cut shorter aswell
             0x32 => self.playable().change_length(message.bytes[0] - 0x90 + 1),
             0x61 => self.playable().change_offset(-1),
             0x60 => self.playable().change_offset(1),
