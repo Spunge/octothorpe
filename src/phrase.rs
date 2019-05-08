@@ -30,8 +30,8 @@ impl Phrase {
     
     pub fn default() -> Self {
         Phrase::create(vec![
-            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(4) },
-            //PlayedPattern { index: 0, start: bars_to_ticks(1), end: bars_to_ticks(2) },
+            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(2) },
+            PlayedPattern { index: 1, start: bars_to_ticks(2), end: bars_to_ticks(4) },
             //PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
             //PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
         ])

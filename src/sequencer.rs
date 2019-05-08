@@ -84,6 +84,8 @@ pub struct Sequencer {
     overview: OverView,
     detailview: DetailView,
 
+    pub should_render: bool,
+    pub should_output: bool,
     states: States,
     grids: Grids,
 }
@@ -103,7 +105,7 @@ impl Sequencer {
         // Build sequence we can trigger
         let sequences = [ Sequence::default(), Sequence::alternate_default(), Sequence::new(), Sequence::new(), ];
 
-        Sequencer{
+        Sequencer {
             instruments,
             instrument: 0,
             group: 0,
@@ -122,6 +124,8 @@ impl Sequencer {
             detailview: DetailView::Phrase,
             overview: OverView::Instrument,
 
+            should_render: false,
+            should_output: true,
             states: States {
                 // Current state is all leds on, this way we always clear grid on start
                 current: [1; 92],
@@ -229,7 +233,10 @@ impl Sequencer {
             // Main grid
             0x35 ... 0x39 => self.shared_key_pressed(message),
             _ => (),
-        }
+        };
+
+        self.should_output = true;
+        self.should_render = true;
     }
 
     // Key released is 0x80 + channel instead of 0x90 + channel
@@ -330,11 +337,10 @@ impl Sequencer {
 
         // Get states that are within grid
         let valid_states = states.into_iter().filter(|(x, y, state)| {
-                x < &8 || x >= &0 || y < &5 || y >= &0
+            x < &8 || x >= &0 || y < &5 || y >= &0
         });
 
         for (x, y, state) in valid_states {
-            //println!("{}, {}, {}", y, x, state);
             self.states.next[y as usize * 8 + x as usize] = state;
         }
     }
@@ -344,7 +350,7 @@ impl Sequencer {
 
         for index in self.grids.green.clone() {
             let led = index - self.grids.green.start;
-            
+
             self.states.next[index] = if led < length { 1 } else { 0 };
         }
     }
@@ -370,7 +376,7 @@ impl Sequencer {
             if self.states.current[index] != self.states.next[index] {
                 let led = (index - start) as u8;
 
-                output.push(Message::Note([y + led, x, self.states.next[index]]));
+                output.push(Message::Note([y + led % 8, x + led / 8, self.states.next[index]]));
             }
         }
 
@@ -378,23 +384,32 @@ impl Sequencer {
     }
 
     pub fn output_static_control(&mut self) -> Vec<Message> {
-        // Output length
-        let mut output: Vec<Message> = self.output_grid(self.grids.green.clone(), 0x90, 0x32);
-        output.extend(self.output_grid(self.grids.blue.clone(), 0x90, 0x31));
-        output.extend(self.output_grid(self.grids.main.clone(), 0x90, 0x36));
+        let mut output = vec![];
+    
+        // Draw if we have to
+        if self.should_render {
+            self.draw_main_grid();
+            self.draw_length_grid();
+            self.draw_zoom_grid();
 
-        // As we've outputted all the diffs, 
-        self.states.current = self.states.next;
+            self.should_render = false;
+        }
+
+        if self.should_output {
+            output.extend(self.output_grid(self.grids.green.clone(), 0x90, 0x32));
+            output.extend(self.output_grid(self.grids.blue.clone(), 0x90, 0x31));
+            output.extend(self.output_grid(self.grids.main.clone(), 0x90, 0x35));
+
+            // Switch buffer
+            self.states.current = self.states.next;
+
+            self.should_output = false;
+        }
  
         output
     }
 
     pub fn output_control(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        // Draw new state
-        self.draw_main_grid();
-        self.draw_length_grid();
-        self.draw_zoom_grid();
-
         let messages = self.output_static_control();
 
         messages.into_iter().map(|message| TimedMessage::new(0, message)).collect()
