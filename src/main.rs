@@ -10,7 +10,6 @@ pub mod instrument;
 pub mod phrase;
 pub mod pattern;
 pub mod note;
-pub mod grid;
 pub mod sequence;
 pub mod playable;
 
