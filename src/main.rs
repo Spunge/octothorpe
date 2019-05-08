@@ -47,12 +47,9 @@ fn main() {
     let notificationhandler = NotificationHandler::new(sender);
 
     // Activate client
-    let async_client = client
+    client
         .activate_async(notificationhandler, processhandler, timebasehandler)
         .unwrap();
-
-    // Get APC ports
-    let ports = async_client.as_client().ports(Some("Akai APC40"), None, jack::PortFlags::empty());
 
     // Wait for user to input string
     let mut user_input = String::new();
