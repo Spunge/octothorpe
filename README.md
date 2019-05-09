@@ -15,7 +15,7 @@ Patterns
 - [X] bank select moves viewport vertically
 - [X] Indicator shows in currently playing pattern
 - [ ] Use pattern indicator as indicator of base note offset for a second, switching back to selected pattern
-- [ ] Notes in grid shouldn't be able to overlap, shorten previous note
+- [X] Notes in grid shouldn't be able to overlap, shorten previous note
 
 Phrases
 - [X] Render phrases
@@ -23,8 +23,8 @@ Phrases
 - [X] Handle changing pattern length in phrases by keeping pattern end around
 - [X] Play notes in pattern for PlayedPatterns that are longer as pattern
 - [ ] Indicator shows progress in currently playing phrase
-- [ ] Phrases shouldn't be able to overlap, shorten previous phrase
-- [ ] Make phrases red instead of green
+- [X] Phrases shouldn't be able to overlap, shorten previous phrase
+- [X] Make phrases red instead of green
 
 Instruments
 - [X] track selection row switches between instuments
@@ -43,7 +43,7 @@ Sequences
 - [X] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [X] row 0x32 -> instrument outputs yes/no
 - [X] Make indicator lights light up for notes played by instrument
-- [ ] Don't switch sequence on shift click
+- [X] Don't switch sequence on shift click
 
 Tempo
 - [ ] Fix tap tempo
@@ -54,7 +54,7 @@ Effect knobs
 Improvements
 - [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
 - [X] Don't check every note against the cycle
-- [ ] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
+- [X] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
 - [ ] Save state to file
 - [ ] Move grid not instantly?
 

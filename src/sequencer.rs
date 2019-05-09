@@ -39,8 +39,8 @@ impl KeyPress {
 pub struct Sequencer {
     group: u8,
 
-    note_offs: Vec<(u32, Message)>,
-    control_offs: Vec<(u32, u8)>,
+    sequence_note_offs: Vec<(u32, Message)>,
+    indicator_note_offs: Vec<(u32, Message)>,
     keys_pressed: Vec<KeyPress>,
 
     instruments: [Instrument; 16],
@@ -98,8 +98,8 @@ impl Sequencer {
             group: 0,
 
             keys_pressed: vec![],
-            note_offs: vec![],
-            control_offs: vec![],
+            sequence_note_offs: vec![],
+            indicator_note_offs: vec![],
 
             sequences,
             sequence: 0,
@@ -208,7 +208,6 @@ impl Sequencer {
 
         match message.bytes[1] {
             0x50 => self.switch_group(),
-            0x3A => self.switch_overview(),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
@@ -286,7 +285,11 @@ impl Sequencer {
     fn switch_overview(&mut self) {
         match self.overview {
             OverView::Instrument => self.overview = OverView::Sequence,
-            OverView::Sequence => self.overview = OverView::Instrument,
+            OverView::Sequence => {
+                // Clear as we do not want the selected instrument grid to clear
+                self.indicator_note_offs = vec![];
+                self.overview = OverView::Instrument
+            },
         }
     }
 
@@ -313,13 +316,14 @@ impl Sequencer {
     }
 
     // Output a message for each changed state in the grid
-    pub fn output_grid(&self, range: Range<usize>, x: u8, y: u8) -> Vec<Message> {
+    pub fn output_grid(&self, range: Range<usize>, y: u8) -> Vec<Message> {
         let mut output = vec![];
         let start = range.start;
 
         for index in range {
             if self.state_current[index] != self.state_next[index] {
                 let led = (index - start) as u8;
+                let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
 
                 output.push(Message::Note([x + led % 8, y + led / 8, self.state_next[index]]));
             }
@@ -328,8 +332,9 @@ impl Sequencer {
         output
     }
 
-    pub fn output_button(&self, index: usize, x: u8, y: u8) -> Option<Message> {
+    pub fn output_button(&self, index: usize, y: u8) -> Option<Message> {
         if self.state_current[index] != self.state_next[index] {
+            let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
             Some(Message::Note([x, y, self.state_next[index]]))
         } else {
             None
@@ -413,13 +418,6 @@ impl Sequencer {
         self.state_next[self.index_group] = self.group;
     }
 
-    fn draw_overview_button(&mut self) {
-        self.state_next[self.index_overview] = match self.overview {
-            OverView::Instrument => 1,
-            _ => 0,
-        };
-    }
-
     fn draw_detailview_button(&mut self) {
         self.state_next[self.index_detailview] = match self.overview {
             OverView::Instrument => match self.detailview { DetailView::Pattern => 1, _ => 0 },
@@ -430,8 +428,6 @@ impl Sequencer {
     //fn draw_sequences_grid(&mut self) {
     //}
     //fn draw_playables_grid(&mut self) {
-    //}
-    //fn draw_indicator_grid(&mut self) {
     //}
 
     pub fn output_static_leds(&mut self) -> Vec<Message> {
@@ -444,16 +440,14 @@ impl Sequencer {
             self.draw_blue_grid();
             self.draw_instruments_grid();
             self.draw_group_button();
-            self.draw_overview_button();
             self.draw_detailview_button();
 
-            output.extend(self.output_grid(self.index_green.clone(), 0x90, 0x32));
-            output.extend(self.output_grid(self.index_blue.clone(), 0x90, 0x31));
-            output.extend(self.output_grid(self.index_main.clone(), 0x90, 0x35));
-            output.extend(self.output_grid(self.index_instruments.clone(), 0x90, 0x33));
-            output.extend(self.output_button(self.index_group, 0x90, 0x50));
-            output.extend(self.output_button(self.index_overview, 0x90, 0x3A));
-            output.extend(self.output_button(self.index_detailview, 0x90, 0x3E));
+            output.extend(self.output_grid(self.index_green.clone(), 0x32));
+            output.extend(self.output_grid(self.index_blue.clone(), 0x31));
+            output.extend(self.output_grid(self.index_main.clone(), 0x35));
+            output.extend(self.output_grid(self.index_instruments.clone(), 0x33));
+            output.extend(self.output_button(self.index_group, 0x50));
+            output.extend(self.output_button(self.index_detailview, 0x3E));
 
             // Switch buffer
             self.state_current = self.state_next;
@@ -558,6 +552,32 @@ impl Sequencer {
     }
     */
 
+    fn active_pattern_indicator_leds(&self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Vec<(u32, u32)> {
+       played_patterns.into_iter()
+            // Get playing patterns for currently shown instrument && pattern
+            .filter(|(instrument, played_pattern)| {
+                *instrument == self.instrument as usize 
+                    && played_pattern.index == self.instruments[*instrument].pattern
+            })
+            // Get 
+            .flat_map(|(instrument, played_pattern)| {
+                let pattern_length = played_pattern.end - played_pattern.start;
+                // Get ticks per led
+                let ticks_per_led = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_per_led();
+                let ticks_offset = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_offset();
+
+                // Loop over the played patterns range to see if one of the leds should activate
+                (played_pattern.start..played_pattern.end).step_by(ticks_per_led as usize)
+                    .filter_map(move |tick| {
+                        cycle.delta_frames(tick + ticks_offset).and_then(|frame| {
+                            // Return frame to switch at and led to switch
+                            Some((frame, (tick - played_pattern.start) / ticks_per_led))
+                        })
+                    })
+            })
+            .collect()
+    }
+
     fn set_playing_sequence(&mut self, sequence: usize) {
         self.sequence_playing = sequence;
         self.sequence_queued = None;
@@ -607,47 +627,6 @@ impl Sequencer {
         }
     }
 
-    // Get messages for noteoffs that fall in this frame
-    fn note_off_messages(cycle: &Cycle, buffer: &mut Vec<(u32, Message)>) -> Vec<TimedMessage> {
-        let mut messages = vec![];
-
-        // Get noteoffs that occur in this cycle
-        for index in (0..buffer.len()) {
-            let (absolute_tick, _) = buffer[index];
-
-            if let Some(frame) = cycle.delta_frames_absolute(absolute_tick) {
-                let (_, message) = buffer.swap_remove(index);
-                messages.push(TimedMessage::new(frame, message));
-            }
-        }
-
-        messages
-    }
-
-    /*
-    fn draw_sequence_indicator(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        let mut control_messages = self.control_off_messages(cycle);
-        // Draw sequence indicator
-        if let OverView::Sequence = self.overview {
-            let sequence_indications: Vec<(TimedMessage, (u32, u8))> = patterns.iter()
-                .flat_map(|(instrument, played_pattern)| {
-                    self.instruments[*instrument].patterns[played_pattern.index]
-                        .playing_indicators(cycle, played_pattern.start, played_pattern.end)
-                })
-                .collect();
-
-            sequence_indications.into_iter()
-                .for_each(|(message, note_off)| {
-                    // Remember control off so we can show sequence indicator
-                    self.control_offs.push(note_off);
-                    control_messages.push(message);
-                });
-        }
-
-        control_messages
-    }
-    */
-
     fn playing_patterns(&self, cycle: &Cycle, sequences: Vec<usize>) -> Vec<(usize, PlayedPattern)> {
         sequences.iter()
             .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
@@ -664,42 +643,82 @@ impl Sequencer {
     }
 
     // Get notes that should be triggered in currently playing sequences
-    fn playing_notes(&self, cycle: &Cycle, played_patterns: Vec<(usize, PlayedPattern)>) -> Vec<(u32, &Note)> {
+    fn playing_notes(&self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Vec<(u32, &Note)> {
         // Get phrases that are playing in sequence
         // ( instrument, phrase )
         played_patterns.into_iter()
             // Next, get notes for each instrument / played pattern
             .flat_map(|(instrument, played_pattern)| {
-                self.instruments[instrument].patterns[played_pattern.index]
+                self.instruments[*instrument].patterns[played_pattern.index]
                     .playing_notes(cycle, played_pattern.start, played_pattern.end)
             })
             .collect()
     }
 
-    fn note_messages(cycle: &Cycle, notes: Vec<(u32, &Note)>) -> (Vec<(u32, Message)>, Vec<TimedMessage>) {
+
+    // Get messages for noteoffs that fall in this frame
+    fn note_off_messages(cycle: &Cycle, buffer: &mut Vec<(u32, Message)>) -> Vec<TimedMessage> {
+        let mut messages = vec![];
+
+        // Get noteoffs that occur in this cycle
+        for index in (0..buffer.len()).rev() {
+            let (absolute_tick, _) = buffer[index];
+
+            if let Some(frame) = cycle.delta_frames_absolute(absolute_tick) {
+                let (_, message) = buffer.swap_remove(index);
+                messages.push(TimedMessage::new(frame, message));
+            }
+        }
+
+        messages
+    }
+
+    fn sequence_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>) -> (Vec<(u32, Message)>, Vec<TimedMessage>) {
         let note_offs: Vec<_> = notes.iter()
             .map(|(delta_ticks, note)| {
-                let absolute_tick = cycle.absolute_start + delta_ticks + (note.end - note.start);
-                let message = note.message(0x80);
+                let length = (note.end - note.start);
+                let tick = cycle.absolute_start + delta_ticks;
 
-                (absolute_tick, message)
+                (tick + length, note.message(0x80, None, None))
             })
             .collect();
 
         let note_ons: Vec<_> = notes.iter()
             .map(|(delta_ticks, note)| {
                 let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                TimedMessage::new(delta_frames, note.message(0x90))
+                TimedMessage::new(delta_frames, note.message(0x90, None, None))
             })
             .collect();
 
         (note_offs, note_ons)
     }
 
+    fn sequence_indicator_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>) -> (Vec<(u32, Message)>, Vec<TimedMessage>) {
+        let note_offs: Vec<_> = notes.iter()
+            .map(|(delta_ticks, note)| {
+                let length = (note.end - note.start);
+                let tick = cycle.absolute_start + delta_ticks;
+
+                (tick + length / 3, note.message(0x90, Some(0x33), Some(0)))
+            })
+            .collect();
+
+        let note_ons: Vec<_> = notes.iter()
+            .map(|(delta_ticks, note)| {
+                let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
+                TimedMessage::new(delta_frames, note.message(0x90, Some(0x33), Some(1)))
+            })
+            .collect();
+
+        (note_offs, note_ons)
+    }
+
+
     // Send midi to process handler
-    pub fn output_midi(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+    pub fn output_midi(&mut self, cycle: &Cycle) -> (Vec<TimedMessage>, Vec<TimedMessage>) {
         // Play note offs
-        let mut messages = Sequencer::note_off_messages(cycle, &mut self.note_offs);
+        let mut sequence_out_messages = Sequencer::note_off_messages(cycle, &mut self.sequence_note_offs);
+        let mut control_out_messages = Sequencer::note_off_messages(cycle, &mut self.indicator_note_offs);
 
         // Next notes on
         if cycle.is_rolling {
@@ -707,16 +726,32 @@ impl Sequencer {
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Output those
                 let played_patterns = self.playing_patterns(cycle, sequences);
-                let notes = self.playing_notes(cycle, played_patterns);
+                let notes = self.playing_notes(cycle, &played_patterns);
 
-                let (note_offs, note_ons) = Sequencer::note_messages(cycle, notes);
+                let (sequence_note_offs, sequence_note_ons) = Sequencer::sequence_note_events(cycle, &notes);
+                sequence_out_messages.extend(sequence_note_ons);
 
-                self.note_offs.extend(note_offs);
-                messages.extend(note_ons);
+                match self.overview {
+                    OverView::Instrument => {
+                        match self.detailview {
+                            DetailView::Pattern => {
+                                println!("{:?}", self.active_pattern_indicator_leds(cycle, &played_patterns));
+                            },
+                            DetailView::Phrase => {},
+                        }
+                    },
+                    OverView::Sequence => {
+                        let (indicator_note_offs, control_note_ons) = Sequencer::sequence_indicator_note_events(cycle, &notes);
+                        self.indicator_note_offs.extend(indicator_note_offs);
+                        control_out_messages.extend(control_note_ons);
+                    }
+                }
+
+                self.sequence_note_offs.extend(sequence_note_offs);
             }
         }
 
         // Return messages
-        messages
+        (control_out_messages, sequence_out_messages)
     }
 }

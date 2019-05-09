@@ -18,7 +18,12 @@ impl Note {
         Note { channel, start, end, key, velocity, }
     }
 
-    pub fn message(&self, modifier: u8) -> Message {
-        Message::Note([modifier + self.channel, self.key, self.velocity])
+    // Use key passed or own key
+    pub fn message(&self, modifier: u8, key: Option<u8>, velocity: Option<u8>) -> Message {
+        Message::Note([
+            modifier + self.channel,
+            key.or(Some(self.key)).unwrap(),
+            velocity.or(Some(self.velocity)).unwrap(),
+        ])
     }
 }
