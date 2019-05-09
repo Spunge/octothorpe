@@ -64,10 +64,6 @@ impl Controller {
             let message = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
             let introduction = TimedMessage::new(0, message);
 
-            // First draw is all 0 after reset
-            //let clear: Vec<TimedMessage> = self.sequencer.output_static_control().into_iter()
-                //.map(|message| TimedMessage::new(64, message)).collect();
-
             // Rerender & draw what we want to see
             self.sequencer.reset();
             //self.sequencer.should_render = true;

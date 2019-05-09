@@ -236,13 +236,19 @@ impl Sequencer {
         // Queue sequence
         if self.is_shift_pressed() {
             self.sequence_queued = Some(sequence as usize);
+        } else {
+            // When we press currently selected overview, return to instrument view, so we can peek
+            if self.sequence == sequence {
+                self.switch_overview();
+            } else {
+                // If we select a new sequence, show that
+                self.sequence = sequence;
+
+                if let OverView::Instrument = self.overview {
+                    self.switch_overview();
+                }
+            }
         }
-        // If we're looking at instrument at the moment, clear that & switch to sequence
-        if let OverView::Instrument = self.overview {
-            self.switch_overview();
-        }
-        // Set new sequence & draw
-        self.sequence = sequence;
     }
 
     fn switch_group(&mut self) {
@@ -658,10 +664,7 @@ impl Sequencer {
     }
     */
 
-    // Get notes that should be triggered in currently playing sequences
-    fn get_playing_notes(&self, cycle: &Cycle, sequences: Vec<usize>) -> Vec<(u32, &Note)> {
-        // Get phrases that are playing in sequence
-        // ( instrument, phrase )
+    fn playing_patterns(&self, cycle: &Cycle, sequences: Vec<usize>) -> Vec<(usize, PlayedPattern)> {
         sequences.iter()
             .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
             // Get patterns that are playing for Instrument & played pattern
@@ -673,12 +676,40 @@ impl Sequencer {
                         (instrument, played_pattern)
                     })
             })
+            .collect()
+    }
+
+    // Get notes that should be triggered in currently playing sequences
+    fn playing_notes(&self, cycle: &Cycle, played_patterns: Vec<(usize, PlayedPattern)>) -> Vec<(u32, &Note)> {
+        // Get phrases that are playing in sequence
+        // ( instrument, phrase )
+        played_patterns.into_iter()
             // Next, get notes for each instrument / played pattern
             .flat_map(|(instrument, played_pattern)| {
                 self.instruments[instrument].patterns[played_pattern.index]
                     .playing_notes(cycle, played_pattern.start, played_pattern.end)
             })
             .collect()
+    }
+
+    fn note_messages(cycle: &Cycle, notes: Vec<(u32, &Note)>) -> (Vec<(u32, Message)>, Vec<TimedMessage>) {
+        let note_offs: Vec<_> = notes.iter()
+            .map(|(delta_ticks, note)| {
+                let absolute_tick = cycle.absolute_start + delta_ticks + (note.end - note.start);
+                let message = note.message(0x80);
+
+                (absolute_tick, message)
+            })
+            .collect();
+
+        let note_ons: Vec<_> = notes.iter()
+            .map(|(delta_ticks, note)| {
+                let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
+                TimedMessage::new(delta_frames, note.message(0x90))
+            })
+            .collect();
+
+        (note_offs, note_ons)
     }
 
     // Send midi to process handler
@@ -691,26 +722,13 @@ impl Sequencer {
             // Get playing sequences
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Output those
-                let notes = self.get_playing_notes(cycle, sequences);
+                let played_patterns = self.playing_patterns(cycle, sequences);
+                let notes = self.playing_notes(cycle, played_patterns);
 
-                let note_offs: Vec<(u32, Message)> = notes.iter()
-                    .map(|(delta_ticks, note)| {
-                        let absolute_tick = cycle.absolute_start + delta_ticks + (note.end - note.start);
-                        let message = note.message(0x80);
+                let (note_offs, note_ons) = Sequencer::note_messages(cycle, notes);
 
-                        (absolute_tick, message)
-                    })
-                    .collect();
-
-                let note_ons: Vec<TimedMessage> = notes.iter()
-                    .map(|(delta_ticks, note)| {
-                        let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                        TimedMessage::new(delta_frames, note.message(0x90))
-                    })
-                    .collect();
-
-                messages.extend(note_ons);
                 self.note_offs.extend(note_offs);
+                messages.extend(note_ons);
             }
         }
 
