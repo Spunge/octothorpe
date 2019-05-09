@@ -7,7 +7,7 @@ use super::phrase::{Phrase, PlayedPattern};
 use super::pattern::Pattern;
 use super::sequence::Sequence;
 use super::playable::Playable;
-use super::note::{Note, NoteOff};
+use super::note::Note;
 
 pub enum OverView {
     Instrument,
@@ -39,7 +39,7 @@ impl KeyPress {
 pub struct Sequencer {
     group: u8,
 
-    note_offs: Vec<NoteOff>,
+    note_offs: Vec<(u32, Message)>,
     control_offs: Vec<(u32, u8)>,
     keys_pressed: Vec<KeyPress>,
 
@@ -617,34 +617,19 @@ impl Sequencer {
         }
     }
 
-    pub fn note_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
+    // Get messages for noteoffs that fall in this frame
+    fn note_off_messages(cycle: &Cycle, buffer: &mut Vec<(u32, Message)>) -> Vec<TimedMessage> {
         let mut messages = vec![];
 
-        self.note_offs.retain(|note_off| {
-            match cycle.delta_frames_absolute(note_off.tick) {
-                Some(frames) => {
-                    messages.push(TimedMessage::new(frames, note_off.message()));
-                    false
-                },
-                None => true
+        // Get noteoffs that occur in this cycle
+        for index in (0..buffer.len()) {
+            let (absolute_tick, _) = buffer[index];
+
+            if let Some(frame) = cycle.delta_frames_absolute(absolute_tick) {
+                let (_, message) = buffer.swap_remove(index);
+                messages.push(TimedMessage::new(frame, message));
             }
-        });
-
-        messages
-    }
-
-    pub fn control_off_messages(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        let mut messages = vec![];
-
-        self.control_offs.retain(|(tick, channel)| {
-            match cycle.delta_frames_absolute(*tick) {
-                Some(frames) => {
-                    messages.push(TimedMessage::new(frames, Message::Note([0x90 + *channel, 0x34, 0])));
-                    false
-                },
-                None => true
-            }
-        });
+        }
 
         messages
     }
@@ -698,8 +683,8 @@ impl Sequencer {
 
     // Send midi to process handler
     pub fn output_midi(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        // Play notes
-        let mut messages = self.note_off_messages(cycle);
+        // Play note offs
+        let mut messages = Sequencer::note_off_messages(cycle, &mut self.note_offs);
 
         // Next notes on
         if cycle.is_rolling {
@@ -708,16 +693,19 @@ impl Sequencer {
                 // Output those
                 let notes = self.get_playing_notes(cycle, sequences);
 
-                let note_offs: Vec<NoteOff> = notes.iter()
+                let note_offs: Vec<(u32, Message)> = notes.iter()
                     .map(|(delta_ticks, note)| {
-                        note.note_off(cycle.absolute_start + delta_ticks + (note.end - note.start))
+                        let absolute_tick = cycle.absolute_start + delta_ticks + (note.end - note.start);
+                        let message = note.message(0x80);
+
+                        (absolute_tick, message)
                     })
                     .collect();
 
                 let note_ons: Vec<TimedMessage> = notes.iter()
                     .map(|(delta_ticks, note)| {
                         let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                        TimedMessage::new(delta_frames, note.message())
+                        TimedMessage::new(delta_frames, note.message(0x90))
                     })
                     .collect();
 
