@@ -127,7 +127,9 @@ impl jack::ProcessHandler for ProcessHandler {
         }
 
         // Control out when there's somebody listening
-        control_messages.extend(self.controller.sequencer.output_control(&cycle));
+        let led_messages: Vec<_> = self.controller.sequencer.output_static_leds().into_iter()
+                .map(|message| TimedMessage::new(0, message)).collect();
+        control_messages.extend(led_messages);
 
         // Process incoming midi
         control_messages.extend(self.controller.process_midi_messages(self.control_in.iter(process_scope), client));

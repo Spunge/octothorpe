@@ -207,7 +207,6 @@ impl Sequencer {
         self.keys_pressed.push(KeyPress::new(message));
 
         match message.bytes[1] {
-            //0x30 => self.sequencer.toggle_instrument_active(message.bytes[0] - 0x90),
             0x50 => self.switch_group(),
             0x3A => self.switch_overview(),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
@@ -232,6 +231,10 @@ impl Sequencer {
         });
     }
 
+    fn switch_group(&mut self) {
+        self.group = if self.group == 1 { 0 } else { 1 };
+    }
+
     fn switch_sequence(&mut self, sequence: u8) {
         // Queue sequence
         if self.is_shift_pressed() {
@@ -251,16 +254,18 @@ impl Sequencer {
         }
     }
 
-    fn switch_group(&mut self) {
-        self.group = if self.group == 1 { 0 } else { 1 };
-    }
-
     fn switch_instrument(&mut self, instrument: u8) {
-        // If we're looking @ sequence, clear that and toggle
-        if let OverView::Sequence = self.overview {
+        // If we click selected instrument, return to sequence for peeking
+        if self.instrument == instrument {
             self.switch_overview();
+        } else {
+            // Otherwise select instrument && switch
+            self.instrument = instrument;
+
+            if let OverView::Sequence = self.overview {
+                self.switch_overview();
+            }
         }
-        self.instrument = instrument;
     }
 
     fn switch_playable(&mut self, playable: u8) {
@@ -429,7 +434,7 @@ impl Sequencer {
     //fn draw_indicator_grid(&mut self) {
     //}
 
-    pub fn output_static_control(&mut self) -> Vec<Message> {
+    pub fn output_static_leds(&mut self) -> Vec<Message> {
         let mut output = vec![];
     
         // Draw if we have to
@@ -457,27 +462,6 @@ impl Sequencer {
  
         output
     }
-
-    pub fn output_control(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        let messages = self.output_static_control();
-
-        messages.into_iter().map(|message| TimedMessage::new(0, message)).collect()
-    }
-
-
-    /*
-    pub fn draw_active_grid(&mut self, group: u8) -> Vec<Message> {
-        let leds = self.active_grid.width;
-
-        (0..leds)
-            .map(|led| {
-                let is_active = self.active[(led + group * 8) as usize];
-                let state = if is_active { 1 } else { 0 };
-                self.active_grid.switch_led(led, 0, state)
-            })
-            .collect()
-    }
-    */
 
     /*
     fn draw_indicator_grid(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
