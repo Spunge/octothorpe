@@ -37,10 +37,6 @@ impl Phrase {
         ])
     }
 
-    pub fn reset(&mut self) {
-        self.played_patterns = vec![];
-    }
-
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
         let coords = self.played_patterns.iter()
             .map(|pattern| {

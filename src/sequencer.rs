@@ -277,7 +277,7 @@ impl Sequencer {
         if self.is_shift_pressed() {
             match self.detailview {
                 DetailView::Pattern => self.instrument().pattern().reset(),
-                DetailView::Phrase => self.instrument().phrase().reset(),
+                _ => (),
             }
         }
     }

@@ -51,7 +51,6 @@ impl Pattern {
     }
 
     pub fn reset(&mut self) {
-        self.notes = vec![];
         self.base_note = BASE_NOTE;
     }
 
