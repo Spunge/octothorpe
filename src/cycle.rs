@@ -75,6 +75,7 @@ impl Cycle {
         }
     }
 
+    // Check if a recurring ticks interval falls in this cycle
     pub fn delta_ticks_recurring(&self, tick: u32, interval: u32) -> Option<u32> {
         let pattern_start = self.start % interval;
         let pattern_end = pattern_start + self.ticks;

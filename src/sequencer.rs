@@ -58,13 +58,8 @@ pub struct Sequencer {
     detailview: DetailView,
 
     pub should_render: bool,
-    state_current: [u8; 92],
-    state_next: [u8; 92],
-    
-    // Dynamic
-    index_indicator: Range<usize>,
-    index_playables: Range<usize>,
-    index_sequences: Range<usize>,
+    static_state_current: [u8; 75],
+    static_state_next: [u8; 75],
     // Buttons
     index_group: usize,
     index_detailview: usize,
@@ -75,6 +70,13 @@ pub struct Sequencer {
     index_green: Range<usize>,
     index_blue: Range<usize>,
     index_red: Range<usize>,
+
+    indicator_state_current: [u8; 8],
+    indicator_state_next: [u8; 8],
+    playables_state_current: [u8; 8],
+    playables_state_next: [u8; 8],
+    sequences_state_current: [u8; 4],
+    sequences_state_next: [u8; 4],
 }
 
 impl Sequencer {
@@ -108,28 +110,31 @@ impl Sequencer {
             sequence_queued: Some(0),
 
             // What are we currently showing?
-            detailview: DetailView::Phrase,
+            detailview: DetailView::Pattern,
             overview: OverView::Instrument,
 
+            // Static button states
             should_render: false,
-            state_current: [0; 92],
-            state_next: [0; 92],
-
-            // Range of buttons in states buffer
-            // Dynamic
-            index_indicator: 40..48,
-            index_playables: 80..85,
-            index_sequences: 85..89,
-            // Static
-            index_instruments: 48..56,
+            static_state_current: [0; 75],
+            static_state_next: [0; 75],
+            // Static grids
             index_main: 0..40,
-            index_green: 56..64,
+            index_green: 40..48,
+            index_instruments: 48..56,
+            index_red: 56..64,
             index_blue: 64..72,
-            index_red: 72..80,
             // Static buttons
-            index_group: 89,
-            index_detailview: 90,
-            index_overview: 91,
+            index_group: 72,
+            index_detailview: 73,
+            index_overview: 74,
+
+            // Dynamic button states
+            indicator_state_current: [0; 8],
+            indicator_state_next: [0; 8],
+            playables_state_current: [0; 8],
+            playables_state_next: [0; 8],
+            sequences_state_current: [0; 4],
+            sequences_state_next: [0; 4],
         }
     }
 
@@ -309,23 +314,24 @@ impl Sequencer {
 
     pub fn reset(&mut self) {
         // Use non-existant state to always redraw
-        self.state_current = [9; 92];
-        self.state_next = [0; 92];
+        self.static_state_current = [9; 92];
+        self.static_state_next = [0; 92];
 
         self.should_render = true;
     }
 
+    // TODO - Use array slice
     // Output a message for each changed state in the grid
     pub fn output_grid(&self, range: Range<usize>, y: u8) -> Vec<Message> {
         let mut output = vec![];
         let start = range.start;
 
         for index in range {
-            if self.state_current[index] != self.state_next[index] {
+            if self.static_state_current[index] != self.static_state_next[index] {
                 let led = (index - start) as u8;
-                let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
+                let x = if self.static_state_next[index] == 0 { 0x80 } else { 0x90 };
 
-                output.push(Message::Note([x + led % 8, y + led / 8, self.state_next[index]]));
+                output.push(Message::Note([x + led % 8, y + led / 8, self.static_state_next[index]]));
             }
         }
 
@@ -333,9 +339,9 @@ impl Sequencer {
     }
 
     pub fn output_button(&self, index: usize, y: u8) -> Option<Message> {
-        if self.state_current[index] != self.state_next[index] {
-            let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
-            Some(Message::Note([x, y, self.state_next[index]]))
+        if self.static_state_current[index] != self.static_state_next[index] {
+            let x = if self.static_state_next[index] == 0 { 0x80 } else { 0x90 };
+            Some(Message::Note([x, y, self.static_state_next[index]]))
         } else {
             None
         }
@@ -347,7 +353,7 @@ impl Sequencer {
 
         // Clear grid
         for index in self.index_main.clone() {
-            self.state_next[index] = 0;
+            self.static_state_next[index] = 0;
         }
 
         let states = match self.overview {
@@ -364,7 +370,7 @@ impl Sequencer {
         });
 
         for (x, y, state) in valid_states {
-            self.state_next[y as usize * 8 + x as usize] = state;
+            self.static_state_next[y as usize * 8 + x as usize] = state;
         }
     }
 
@@ -372,7 +378,7 @@ impl Sequencer {
         for index in self.index_green.clone() {
             let led = index - self.index_green.start;
 
-            self.state_next[index] = match self.overview {
+            self.static_state_next[index] = match self.overview {
                 // In instrument, green grid shows length of playable
                 OverView::Instrument => {
                     let length = (self.playable().ticks / self.playable().minimum_ticks) as usize;
@@ -398,7 +404,7 @@ impl Sequencer {
         for index in self.index_blue.clone() {
             let led = index - self.index_blue.start;
 
-            self.state_next[index] = if led >= start && led < end { 1 } else { 0 };
+            self.static_state_next[index] = if led >= start && led < end { 1 } else { 0 };
         }
     }
 
@@ -407,7 +413,7 @@ impl Sequencer {
             let led = index - self.index_instruments.start;
             let instrument = self.group * 8 + self.instrument;
 
-            self.state_next[index] = match self.overview {
+            self.static_state_next[index] = match self.overview {
                 OverView::Instrument => if led as u8 == instrument { 1 } else { 0 },
                 _ => 0,
             };
@@ -415,11 +421,11 @@ impl Sequencer {
     }
 
     fn draw_group_button(&mut self) {
-        self.state_next[self.index_group] = self.group;
+        self.static_state_next[self.index_group] = self.group;
     }
 
     fn draw_detailview_button(&mut self) {
-        self.state_next[self.index_detailview] = match self.overview {
+        self.static_state_next[self.index_detailview] = match self.overview {
             OverView::Instrument => match self.detailview { DetailView::Pattern => 1, _ => 0 },
             _ => 0,
         };
@@ -450,85 +456,12 @@ impl Sequencer {
             output.extend(self.output_button(self.index_detailview, 0x3E));
 
             // Switch buffer
-            self.state_current = self.state_next;
+            self.static_state_current = self.static_state_next;
             self.should_render = false;
         }
  
         output
     }
-
-    /*
-    fn draw_indicator_grid(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        if let Some(sequences) = self.playing_sequences(cycle) {
-            // Get phrases that are playing in sequence
-            // ( instrument, phrase )
-            let phrases: Vec<(usize, usize)> = sequences.iter()
-                .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
-                .collect();
-
-            match self.detailview {
-                DetailView::Pattern => {
-                    // Get patterns that are playingg
-                    // Instrument & played pattern
-                    let mut patterns: Vec<(usize, PlayedPattern)> = phrases.iter()
-                        .flat_map(|(instrument, phrase)| {
-                            self.instruments[*instrument].phrases[*phrase]
-                                .playing_patterns(cycle, &self.instruments[*instrument].patterns)
-                                .into_iter()
-                                .map(move |played_pattern| {
-                                    (*instrument, played_pattern)
-                                })
-                        })
-                        .collect();
-
-                    patterns = patterns.into_iter()
-                        .filter(|(instrument, played_pattern)| {
-                            *instrument == self.instrument as usize && played_pattern.index == self.instrument().pattern
-                        })
-                        .collect();
-
-                    let ticks_offset = self.playable().ticks_offset();
-                    let ticks_per_led = self.playable().ticks_per_led();
-
-                    let mut messages = vec![];
-
-                    for (_, played_pattern) in patterns.iter() {
-                        let pattern_length = played_pattern.end - played_pattern.start;
-
-                        for increment in 0..(pattern_length / ticks_per_led) {
-                            let tick = played_pattern.start + increment * ticks_per_led + ticks_offset;
-                        
-                            if let Some(frames) = cycle.delta_frames(tick) {
-                                messages.extend(self.indicator_grid.clear(false).into_iter().map(|message| TimedMessage::new(frames, message)));
-
-                                if let Some(message) = self.indicator_grid.try_switch_led(increment as i32, 0, 1) {
-                                    messages.push(TimedMessage::new(frames, message));
-                                }
-                            }
-                        }
-                    }
-
-                    messages
-                },
-                DetailView::Phrase => {
-                    let should_draw = phrases.iter()
-                        .any(|(instrument, phrase)| {
-                            *instrument == self.instrument as usize && *phrase == self.instrument().phrase
-                        });
-
-                    if should_draw {
-                        //println!("should draw phrase");
-                        vec![]
-                    } else {
-                        vec![]
-                    }
-                }
-            }
-        } else {
-            vec![]
-        }
-    }
-    */
 
     /*
     fn draw_indicator(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
@@ -551,32 +484,6 @@ impl Sequencer {
         messages
     }
     */
-
-    fn active_pattern_indicator_leds(&self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Vec<(u32, u32)> {
-       played_patterns.into_iter()
-            // Get playing patterns for currently shown instrument && pattern
-            .filter(|(instrument, played_pattern)| {
-                *instrument == self.instrument as usize 
-                    && played_pattern.index == self.instruments[*instrument].pattern
-            })
-            // Get 
-            .flat_map(|(instrument, played_pattern)| {
-                let pattern_length = played_pattern.end - played_pattern.start;
-                // Get ticks per led
-                let ticks_per_led = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_per_led();
-                let ticks_offset = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_offset();
-
-                // Loop over the played patterns range to see if one of the leds should activate
-                (played_pattern.start..played_pattern.end).step_by(ticks_per_led as usize)
-                    .filter_map(move |tick| {
-                        cycle.delta_frames(tick + ticks_offset).and_then(|frame| {
-                            // Return frame to switch at and led to switch
-                            Some((frame, (tick - played_pattern.start) / ticks_per_led))
-                        })
-                    })
-            })
-            .collect()
-    }
 
     fn set_playing_sequence(&mut self, sequence: usize) {
         self.sequence_playing = sequence;
@@ -713,6 +620,42 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
+    fn pattern_indicator_note_events(&self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Vec<TimedMessage> {
+       let switch_to_led: Option<(u32, i32)> = played_patterns.into_iter()
+            // Get playing patterns for currently shown instrument && pattern
+            .filter(|(instrument, played_pattern)| {
+                *instrument == self.instrument as usize 
+                    && played_pattern.index == self.instruments[*instrument].pattern
+            })
+            // Get 
+            .filter_map(|(instrument, played_pattern)| {
+                let pattern_length = played_pattern.end - played_pattern.start;
+                // Get ticks per led
+                let ticks_per_led = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_per_led();
+                let ticks_offset = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_offset();
+
+                cycle.delta_ticks_recurring(0, ticks_per_led)
+                    .and_then(|delta_ticks| {
+                        let ticks_into_pattern = cycle.start as i32 - played_pattern.start as i32 + delta_ticks as i32;
+                        // Get current led by offsetting ticks by zoom offset
+                        let current_led = (ticks_into_pattern - ticks_offset as i32) / ticks_per_led as i32;
+
+                        Some((cycle.ticks_to_frames(delta_ticks), current_led))
+                    })
+            })
+            .last();
+
+            // TODO  Always draw 0's, only switch led to active when current led is valid.
+            // TODO - use output grid to output messages, time them with frames
+            // TODO - Clean indicator grid on instrument switch / overview switch
+        if let Some((frames, led)) = switch_to_led {
+            self.indicator_state_current = [0; 8];
+
+            if current_led >= 0 && current_led < 8 {
+                self.indicator_state_current[current_led as usize] = 1;
+            }
+        }
+    }
 
     // Send midi to process handler
     pub fn output_midi(&mut self, cycle: &Cycle) -> (Vec<TimedMessage>, Vec<TimedMessage>) {
@@ -735,7 +678,9 @@ impl Sequencer {
                     OverView::Instrument => {
                         match self.detailview {
                             DetailView::Pattern => {
-                                println!("{:?}", self.active_pattern_indicator_leds(cycle, &played_patterns));
+                                if let Some(note_on) = self.pattern_indicator_note_on(cycle, &played_patterns) {
+                                    println!("{:?}", note_on);
+                                }
                             },
                             DetailView::Phrase => {},
                         }
