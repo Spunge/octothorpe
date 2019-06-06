@@ -314,24 +314,21 @@ impl Sequencer {
 
     pub fn reset(&mut self) {
         // Use non-existant state to always redraw
-        self.static_state_current = [9; 92];
-        self.static_state_next = [0; 92];
+        self.static_state_current = [9; 75];
+        self.static_state_next = [0; 75];
 
         self.should_render = true;
     }
 
-    // TODO - Use array slice
     // Output a message for each changed state in the grid
-    pub fn output_grid(&self, range: Range<usize>, y: u8) -> Vec<Message> {
+    pub fn output_grid(&self, current_state: &[u8], next_state: &[u8], y: u8) -> Vec<Message> {
         let mut output = vec![];
-        let start = range.start;
 
-        for index in range {
-            if self.static_state_current[index] != self.static_state_next[index] {
-                let led = (index - start) as u8;
-                let x = if self.static_state_next[index] == 0 { 0x80 } else { 0x90 };
+        for index in 0 .. current_state.len() {
+            if current_state[index] != next_state[index] {
+                let x = if next_state[index] == 0 { 0x80 } else { 0x90 };
 
-                output.push(Message::Note([x + led % 8, y + led / 8, self.static_state_next[index]]));
+                output.push(Message::Note([x + index as u8 % 8, y + index as u8 / 8, next_state[index]]));
             }
         }
 
@@ -350,11 +347,6 @@ impl Sequencer {
     fn draw_main_grid(&mut self) {
         // Why do i have to do this?
         let group = self.group;
-
-        // Clear grid
-        for index in self.index_main.clone() {
-            self.static_state_next[index] = 0;
-        }
 
         let states = match self.overview {
             OverView::Instrument => match self.detailview {
@@ -448,15 +440,16 @@ impl Sequencer {
             self.draw_group_button();
             self.draw_detailview_button();
 
-            output.extend(self.output_grid(self.index_green.clone(), 0x32));
-            output.extend(self.output_grid(self.index_blue.clone(), 0x31));
-            output.extend(self.output_grid(self.index_main.clone(), 0x35));
-            output.extend(self.output_grid(self.index_instruments.clone(), 0x33));
+            output.extend(self.output_grid(&self.static_state_current[self.index_green.clone()], &self.static_state_next[self.index_green.clone()], 0x32));
+            output.extend(self.output_grid(&self.static_state_current[self.index_blue.clone()], &self.static_state_next[self.index_blue.clone()], 0x31));
+            output.extend(self.output_grid(&self.static_state_current[self.index_main.clone()], &self.static_state_next[self.index_main.clone()], 0x35));
+            output.extend(self.output_grid(&self.static_state_current[self.index_instruments.clone()], &self.static_state_next[self.index_instruments.clone()], 0x33));
             output.extend(self.output_button(self.index_group, 0x50));
             output.extend(self.output_button(self.index_detailview, 0x3E));
 
             // Switch buffer
             self.static_state_current = self.static_state_next;
+            self.static_state_next = [0; 75];
             self.should_render = false;
         }
  
@@ -620,41 +613,47 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn pattern_indicator_note_events(&self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Vec<TimedMessage> {
-       let switch_to_led: Option<(u32, i32)> = played_patterns.into_iter()
-            // Get playing patterns for currently shown instrument && pattern
-            .filter(|(instrument, played_pattern)| {
-                *instrument == self.instrument as usize 
-                    && played_pattern.index == self.instruments[*instrument].pattern
+    fn draw_pattern_indicator(&mut self, ticks_per_led: u32, played_patterns: &Vec<(usize, PlayedPattern)>) {
+
+    }
+
+    fn pattern_indicator_note_events(&mut self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Option<Vec<TimedMessage>> {
+        // Do we have to switch now?
+        cycle.delta_ticks_recurring(0, self.playable().ticks_per_led())
+            .and_then(|delta_ticks| {
+                // Is currently showing pattern in playing patterns?
+                let playing_pattern = played_patterns.into_iter()
+                    .rev()
+                    .find(|(instrument, played_pattern)| {
+                        *instrument == self.instrument as usize 
+                            && played_pattern.index == self.instruments[*instrument].pattern
+                    });
+
+                if let Some((instrument, played_pattern)) = playing_pattern {
+                    let ticks_offset = self.playable().ticks_offset();
+                    let ticks_into_pattern = cycle.start as i32 - played_pattern.start as i32 + delta_ticks as i32;
+
+                    // Get current led by offsetting ticks by zoom offset
+                    let led = (ticks_into_pattern - ticks_offset as i32) / self.playable().ticks_per_led() as i32;
+
+                    if led >= 0 && led < 8 {
+                        self.indicator_state_next[led as usize] = 1;
+                    }
+                }
+
+                // Create timed messages from indicator state
+                let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x33).into_iter()
+                    .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
+                    .collect();
+
+                // Switch state
+                self.indicator_state_current = self.indicator_state_next;
+                self.indicator_state_next = [0; 8];
+
+
+                // Return these beautifull messages
+                Some(messages)
             })
-            // Get 
-            .filter_map(|(instrument, played_pattern)| {
-                let pattern_length = played_pattern.end - played_pattern.start;
-                // Get ticks per led
-                let ticks_per_led = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_per_led();
-                let ticks_offset = self.instruments[*instrument].patterns[played_pattern.index].playable.ticks_offset();
-
-                cycle.delta_ticks_recurring(0, ticks_per_led)
-                    .and_then(|delta_ticks| {
-                        let ticks_into_pattern = cycle.start as i32 - played_pattern.start as i32 + delta_ticks as i32;
-                        // Get current led by offsetting ticks by zoom offset
-                        let current_led = (ticks_into_pattern - ticks_offset as i32) / ticks_per_led as i32;
-
-                        Some((cycle.ticks_to_frames(delta_ticks), current_led))
-                    })
-            })
-            .last();
-
-            // TODO  Always draw 0's, only switch led to active when current led is valid.
-            // TODO - use output grid to output messages, time them with frames
-            // TODO - Clean indicator grid on instrument switch / overview switch
-        if let Some((frames, led)) = switch_to_led {
-            self.indicator_state_current = [0; 8];
-
-            if current_led >= 0 && current_led < 8 {
-                self.indicator_state_current[current_led as usize] = 1;
-            }
-        }
     }
 
     // Send midi to process handler
@@ -678,8 +677,8 @@ impl Sequencer {
                     OverView::Instrument => {
                         match self.detailview {
                             DetailView::Pattern => {
-                                if let Some(note_on) = self.pattern_indicator_note_on(cycle, &played_patterns) {
-                                    println!("{:?}", note_on);
+                                if let Some(indicator_note_ons) = self.pattern_indicator_note_events(cycle, &played_patterns) {
+                                    control_out_messages.extend(indicator_note_ons);
                                 }
                             },
                             DetailView::Phrase => {},
