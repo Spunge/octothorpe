@@ -14,7 +14,10 @@ Patterns
 - [X] bank select moves viewport in horizontally, also moving zoom indicator
 - [X] bank select moves viewport vertically
 - [X] Indicator shows in currently playing pattern
-- [ ] Use pattern indicator as indicator of base note offset for a second, switching back to selected pattern
+- [ ] Indicator should draw on reposition
+- [ ] Indicator should draw on instrument / pattern selection
+- [ ] Use playable selector as indicator of base note offset in chords while scrolling, switching back to selected pattern after a while. 
+		Do smart stuff with this, like 6 on/6 off on chord 0, 7on/5off on chord 1, 5on/7off on chord -1
 - [X] Notes in grid shouldn't be able to overlap, shorten previous note
 
 Phrases
@@ -33,7 +36,6 @@ Instruments
 - [X] scene lauch row selects phrases in phrase view
 - [ ] Copy playables by holding playable key & clicking other playable key
 - [X] Shift + playable clears pattern / phrase
-- [ ] Keep base note value of grid in instrument, not per pattern
 
 Sequences
 - [X] Sequences are played
