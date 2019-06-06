@@ -207,11 +207,12 @@ impl Sequencer {
         }
     }
 
-    pub fn key_pressed(&mut self, message: jack::RawMidi) {
+    pub fn key_pressed(&mut self, message: jack::RawMidi, cycle: &Cycle) {
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
 
         match message.bytes[1] {
+            // TODO - On switching group && instrument etc, draw indicator with cycle
             0x50 => self.switch_group(),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
@@ -573,48 +574,26 @@ impl Sequencer {
         messages
     }
 
-    fn sequence_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>) -> (Vec<(u32, Message)>, Vec<TimedMessage>) {
+    fn sequence_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>, modifier: u32, key: Option<u8>, velocity_on: Option<u8>, velocity_off: Option<u8>) 
+        -> (Vec<(u32, Message)>, Vec<TimedMessage>) 
+    {
         let note_offs: Vec<_> = notes.iter()
             .map(|(delta_ticks, note)| {
-                let length = (note.end - note.start);
+                let length = note.end - note.start;
                 let tick = cycle.absolute_start + delta_ticks;
 
-                (tick + length, note.message(0x80, None, None))
+                (tick + length / modifier, note.message(0x80, key, velocity_off))
             })
             .collect();
 
         let note_ons: Vec<_> = notes.iter()
             .map(|(delta_ticks, note)| {
                 let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                TimedMessage::new(delta_frames, note.message(0x90, None, None))
+                TimedMessage::new(delta_frames, note.message(0x90, key, velocity_on))
             })
             .collect();
 
         (note_offs, note_ons)
-    }
-
-    fn sequence_indicator_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>) -> (Vec<(u32, Message)>, Vec<TimedMessage>) {
-        let note_offs: Vec<_> = notes.iter()
-            .map(|(delta_ticks, note)| {
-                let length = (note.end - note.start);
-                let tick = cycle.absolute_start + delta_ticks;
-
-                (tick + length / 3, note.message(0x90, Some(0x33), Some(0)))
-            })
-            .collect();
-
-        let note_ons: Vec<_> = notes.iter()
-            .map(|(delta_ticks, note)| {
-                let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                TimedMessage::new(delta_frames, note.message(0x90, Some(0x33), Some(1)))
-            })
-            .collect();
-
-        (note_offs, note_ons)
-    }
-
-    fn draw_pattern_indicator(&mut self, ticks_per_led: u32, played_patterns: &Vec<(usize, PlayedPattern)>) {
-
     }
 
     fn pattern_indicator_note_events(&mut self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Option<Vec<TimedMessage>> {
@@ -623,6 +602,7 @@ impl Sequencer {
             .and_then(|delta_ticks| {
                 // Is currently showing pattern in playing patterns?
                 let playing_pattern = played_patterns.into_iter()
+                    // Get latest occurence instead of first
                     .rev()
                     .find(|(instrument, played_pattern)| {
                         *instrument == self.instrument as usize 
@@ -650,7 +630,6 @@ impl Sequencer {
                 self.indicator_state_current = self.indicator_state_next;
                 self.indicator_state_next = [0; 8];
 
-
                 // Return these beautifull messages
                 Some(messages)
             })
@@ -670,7 +649,8 @@ impl Sequencer {
                 let played_patterns = self.playing_patterns(cycle, sequences);
                 let notes = self.playing_notes(cycle, &played_patterns);
 
-                let (sequence_note_offs, sequence_note_ons) = Sequencer::sequence_note_events(cycle, &notes);
+                let (sequence_note_offs, sequence_note_ons) 
+                    = Sequencer::sequence_note_events(cycle, &notes, 1, None, None, None);
                 sequence_out_messages.extend(sequence_note_ons);
 
                 match self.overview {
@@ -685,7 +665,8 @@ impl Sequencer {
                         }
                     },
                     OverView::Sequence => {
-                        let (indicator_note_offs, control_note_ons) = Sequencer::sequence_indicator_note_events(cycle, &notes);
+                        let (indicator_note_offs, control_note_ons) 
+                            = Sequencer::sequence_note_events(cycle, &notes, 3, Some(0x33), Some(1), Some(0));
                         self.indicator_note_offs.extend(indicator_note_offs);
                         control_out_messages.extend(control_note_ons);
                     }

@@ -132,7 +132,7 @@ impl jack::ProcessHandler for ProcessHandler {
         control_messages.extend(led_messages);
 
         // Process incoming midi
-        control_messages.extend(self.controller.process_midi_messages(self.control_in.iter(process_scope), client));
+        control_messages.extend(self.controller.process_midi_messages(self.control_in.iter(process_scope), &cycle, client));
         let (dynamic_grid_messages, sequencer_messages) = self.controller.sequencer.output_midi(&cycle);
         control_messages.extend(dynamic_grid_messages);
 
