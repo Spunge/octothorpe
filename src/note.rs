@@ -1,5 +1,4 @@
 
-use std::cmp::Ordering;
 use super::message::Message;
 
 #[derive(Debug, Clone, Eq, PartialEq)]

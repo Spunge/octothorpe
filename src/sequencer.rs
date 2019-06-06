@@ -609,7 +609,7 @@ impl Sequencer {
                             && played_pattern.index == self.instruments[*instrument].pattern
                     });
 
-                if let Some((instrument, played_pattern)) = playing_pattern {
+                if let Some((_, played_pattern)) = playing_pattern {
                     let ticks_offset = self.playable().ticks_offset();
                     let ticks_into_pattern = cycle.start as i32 - played_pattern.start as i32 + delta_ticks as i32;
 
