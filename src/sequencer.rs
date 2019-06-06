@@ -642,7 +642,7 @@ impl Sequencer {
                 }
 
                 // Create timed messages from indicator state
-                let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x33).into_iter()
+                let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34).into_iter()
                     .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
                     .collect();
 
