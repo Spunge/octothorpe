@@ -16,8 +16,7 @@ Patterns
 - [X] Indicator shows in currently playing pattern
 - [ ] Indicator should draw on reposition
 - [ ] Indicator should draw on instrument / pattern selection
-- [ ] Use playable selector as indicator of base note offset in chords while scrolling, switching back to selected pattern after a while. 
-		Do smart stuff with this, like 6 on/6 off on chord 0, 7on/5off on chord 1, 5on/7off on chord -1
+- [ ] Use playable selector as indicator of base note / octave offset in octaves while scrolling, switching back to selected pattern after a while. 
 - [X] Notes in grid shouldn't be able to overlap, shorten previous note
 
 Phrases
@@ -35,7 +34,7 @@ Instruments
 - [X] scene lauch row selects patterns in pattern view
 - [X] scene lauch row selects phrases in phrase view
 - [ ] Copy playables by holding playable key & clicking other playable key
-- [X] Shift + playable clears pattern / phrase
+- [X] Shift + playable clears view of pattern / phrase
 
 Sequences
 - [X] Sequences are played
@@ -45,7 +44,7 @@ Sequences
 - [X] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [X] row 0x32 -> instrument outputs yes/no
 - [X] Make indicator lights light up for notes played by instrument
-- [X] Don't switch sequence on shift click
+- [X] Queue sequence on shift click
 
 Tempo
 - [ ] Fix tap tempo
@@ -58,16 +57,17 @@ Improvements
 - [X] Don't check every note against the cycle
 - [X] Don't send same note on message multiple times to controller when grid is zoomed out on large patterns
 - [ ] Save state to file
-- [ ] Move grid not instantly?
 
 ### Idea / unsure about
 Patterns / Phrases
 - We now have 5 phrases / patterns, 1 under every scene launch button, we could implement shift+up/down for scrolling through more of these
 - Fold pattern grid to notes in key / all notes
 - shift + row 0x31 -> move zoom viewport
+- Do smart stuff with the octave indicator, like 6 on/6 off on octave 0, 7on/5off on octave 1, 5on/7off on octave -1
+- Make a toggle to only show notes in key
 
 Velocity
-- Show velocity of notes in grid by color of note?
+- Add a way to change velocity of notes
 
 Effect knobs
 - Record effect knobs into patterns, how do we want to do this, holding rec key?
