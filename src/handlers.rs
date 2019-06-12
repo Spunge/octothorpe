@@ -17,7 +17,7 @@ pub struct TimebaseHandler {
 impl TimebaseHandler {
     pub fn new() -> Self {
         TimebaseHandler {
-            beats_per_minute: 120.0,
+            beats_per_minute: 130.0,
             is_up_to_date: false,
             beats_per_bar: 4,
             beat_type: 4,

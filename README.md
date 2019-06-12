@@ -14,7 +14,7 @@ Patterns
 - [X] bank select moves viewport in horizontally, also moving zoom indicator
 - [X] bank select moves viewport vertically
 - [X] Indicator shows in currently playing pattern
-- [ ] Indicator should draw on reposition
+- [X] Indicator should draw on reposition
 - [ ] Indicator should draw on instrument / pattern selection
 - [ ] Use playable selector as indicator of base note / octave offset in octaves while scrolling, switching back to selected pattern after a while. 
 - [X] Notes in grid shouldn't be able to overlap, shorten previous note
@@ -24,7 +24,7 @@ Phrases
 - [X] Toggle phrases
 - [X] Handle changing pattern length in phrases by keeping pattern end around
 - [X] Play notes in pattern for PlayedPatterns that are longer as pattern
-- [ ] Indicator shows progress in currently playing phrase
+- [X] Indicator shows progress in currently playing phrase
 - [X] Phrases shouldn't be able to overlap, shorten previous phrase
 - [X] Make phrases red instead of green
 
