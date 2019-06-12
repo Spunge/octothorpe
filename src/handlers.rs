@@ -117,7 +117,8 @@ impl jack::ProcessHandler for ProcessHandler {
         let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
         // Update next ticks to keep track of absoulute ticks elapsed for note off events
         self.ticks_elapsed += cycle.ticks;
-        self.was_repositioned = cycle.is_repositioned;
+        // TODO - cycle.absolute_start hack is dirty
+        self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
         let mut control_messages = vec![];
 
@@ -127,9 +128,7 @@ impl jack::ProcessHandler for ProcessHandler {
         }
 
         // Control out when there's somebody listening
-        let led_messages: Vec<_> = self.controller.sequencer.output_static_leds().into_iter()
-                .map(|message| TimedMessage::new(0, message)).collect();
-        control_messages.extend(led_messages);
+        control_messages.extend(self.controller.sequencer.output_static_leds());
 
         // Process incoming midi
         control_messages.extend(self.controller.process_midi_messages(self.control_in.iter(process_scope), &cycle, client));

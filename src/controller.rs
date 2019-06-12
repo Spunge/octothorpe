@@ -67,13 +67,9 @@ impl Controller {
 
             // Rerender & draw what we want to see
             self.sequencer.reset();
-            //self.sequencer.should_render = true;
-            let render: Vec<TimedMessage> = self.sequencer.output_static_leds().into_iter()
-                .map(|message| TimedMessage::new(128, message)).collect();
-
             let mut messages = vec![introduction];
-            //messages.extend(clear);
-            messages.extend(render);
+            // TODO - Before we timed the messages after introduction to 128 frames, why?
+            messages.extend(self.sequencer.output_static_leds());
 
             Some(messages)
         } else {

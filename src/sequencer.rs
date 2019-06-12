@@ -429,7 +429,7 @@ impl Sequencer {
     //fn draw_playables_grid(&mut self) {
     //}
 
-    pub fn output_static_leds(&mut self) -> Vec<Message> {
+    pub fn output_static_leds(&mut self) -> Vec<TimedMessage> {
         let mut output = vec![];
     
         // Draw if we have to
@@ -448,36 +448,16 @@ impl Sequencer {
             output.extend(self.output_button(self.index_group, 0x50));
             output.extend(self.output_button(self.index_detailview, 0x3E));
 
+            // TODO - force indicator to redraw, add indicator note events to output
+
             // Switch buffer
             self.static_state_current = self.static_state_next;
             self.static_state_next = [0; 75];
             self.should_render = false;
         }
  
-        output
+        output.into_iter().map(|message| TimedMessage::new(0, message)).collect()
     }
-
-    /*
-    fn draw_indicator(&mut self, cycle: &Cycle) -> Vec<TimedMessage> {
-        let mut messages = vec![];
-
-        if cycle.was_repositioned || cycle.is_rolling {
-            if cycle.was_repositioned {
-                let beat_start = (cycle.start / beats_to_ticks(1.0)) * beats_to_ticks(1.0) as u32;
-                let reposition_cycle = cycle.repositioned(beat_start);
-
-                messages.extend(self.draw_indicator_grid(&reposition_cycle));
-            }
-
-            // Update grid when running, after repositioning
-            if cycle.is_rolling {
-                messages.extend(self.draw_indicator_grid(cycle));
-            }
-        }
-
-        messages
-    }
-    */
 
     fn set_playing_sequence(&mut self, sequence: usize) {
         self.sequence_playing = sequence;
@@ -596,11 +576,15 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn playable_indicator_note_events(&mut self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>, sequennces: &Vec<usize>) 
+    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, played_patterns: &Vec<(usize, PlayedPattern)>) 
         -> Option<Vec<TimedMessage>> 
     {
         // Do we have to switch now?
         cycle.delta_ticks_recurring(0, self.playable().ticks_per_led())
+            // If not, did we reposition? If yes, instantly draw
+            .or_else(|| {
+                if force_redraw { Some(0) } else { None }
+            })
             .and_then(|delta_ticks| {
                 let ticks_into_playable = match self.detailview {
                     DetailView::Pattern => {
@@ -625,6 +609,7 @@ impl Sequencer {
                     },
                 };
 
+                // If we are shwing current playable, draw indicator to grid
                 if let Some(ticks) = ticks_into_playable {
                     // Get current led by offsetting ticks by zoom offset
                     let led = (ticks + delta_ticks as i32 - self.playable().ticks_offset() as i32) / self.playable().ticks_per_led() as i32;
@@ -654,8 +639,8 @@ impl Sequencer {
         let mut sequence_out_messages = Sequencer::note_off_messages(cycle, &mut self.sequence_note_offs);
         let mut control_out_messages = Sequencer::note_off_messages(cycle, &mut self.indicator_note_offs);
 
-        // Next notes on
-        if cycle.is_rolling {
+        // Only output sequencer notes when playing, but output indicators on reposition aswell
+        if cycle.is_rolling || cycle.was_repositioned {
             // Get playing sequences
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Output those
@@ -665,23 +650,30 @@ impl Sequencer {
                 // Output note events
                 let (sequence_note_offs, sequence_note_ons) 
                     = Sequencer::sequence_note_events(cycle, &notes, 1, None, None, None);
-                sequence_out_messages.extend(sequence_note_ons);
+
+                if cycle.is_rolling {
+                    sequence_out_messages.extend(sequence_note_ons);
+                }
 
                 match self.overview {
                     OverView::Instrument => {
-                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, &played_patterns, &sequences) {
+                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, cycle.was_repositioned, &played_patterns) {
                             control_out_messages.extend(indicator_note_events);
                         }
                     },
                     OverView::Sequence => {
-                        let (indicator_note_offs, control_note_ons) 
-                            = Sequencer::sequence_note_events(cycle, &notes, 3, Some(0x33), Some(1), Some(0));
-                        self.indicator_note_offs.extend(indicator_note_offs);
-                        control_out_messages.extend(control_note_ons);
+                        if cycle.is_rolling {
+                            let (indicator_note_offs, control_note_ons) 
+                                = Sequencer::sequence_note_events(cycle, &notes, 3, Some(0x33), Some(1), Some(0));
+                            self.indicator_note_offs.extend(indicator_note_offs);
+                            control_out_messages.extend(control_note_ons);
+                        }
                     }
                 }
 
-                self.sequence_note_offs.extend(sequence_note_offs);
+                if cycle.is_rolling {
+                    self.sequence_note_offs.extend(sequence_note_offs);
+                }
             }
         }
 
