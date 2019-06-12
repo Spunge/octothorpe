@@ -82,6 +82,8 @@ impl Phrase {
                 (0..iterations).map(move |iteration| {
                     let start = played_pattern.start + iteration * pattern_length;
                     let mut end = start + pattern_length;
+                    // It could be pattern is cut short as played pattern is not exactly divisible
+                    // by pattern length
                     if played_pattern.end < end {
                         end = played_pattern.end;
                     }

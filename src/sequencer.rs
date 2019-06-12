@@ -645,6 +645,12 @@ impl Sequencer {
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Output those
                 let played_patterns = self.playing_patterns(cycle, &sequences);
+
+                // TODO - We do not correctly select next first pattern in phrase
+                if played_patterns.len() == 2 {
+                    println!("{:?}", played_patterns);
+                }
+
                 let notes = self.playing_notes(cycle, &played_patterns);
 
                 // Output note events
