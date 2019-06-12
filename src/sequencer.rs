@@ -596,15 +596,42 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn playable_indicator_note_events(&mut self, cycle: &Cycle, ticks_into_playable: i32) -> Option<Vec<TimedMessage>> {
+    fn playable_indicator_note_events(&mut self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>, sequennces: &Vec<usize>) 
+        -> Option<Vec<TimedMessage>> 
+    {
         // Do we have to switch now?
         cycle.delta_ticks_recurring(0, self.playable().ticks_per_led())
             .and_then(|delta_ticks| {
-                // Get current led by offsetting ticks by zoom offset
-                let led = (ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32) / self.playable().ticks_per_led() as i32;
+                let ticks_into_playable = match self.detailview {
+                    DetailView::Pattern => {
+                        // Is currently showing pattern in playing patterns?
+                        played_patterns.into_iter()
+                            // Get latest occurence instead of first
+                            .rev()
+                            .find(|(instrument, played_pattern)| {
+                                *instrument == self.instrument as usize 
+                                    && played_pattern.index == self.instruments[*instrument].pattern
+                            })
+                            .and_then(|(_, played_pattern)| Some(cycle.start as i32 - played_pattern.start as i32))
+                    },
+                    DetailView::Phrase => {
+                        // Is currently selected phrase playing?
+                        self.sequences[self.sequence_playing].playing_phrases().into_iter()
+                            .find(|(instrument, phrase)| {
+                                *instrument == self.instrument as usize 
+                                    && *phrase == self.instruments[*instrument].phrase
+                            })
+                            .and_then(|_| Some(cycle.start as i32 % self.playable().ticks as i32))
+                    },
+                };
 
-                if led >= 0 && led < 8 {
-                    self.indicator_state_next[led as usize] = 1;
+                if let Some(ticks) = ticks_into_playable {
+                    // Get current led by offsetting ticks by zoom offset
+                    let led = (ticks + delta_ticks as i32 - self.playable().ticks_offset() as i32) / self.playable().ticks_per_led() as i32;
+
+                    if led >= 0 && led < 8 {
+                        self.indicator_state_next[led as usize] = 1;
+                    }
                 }
 
                 // Create timed messages from indicator state
@@ -618,38 +645,6 @@ impl Sequencer {
 
                 // Return these beautifull messages
                 Some(messages)
-            })
-    }
-
-    fn phrase_indicator_note_events(&mut self, cycle: &Cycle, sequences: &Vec<usize>) -> Option<Vec<TimedMessage>> {
-        // Is currently selected phrase playing?
-        self.sequences[self.sequence_playing].playing_phrases().into_iter()
-            .find(|(instrument, phrase)| {
-                *instrument == self.instrument as usize 
-                    && *phrase == self.instruments[*instrument].phrase
-            })
-
-            .and_then(|_| {
-                let ticks_into_phrase = cycle.start as i32 % self.playable().ticks as i32;
-
-                self.playable_indicator_note_events(cycle, ticks_into_phrase)
-            })
-    }
-
-    fn pattern_indicator_note_events(&mut self, cycle: &Cycle, played_patterns: &Vec<(usize, PlayedPattern)>) -> Option<Vec<TimedMessage>> {
-        // Is currently showing pattern in playing patterns?
-        played_patterns.into_iter()
-            // Get latest occurence instead of first
-            .rev()
-            .find(|(instrument, played_pattern)| {
-                *instrument == self.instrument as usize 
-                    && played_pattern.index == self.instruments[*instrument].pattern
-            })
-            
-            .and_then(|(_, played_pattern)| {
-                let ticks_into_pattern = cycle.start as i32 - played_pattern.start as i32;
-
-                self.playable_indicator_note_events(cycle, ticks_into_pattern)
             })
     }
 
@@ -667,23 +662,15 @@ impl Sequencer {
                 let played_patterns = self.playing_patterns(cycle, &sequences);
                 let notes = self.playing_notes(cycle, &played_patterns);
 
+                // Output note events
                 let (sequence_note_offs, sequence_note_ons) 
                     = Sequencer::sequence_note_events(cycle, &notes, 1, None, None, None);
                 sequence_out_messages.extend(sequence_note_ons);
 
                 match self.overview {
                     OverView::Instrument => {
-                        match self.detailview {
-                            DetailView::Pattern => {
-                                if let Some(indicator_note_ons) = self.pattern_indicator_note_events(cycle, &played_patterns) {
-                                    control_out_messages.extend(indicator_note_ons);
-                                }
-                            },
-                            DetailView::Phrase => {
-                                if let Some(indicator_note_ons) = self.phrase_indicator_note_events(cycle, &sequences) {
-                                    control_out_messages.extend(indicator_note_ons);
-                                }
-                            },
+                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, &played_patterns, &sequences) {
+                            control_out_messages.extend(indicator_note_events);
                         }
                     },
                     OverView::Sequence => {
