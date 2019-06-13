@@ -524,6 +524,7 @@ impl Sequencer {
             // Get patterns that are playing for Instrument & played pattern
             .flat_map(|(sequence_ticks, instrument, phrase)| {
                 self.instruments[instrument].phrases[phrase]
+                    // TODO - sequence ticks is wrong, should be phrase ticks
                     .playing_patterns(cycle, sequence_ticks, &self.instruments[instrument].patterns)
                     .into_iter()
                     .map(move |played_pattern| {
@@ -675,6 +676,7 @@ impl Sequencer {
             // Get playing sequences
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Output those
+                // TODO - Sequence with phrases of different length
                 let played_patterns = self.playing_patterns(cycle, &sequences);
                 let notes = self.playing_notes(cycle, &played_patterns);
 
