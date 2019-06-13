@@ -69,7 +69,7 @@ impl Phrase {
         }
     }
    
-    pub fn playing_patterns(&self, cycle: &Cycle, patterns: &[Pattern]) -> Vec<PlayedPattern> {
+    pub fn playing_patterns(&self, cycle: &Cycle, sequence_ticks: u32, patterns: &[Pattern]) -> Vec<PlayedPattern> {
         // Fill up patterns that are larger as 1 iterationn of pattern with multiple playedpatterns
         // of the same kind
         self.played_patterns.iter()
@@ -88,13 +88,21 @@ impl Phrase {
                         end = played_pattern.end;
                     }
 
-                    PlayedPattern { start, end, index: played_pattern.index }
+                    // Return played pattern for this iteration through phrase & pattern for next
+                    // iteration through phrase
+                    PlayedPattern { 
+                        // As it could be this is next sequence, add sequence ticks offset
+                        start: start + sequence_ticks,
+                        end: end + sequence_ticks,
+                        index: played_pattern.index 
+                    }
                 })
             })
             .filter_map(|mut played_pattern| {
                 let plays = cycle.start / self.playable.ticks;
                 let cycle_start = cycle.start % self.playable.ticks;
                 let cycle_end = cycle_start + cycle.ticks;
+
                 // Is pattern playing?
                 if played_pattern.start < cycle_end && played_pattern.end > cycle_start {
                     // Move played pattern to current cycle so we don't need phrase to compare

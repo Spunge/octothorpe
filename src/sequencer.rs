@@ -464,22 +464,21 @@ impl Sequencer {
         self.sequence_queued = None;
     }
 
-    fn current_playing_sequences(&self, cycle: &Cycle) -> Option<Vec<usize>> {
+    // Get playing sequences in form (offset_ticks, sequence_index)
+    fn current_playing_sequences(&self, cycle: &Cycle) -> Option<Vec<(u32, usize)>> {
         // Get current sequence as we definitely have to play that
         let current_sequence = &self.sequences[self.sequence_playing];
         // Can we play current sequence, could be it has length 0 for no phrases playing
         if let Some(ticks) = current_sequence.ticks(&self.instruments) {
             // If we can, play it
-            let mut sequences = vec![];
-            sequences.push(self.sequence_playing);
+            let mut sequences = vec![ (0, self.sequence_playing) ];
 
             // If cycle covers current sequence and next
             if cycle.start % ticks > cycle.end % ticks {
                 if let Some(index) = self.sequence_queued {
-                    //self.set_playing_sequence(index);
-                    sequences.push(index);
+                    sequences.push((ticks, index));
                 } else {
-                    sequences.push(self.sequence_playing);
+                    sequences.push((ticks, self.sequence_playing));
                 }
             }
 
@@ -489,11 +488,15 @@ impl Sequencer {
         }
     }
 
-    fn playing_sequences(&mut self, cycle: &Cycle) -> Option<Vec<usize>> {
-         if let Some(sequences) = self.current_playing_sequences(cycle) {
+    // Get sequences that fall in cycle, if we are going to play queued cycle, mark that as
+    // currently playing cycle
+    fn playing_sequences(&mut self, cycle: &Cycle) -> Option<Vec<(u32, usize)>> {
+        // Is something playing?
+        if let Some(sequences) = self.current_playing_sequences(cycle) {
             if sequences.len() > 1 {
-                if sequences[0] != sequences[1] {
-                    self.set_playing_sequence(sequences[1]);
+                // It could be next sequence is queued sequence, in that case, mark it as playing
+                if sequences[0].1 != sequences[1].1 {
+                    self.set_playing_sequence(sequences[1].1);
                 }
             }
 
@@ -508,13 +511,20 @@ impl Sequencer {
         }
     }
 
-    fn playing_patterns(&self, cycle: &Cycle, sequences: &Vec<usize>) -> Vec<(usize, PlayedPattern)> {
+    fn playing_patterns(&self, cycle: &Cycle, sequences: &Vec<(u32, usize)>) -> Vec<(usize, PlayedPattern)> {
         sequences.iter()
-            .flat_map(|sequence| self.sequences[*sequence].playing_phrases())
+            .flat_map(|sequence| {
+                let sequence_ticks = sequence.0;
+                let sequence_index = sequence.1;
+
+                self.sequences[sequence_index].playing_phrases().into_iter()
+                    .map(move |(instrument, phrase)| (sequence_ticks, instrument, phrase))
+            })
+
             // Get patterns that are playing for Instrument & played pattern
-            .flat_map(|(instrument, phrase)| {
+            .flat_map(|(sequence_ticks, instrument, phrase)| {
                 self.instruments[instrument].phrases[phrase]
-                    .playing_patterns(cycle, &self.instruments[instrument].patterns)
+                    .playing_patterns(cycle, sequence_ticks, &self.instruments[instrument].patterns)
                     .into_iter()
                     .map(move |played_pattern| {
                         (instrument, played_pattern)
@@ -576,7 +586,7 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, played_patterns: &Vec<(usize, PlayedPattern)>) 
+    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, played_patterns: &Vec<(usize, PlayedPattern)>, sequences: &Vec<(u32, usize)>) 
         -> Option<Vec<TimedMessage>> 
     {
         // Do we have to switch now?
@@ -590,29 +600,50 @@ impl Sequencer {
                     DetailView::Pattern => {
                         // Is currently showing pattern in playing patterns?
                         played_patterns.into_iter()
-                            // Get latest occurence instead of first
                             .rev()
+                            // Get latest occurence instead of first
                             .find(|(instrument, played_pattern)| {
                                 *instrument == self.instrument as usize 
                                     && played_pattern.index == self.instruments[*instrument].pattern
                             })
-                            .and_then(|(_, played_pattern)| Some(cycle.start as i32 - played_pattern.start as i32))
+                            .and_then(|(_, played_pattern)| {
+                                let ticks_into_playable = cycle.start as i32 - played_pattern.start as i32;
+                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
+                                // Keep track of pattern length to not show first led when next
+                                // pattern is other pattern
+                                let played_pattern_length = (played_pattern.end - played_pattern.start) as i32;
+
+                                // If next switch is last, dont switch next led on as it will be 0
+                                if switch_on_tick == played_pattern_length { 
+                                    None 
+                                } else {
+                                    Some(switch_on_tick)
+                                }
+                            })
                     },
                     DetailView::Phrase => {
                         // Is currently selected phrase playing?
-                        self.sequences[self.sequence_playing].playing_phrases().into_iter()
+                        sequences.iter()
+                            .flat_map(|(_, sequence)| {
+                                self.sequences[*sequence].playing_phrases().into_iter()
+                            })
                             .find(|(instrument, phrase)| {
                                 *instrument == self.instrument as usize 
                                     && *phrase == self.instruments[*instrument].phrase
                             })
-                            .and_then(|_| Some(cycle.start as i32 % self.playable().ticks as i32))
+                            .and_then(|_| {
+                                let ticks_into_playable = cycle.start as i32 % self.playable().ticks as i32;
+                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
+                                // As we don't have a way to use sequence ticks here, we need to
+                                Some(switch_on_tick % self.playable().ticks as i32)
+                            })
                     },
                 };
 
                 // If we are shwing current playable, draw indicator to grid
-                if let Some(ticks) = ticks_into_playable {
+                if let Some(switch_on_tick) = ticks_into_playable {
                     // Get current led by offsetting ticks by zoom offset
-                    let led = (ticks + delta_ticks as i32 - self.playable().ticks_offset() as i32) / self.playable().ticks_per_led() as i32;
+                    let led = switch_on_tick / self.playable().ticks_per_led() as i32;
 
                     if led >= 0 && led < 8 {
                         self.indicator_state_next[led as usize] = 1;
@@ -645,12 +676,6 @@ impl Sequencer {
             if let Some(sequences) = self.playing_sequences(cycle) {
                 // Output those
                 let played_patterns = self.playing_patterns(cycle, &sequences);
-
-                // TODO - We do not correctly select next first pattern in phrase
-                if played_patterns.len() == 2 {
-                    println!("{:?}", played_patterns);
-                }
-
                 let notes = self.playing_notes(cycle, &played_patterns);
 
                 // Output note events
@@ -663,7 +688,7 @@ impl Sequencer {
 
                 match self.overview {
                     OverView::Instrument => {
-                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, cycle.was_repositioned, &played_patterns) {
+                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, cycle.was_repositioned, &played_patterns, &sequences) {
                             control_out_messages.extend(indicator_note_events);
                         }
                     },
