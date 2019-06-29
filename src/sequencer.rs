@@ -517,15 +517,15 @@ impl Sequencer {
                 let sequence_ticks = sequence.0;
                 let sequence_index = sequence.1;
 
-                self.sequences[sequence_index].playing_phrases().into_iter()
-                    .map(move |(instrument, phrase)| (sequence_ticks, instrument, phrase))
+                self.sequences[sequence_index].playing_phrases(&self.instruments).into_iter()
+                    .map(move |(instrument, phrase, phrase_ticks)| (sequence_ticks + phrase_ticks, instrument, phrase))
             })
 
             // Get patterns that are playing for Instrument & played pattern
-            .flat_map(|(sequence_ticks, instrument, phrase)| {
+            .flat_map(|(ticks_offset, instrument, phrase)| {
                 self.instruments[instrument].phrases[phrase]
                     // TODO - sequence ticks is wrong, should be phrase ticks
-                    .playing_patterns(cycle, sequence_ticks, &self.instruments[instrument].patterns)
+                    .playing_patterns(cycle, ticks_offset, &self.instruments[instrument].patterns)
                     .into_iter()
                     .map(move |played_pattern| {
                         (instrument, played_pattern)
@@ -626,9 +626,9 @@ impl Sequencer {
                         // Is currently selected phrase playing?
                         sequences.iter()
                             .flat_map(|(_, sequence)| {
-                                self.sequences[*sequence].playing_phrases().into_iter()
+                                self.sequences[*sequence].playing_phrases(&self.instruments).into_iter()
                             })
-                            .find(|(instrument, phrase)| {
+                            .find(|(instrument, phrase, _)| {
                                 *instrument == self.instrument as usize 
                                     && *phrase == self.instruments[*instrument].phrase
                             })

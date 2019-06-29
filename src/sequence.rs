@@ -59,7 +59,7 @@ impl Sequence {
     }
 
     // Get bars of sequence based on the longest phrase it's playing
-    pub fn ticks(&self, instruments: &[Instrument; 16]) -> Option<u32> {
+    pub fn ticks(&self, instruments: &[Instrument]) -> Option<u32> {
         self.active_phrases()
             .map(|(instrument, phrase)| {
                 instruments[instrument].phrases[phrase].playable.ticks
@@ -83,9 +83,24 @@ impl Sequence {
         self.active[instrument as usize] = ! self.active[instrument as usize];
     }
 
-    pub fn playing_phrases(&self) -> Vec<(usize, usize)> {
-        self.active_phrases()
-            .filter(|(instrument, _)| self.active[*instrument])
-            .collect()
+    pub fn playing_phrases(&self, instruments: &[Instrument]) -> Vec<(usize, usize, u32)> {
+        // Could be this is a 0 length sequence
+        if let Some(sequence_ticks) = self.ticks(instruments) {
+            self.active_phrases()
+                .filter(|(instrument, _)| self.active[*instrument])
+                .flat_map(|(instrument, phrase)| {
+                    let phrase_ticks = instruments[instrument].phrases[phrase].playable.ticks;
+
+                    (0..sequence_ticks)
+                        .step_by(phrase_ticks as usize)
+                        .into_iter()
+                        .map(move |ticks| {
+                            (instrument, phrase, ticks)
+                        })
+                })
+                .collect()
+        } else {
+            vec![]
+        }
     }
 }
