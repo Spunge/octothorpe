@@ -1,10 +1,9 @@
 
 use std::ops::Range;
 
-use super::bars_to_ticks;
 use super::pattern::Pattern;
 use super::cycle::Cycle;
-use super::playable::Playable;
+use super::playable::{Playable, Drawable};
 use super::handlers::TimebaseHandler;
 
 #[derive(Debug, Clone)]
@@ -15,6 +14,16 @@ pub struct PlayedPattern {
     pub end: u32,
 }
 
+impl Playable for Phrase {
+    // 4 beats of 1920 ticks
+    const MINIMUM_LENGTH: u32 = 4 * TimebaseHandler::TICKS_PER_BEAT;
+}
+impl Drawable for Phrase {
+    // led states for head & tail
+    const HEAD: u8 = 3;
+    const TAIL: u8 = 5;
+}
+
 pub struct Phrase {
     // Length in ticks
     pub length: u32,
@@ -22,12 +31,6 @@ pub struct Phrase {
     pub offset: u32,
 
     pub played_patterns: Vec<PlayedPattern>,
-
-    // led states for head & tail
-    const HEAD: u8 = 3,
-    const TAIL: u8 = 5,
-    // 4 beats of 1920 ticks
-    const MINIMUM_LENGTH: u32 = 4 * TimebaseHandler::TICKS_PER_BEAT,
 }
 
 impl Phrase {
@@ -41,10 +44,10 @@ impl Phrase {
     
     pub fn default() -> Self {
         let played_patterns = vec![
-            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(2) },
-            PlayedPattern { index: 1, start: bars_to_ticks(2), end: bars_to_ticks(4) },
-            //PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
-            //PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
+            PlayedPattern { index: 0, start: Self::bars_to_ticks(0), end: Self::bars_to_ticks(2) },
+            PlayedPattern { index: 1, start: Self::bars_to_ticks(2), end: Self::bars_to_ticks(4) },
+            //PlayedPattern { index: 0, start: self.bars_to_ticks(2), end: self.bars_to_ticks(3) },
+            //PlayedPattern { index: 0, start: self.bars_to_ticks(3), end: self.bars_to_ticks(4) },
         ];
 
         Phrase::create(played_patterns, Phrase::MINIMUM_LENGTH)
@@ -57,12 +60,12 @@ impl Phrase {
             })
             .collect();
 
-        self.playable.led_states(coords)
+        self.led_states(coords)
     }
 
     pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) {
-        let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
-        let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
+        let start = self.ticks_offset() + self.ticks_per_led() * x.start as u32;
+        let end = self.ticks_offset() + self.ticks_per_led() * (x.end + 1) as u32;
 
         let patterns = self.played_patterns.len();
         
@@ -88,7 +91,7 @@ impl Phrase {
         self.played_patterns.iter()
             .flat_map(|played_pattern| {
                 let played_pattern_length = played_pattern.end - played_pattern.start;
-                let pattern_length = patterns[played_pattern.index].playable.ticks;
+                let pattern_length = patterns[played_pattern.index].length();
                 // Dirty way to round up
                 let iterations = (played_pattern_length + pattern_length - 1) / pattern_length;
 
@@ -112,16 +115,16 @@ impl Phrase {
                 })
             })
             .filter_map(|mut played_pattern| {
-                let plays = cycle.start / self.playable.ticks;
-                let cycle_start = cycle.start % self.playable.ticks;
+                let plays = cycle.start / self.length();
+                let cycle_start = cycle.start % self.length();
                 let cycle_end = cycle_start + cycle.ticks;
 
                 // Is pattern playing?
                 if played_pattern.start < cycle_end && played_pattern.end > cycle_start {
                     // Move played pattern to current cycle so we don't need phrase to compare
                     // notes
-                    played_pattern.start += plays * self.playable.ticks;
-                    played_pattern.end += plays * self.playable.ticks;
+                    played_pattern.start += plays * self.length();
+                    played_pattern.end += plays * self.length();
 
                     Some(played_pattern)
                 } else {

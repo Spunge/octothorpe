@@ -10,11 +10,12 @@ pub struct TimebaseHandler {
     beats_per_minute: f64,
     beat_type: isize,
     is_up_to_date: bool,
-    const BEATS_PER_BAR: u32 = 4;
-    const TICKS_PER_BEAT: u32 = 1920;
 }
 
 impl TimebaseHandler {
+    pub const BEATS_PER_BAR: u32 = 4;
+    pub const TICKS_PER_BEAT: u32 = 1920;
+
     pub fn new() -> Self {
         TimebaseHandler {
             beats_per_minute: 130.0,

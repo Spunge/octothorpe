@@ -62,7 +62,7 @@ impl Sequence {
     pub fn ticks(&self, instruments: &[Instrument]) -> Option<u32> {
         self.active_phrases()
             .map(|(instrument, phrase)| {
-                instruments[instrument].phrases[phrase].playable.ticks
+                instruments[instrument].phrases[phrase].length()
             })
             .max()
     }
@@ -89,7 +89,7 @@ impl Sequence {
             self.active_phrases()
                 .filter(|(instrument, _)| self.active[*instrument])
                 .flat_map(|(instrument, phrase)| {
-                    let phrase_ticks = instruments[instrument].phrases[phrase].playable.ticks;
+                    let phrase_ticks = instruments[instrument].phrases[phrase].length();
 
                     (0..sequence_ticks)
                         .step_by(phrase_ticks as usize)
