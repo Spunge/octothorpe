@@ -16,7 +16,7 @@ impl Controller {
 
     fn key_pressed(&mut self, message: jack::RawMidi, cycle: &Cycle, client: &jack::Client) {
         // Output in hex so we can compare to apc40 manual easily
-        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+        //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
         //println!("{}, {}, {}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         match message.bytes[1] {
@@ -78,6 +78,8 @@ impl Controller {
     }
 
     fn process_message(&mut self, message: jack::RawMidi, cycle: &Cycle, client: &jack::Client) {
+        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+
         match message.bytes[0] {
             0x90...0x97 => self.key_pressed(message, cycle, client),
             0x80...0x87 => self.key_released(message),
