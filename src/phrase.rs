@@ -5,6 +5,7 @@ use super::bars_to_ticks;
 use super::pattern::Pattern;
 use super::cycle::Cycle;
 use super::playable::Playable;
+use super::handlers::TimebaseHandler;
 
 #[derive(Debug, Clone)]
 pub struct PlayedPattern {
@@ -15,26 +16,38 @@ pub struct PlayedPattern {
 }
 
 pub struct Phrase {
-    pub playable: Playable,
+    // Length in ticks
+    pub length: u32,
+    pub zoom: u32,
+    pub offset: u32,
+
     pub played_patterns: Vec<PlayedPattern>,
+
+    // led states for head & tail
+    const HEAD: u8 = 3,
+    const TAIL: u8 = 5,
+    // 4 beats of 1920 ticks
+    const MINIMUM_LENGTH: u32 = 4 * TimebaseHandler::TICKS_PER_BEAT,
 }
 
 impl Phrase {
-    fn create(played_patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { playable: Playable::new(bars_to_ticks(4), bars_to_ticks(4), 3, 5), played_patterns, }
+    fn create(played_patterns: Vec<PlayedPattern>, length: u32) -> Self {
+        Phrase { length, played_patterns, zoom: 1, offset: 0 }
     }
 
     pub fn new() -> Self {
-        Phrase::create(vec![])
+        Phrase::create(vec![], Phrase::MINIMUM_LENGTH)
     }
     
     pub fn default() -> Self {
-        Phrase::create(vec![
+        let played_patterns = vec![
             PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(2) },
             PlayedPattern { index: 1, start: bars_to_ticks(2), end: bars_to_ticks(4) },
             //PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
             //PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
-        ])
+        ];
+
+        Phrase::create(played_patterns, Phrase::MINIMUM_LENGTH)
     }
 
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {

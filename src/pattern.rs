@@ -3,32 +3,40 @@ use std::ops::Range;
 
 use super::{beats_to_ticks, bars_to_ticks};
 use super::note::Note;
-use super::playable::Playable;
 use super::cycle::Cycle;
 
-const BASE_NOTE: u8 = 73;
-
 pub struct Pattern {
-    pub playable: Playable,
+    pub length: u32,
     channel: u8,
     pub notes: Vec<Note>,
     base_note: u8,
+
+    pub zoom: u32,
+    pub offset: u32,
 }
 
 impl Pattern {
-    fn create(channel: u8, notes: Vec<Note>) -> Self {
-        Pattern {
-            playable: Playable::new(bars_to_ticks(1), bars_to_ticks(1), 1, 5),
-            channel,
-            notes,
-            // TODO - Use scales for this
-            // Put a4 in center of grid
-            base_note: BASE_NOTE,
+    // Base note in view
+    const DEFAULT_BASE_NOTE: u8 = 73;
+    // led states for head & tail
+    const HEAD: u8 = 1,
+    const TAIL: u8 = 5,
+    // 4 beats of 1920 ticks
+    const MINIMUM_LENGTH: u32 = TimebaseHandler::TICKS_PER_BEAT,
+
+    fn create(channel: u8, notes: Vec<Note>, base_note: u8) -> Self {
+        Pattern { 
+            channel, 
+            notes, 
+            base_note, 
+            zoom: 1, 
+            offset: 0,
+            length: Pattern::MINIMUM_LENGTH,
         }
     }
 
     pub fn new(channel: u8) -> Self {
-        Pattern::create(channel, vec![])
+        Pattern::create(channel, vec![], Pattern::DEFAULT_BASE_NOTE)
     }
 
     pub fn default(channel: u8) -> Self {
@@ -38,7 +46,8 @@ impl Pattern {
             Note::new(channel, beats_to_ticks(2.0), beats_to_ticks(2.5), 69, 127),
             Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(3.5), 69, 127),
         ];
-        Pattern::create(channel, notes)
+
+        Pattern::create(channel, notes, Pattern::DEFAULT_BASE_NOTE)
     }
     
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
