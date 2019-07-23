@@ -567,56 +567,39 @@ impl Sequencer {
                 if force_redraw { Some(0) } else { None }
             })
             .and_then(|delta_ticks| {
-                let ticks_into_playable = match self.detailview {
+                // Get playing regions of playables that are shown at the moment
+                let shown_playables: Vec<(u32, u32)> = match self.detailview {
                     DetailView::Pattern => {
-                        // Is currently showing pattern in playing patterns?
                         playing_patterns.into_iter()
-                            .rev()
-                            // Get latest occurence instead of first
-                            .find(|playing_pattern| {
+                            .filter(|playing_pattern| {
                                 playing_pattern.instrument == self.instrument as usize 
                                     && playing_pattern.pattern == self.instruments[playing_pattern.instrument].pattern
                             })
-                            .and_then(|playing_pattern| {
-                                let ticks_into_playable = cycle.start as i32 - playing_pattern.start as i32;
-                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
-                                // Keep track of pattern length to not show first led when next
-                                // pattern is other pattern
-                                let playing_pattern_length = (playing_pattern.end - playing_pattern.start) as i32;
-
-                                // If next switch is last, dont switch next led on as it will be 0
-                                if switch_on_tick == playing_pattern_length { 
-                                    None 
-                                } else {
-                                    Some(switch_on_tick)
-                                }
-                            })
+                            .map(|playing_pattern| (playing_pattern.start, playing_pattern.end))
+                            .collect()
                     },
                     DetailView::Phrase => {
-                        // Is currently selected phrase playing?
-                        playing_phrases.iter()
-                            .find(|playing_phrase| {
+                        playing_phrases.into_iter()
+                            .filter(|playing_phrase| {
                                 playing_phrase.instrument == self.instrument as usize 
                                     && playing_phrase.phrase == self.instruments[playing_phrase.instrument].phrase
                             })
-                            .and_then(|_| {
-                                let ticks_into_playable = cycle.start as i32 % self.playable().length as i32;
-                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
-
-                                Some(switch_on_tick % self.playable().length as i32)
-                            })
+                            .map(|playing_phrase| (playing_phrase.start, playing_phrase.end))
+                            .collect()
                     },
                 };
 
-                // If we are shwing current playable, draw indicator to grid
-                if let Some(switch_on_tick) = ticks_into_playable {
-                    // Get current led by offsetting ticks by zoom offset
-                    let led = switch_on_tick / self.playable().ticks_per_led() as i32;
+                shown_playables.iter().for_each(|(start, end)| {
+                    // Amount of ticks in region (patterns can be short)
+                    let ticks = end - start;
+                    let switch_on_tick = cycle.start + delta_ticks;
+                    let playable_tick = switch_on_tick - start;
+                    let led = playable_tick / self.playable().ticks_per_led();
 
-                    if led >= 0 && led < 8 {
+                    if led >= 0 && led < 8 && playable_tick < ticks {
                         self.indicator_state_next[led as usize] = 1;
                     }
-                }
+                });
 
                 // Create timed messages from indicator state
                 let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34).into_iter()
