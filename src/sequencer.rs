@@ -290,7 +290,10 @@ impl Sequencer {
 
     fn switch_overview(&mut self) {
         match self.overview {
-            OverView::Instrument => self.overview = OverView::Sequence,
+            OverView::Instrument => {
+                // TODO - When switching to sequence view, clear indicator grid
+                self.overview = OverView::Sequence
+            },
             OverView::Sequence => {
                 // Clear as we do not want the selected instrument grid to clear
                 self.indicator_note_offs = vec![];
@@ -406,6 +409,8 @@ impl Sequencer {
             let led = index - self.index_instruments.start;
             let instrument = self.group * 8 + self.instrument;
 
+            // Force clear as sequence indicator uses the same grid and does not clear it
+            self.static_state_current[index] = 9;
             self.static_state_next[index] = match self.overview {
                 OverView::Instrument => if led as u8 == instrument { 1 } else { 0 },
                 _ => 0,
@@ -448,7 +453,12 @@ impl Sequencer {
             output.extend(self.output_button(self.index_group, 0x50));
             output.extend(self.output_button(self.index_detailview, 0x3E));
 
-            // TODO - force indicator to redraw, add indicator note events to output
+            // Clear indicator grid when switching to sequence
+            if let OverView::Sequence = self.overview {
+                self.indicator_state_current = [9; 8];
+                self.indicator_state_next = [0; 8];
+                output.extend(self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34));
+            }
 
             // Switch buffer
             self.static_state_current = self.static_state_next;
@@ -562,10 +572,8 @@ impl Sequencer {
     {
         // Do we have to switch now?
         cycle.delta_ticks_recurring(0, self.playable().ticks_per_led())
-            // If not, did we reposition? If yes, instantly draw
-            .or_else(|| {
-                if force_redraw { Some(0) } else { None }
-            })
+            // Are we forced to redraw? If yes, instantly draw
+            .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
                 // Get playing regions of playables that are shown at the moment
                 let shown_playables: Vec<(u32, u32)> = match self.detailview {
