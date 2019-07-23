@@ -1,41 +1,9 @@
 
-use super::handlers::TimebaseHandler;
-
-pub trait Playable {
-    const MINIMUM_LENGTH: u32;
-
-    fn beats_to_ticks(beats: f64) -> u32 {
-        (beats * TimebaseHandler::TICKS_PER_BEAT as f64) as u32
-    }
-
-    fn bars_to_beats(bars: u32) -> u32 {
-        bars * TimebaseHandler::BEATS_PER_BAR
-    }
-
-    fn bars_to_ticks(bars: u32) -> u32 {
-        bars_to_beats(bars) * TimebaseHandler::TICKS_PER_BEAT
-    }
-
-    // Get length of this playable in ticks
-    fn length(&self);
-    fn set_length(&mut self, length: u32);
-
-    fn change_length(&mut self, length_modifier: u8) {
-        match length_modifier {
-            1 | 2 | 4 | 8  => {
-                self.set_length(length_modifier as u32 * Playable::MINIMUM_LENGTH);
-            },
-            _ => (),
-        }
-    }
-}
-
 pub trait Drawable {
     // led states for head & tail
     const HEAD: u8;
     const TAIL: u8;
-
-    fn length(&self) -> u32;
+    const MINIMUM_LENGTH: u32;
 
     fn visible_ticks(&self) -> u32 {
         self.length() / self.zoom()
@@ -53,6 +21,17 @@ pub trait Drawable {
     fn set_zoom(&mut self, zoom: u32);
     fn offset(&self) -> u32;
     fn set_offset(&mut self, offset: u32);
+    fn length(&self) -> u32;
+    fn set_length(&mut self, length: u32);
+
+    fn change_length(&mut self, length_modifier: u8) {
+        match length_modifier {
+            1 | 2 | 4 | 8  => {
+                self.set_length(length_modifier as u32 * Drawable::MINIMUM_LENGTH);
+            },
+            _ => (),
+        }
+    }
 
     fn change_zoom(&mut self, button: u32) {
         let delta = match button {

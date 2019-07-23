@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use super::pattern::Pattern;
 use super::cycle::Cycle;
-use super::playable::{Playable, Drawable};
+use super::drawable::Drawable;
 use super::handlers::TimebaseHandler;
 
 #[derive(Debug, Clone)]
@@ -14,14 +14,26 @@ pub struct PlayedPattern {
     pub end: u32,
 }
 
-impl Playable for Phrase {
-    // 4 beats of 1920 ticks
-    const MINIMUM_LENGTH: u32 = 4 * TimebaseHandler::TICKS_PER_BEAT;
-}
 impl Drawable for Phrase {
     // led states for head & tail
     const HEAD: u8 = 3;
     const TAIL: u8 = 5;
+    
+    // 4 beats of 1920 ticks
+    const MINIMUM_LENGTH: u32 = 4 * TimebaseHandler::TICKS_PER_BEAT;
+
+    fn length(&self) -> u32 {
+        self.length
+    }
+
+    fn set_length(&mut self, ticks: u32) {
+        self.length = ticks;
+    }
+
+    fn zoom(&self) -> u32 { self.zoom }
+    fn set_zoom(&mut self, zoom: u32) { self.zoom = zoom; }
+    fn offset(&self) -> u32 { self.offset }
+    fn set_offset(&mut self, offset: u32) { self.offset = offset; }
 }
 
 pub struct Phrase {
@@ -52,6 +64,8 @@ impl Phrase {
 
         Phrase::create(played_patterns, Phrase::MINIMUM_LENGTH)
     }
+
+    pub fn length(&self) -> u32 { self.length }
 
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
         let coords = self.played_patterns.iter()

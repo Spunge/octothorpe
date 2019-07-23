@@ -11,7 +11,7 @@ pub mod phrase;
 pub mod pattern;
 pub mod note;
 pub mod sequence;
-pub mod playable;
+pub mod drawable;
 
 use std::io;
 use std::sync::mpsc::channel;

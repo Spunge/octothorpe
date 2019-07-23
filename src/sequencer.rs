@@ -6,8 +6,8 @@ use super::instrument::Instrument;
 use super::phrase::{Phrase, PlayedPattern};
 use super::pattern::Pattern;
 use super::sequence::Sequence;
-use super::playable::Playable;
 use super::note::Note;
+use super::drawable::Drawable;
 
 pub enum OverView {
     Instrument,
@@ -73,8 +73,8 @@ pub struct Sequencer {
 
     indicator_state_current: [u8; 8],
     indicator_state_next: [u8; 8],
-    playables_state_current: [u8; 8],
-    playables_state_next: [u8; 8],
+    drawables_state_current: [u8; 8],
+    drawables_state_next: [u8; 8],
     sequences_state_current: [u8; 4],
     sequences_state_next: [u8; 4],
 }
@@ -131,8 +131,8 @@ impl Sequencer {
             // Dynamic button states
             indicator_state_current: [0; 8],
             indicator_state_next: [0; 8],
-            playables_state_current: [0; 8],
-            playables_state_next: [0; 8],
+            drawables_state_current: [0; 8],
+            drawables_state_next: [0; 8],
             sequences_state_current: [0; 4],
             sequences_state_next: [0; 4],
         }
@@ -155,8 +155,8 @@ impl Sequencer {
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             0x3E | 0x51 => self.switch_detailview(),
-            // Playable grid
-            0x52 ... 0x56 => self.switch_playable(message.bytes[1] - 0x52),
+            // drawable grid
+            0x52 ... 0x56 => self.switch_drawable(message.bytes[1] - 0x52),
             // TODO - Grid should add notes & add phrases
             0x35 ... 0x39 => {
                 // Get start & end in grid of pressed keys
@@ -179,12 +179,18 @@ impl Sequencer {
             },
             0x5E => self.instrument().pattern().change_base_note(4),
             0x5F => self.instrument().pattern().change_base_note(-4),
-            0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
-            // TODO - when shortening length, notes or phrases that are longer as playable length
-            // should be cut shorter aswell
-            0x32 => self.playable().change_length(message.bytes[0] - 0x90 + 1),
-            0x61 => self.playable().change_offset(-1),
-            0x60 => self.playable().change_offset(1),
+            0x31 | 0x32 | 0x60 | 0x61 => {
+                let drawable = self.drawable();
+
+                match message.bytes[1] {
+                    0x31 => self.drawable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
+                    // TODO - when shortening length, notes or phrases that are longer as drawable length
+                    // should be cut shorter aswell
+                    0x32 => self.drawable().change_length(message.bytes[0] - 0x90 + 1),
+                    0x61 => self.drawable().change_offset(-1),
+                    0x60 => self.drawable().change_offset(1),
+                }
+            }
             _ => (),
         }
     }
@@ -217,7 +223,7 @@ impl Sequencer {
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
-            // Playable select
+            // drawable select
             0x52 ... 0x56 => self.shared_key_pressed(message),
             // Main grid
             0x35 ... 0x39 => self.shared_key_pressed(message),
@@ -273,10 +279,10 @@ impl Sequencer {
         }
     }
 
-    fn switch_playable(&mut self, playable: u8) {
+    fn switch_drawable(&mut self, drawable: u8) {
         match self.detailview {
-            DetailView::Pattern => self.instrument().pattern = playable as usize,
-            DetailView::Phrase => self.instrument().phrase = playable as usize,
+            DetailView::Pattern => self.instrument().pattern = drawable as usize,
+            DetailView::Phrase => self.instrument().phrase = drawable as usize,
         }
 
         // Reset pattern on shift click
@@ -306,10 +312,10 @@ impl Sequencer {
         }
     }
 
-    fn playable(&mut self) -> &mut Playable {
+    fn drawable(&mut self) -> Box<dyn Drawable> {
         match self.detailview {
-            DetailView::Pattern => &mut self.instrument().pattern().playable,
-            DetailView::Phrase => &mut self.instrument().phrase().playable,
+            DetailView::Pattern => Box::new(self.instrument().pattern()),
+            DetailView::Phrase => Box::new(self.instrument().phrase()),
         }
     }
 
@@ -372,9 +378,9 @@ impl Sequencer {
             let led = index - self.index_green.start;
 
             self.static_state_next[index] = match self.overview {
-                // In instrument, green grid shows length of playable
+                // In instrument, green grid shows length of drawable
                 OverView::Instrument => {
-                    let length = (self.playable().ticks / self.playable().minimum_ticks) as usize;
+                    let length = (self.drawable().ticks / self.drawable().minimum_ticks) as usize;
                     if led < length { 1 } else { 0 }
                 },
                 // In Sequence, green grid shows active instruments
@@ -388,10 +394,10 @@ impl Sequencer {
 
     fn draw_blue_grid(&mut self) {
         let length = match self.overview {
-            OverView::Instrument => 8 / self.playable().zoom as usize,
+            OverView::Instrument => 8 / self.drawable().zoom as usize,
             _ => 0,
         };
-        let start = self.playable().offset as usize * length;
+        let start = self.drawable().offset as usize * length;
         let end = start + length;
 
         for index in self.index_blue.clone() {
@@ -426,7 +432,7 @@ impl Sequencer {
 
     //fn draw_sequences_grid(&mut self) {
     //}
-    //fn draw_playables_grid(&mut self) {
+    //fn draw_drawable(&mut self) {
     //}
 
     pub fn output_static_leds(&mut self) -> Vec<TimedMessage> {
@@ -587,17 +593,17 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, played_patterns: &Vec<(usize, PlayedPattern)>, sequences: &Vec<(u32, usize)>) 
+    fn drawable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, played_patterns: &Vec<(usize, PlayedPattern)>, sequences: &Vec<(u32, usize)>) 
         -> Option<Vec<TimedMessage>> 
     {
         // Do we have to switch now?
-        cycle.delta_ticks_recurring(0, self.playable().ticks_per_led())
+        cycle.delta_ticks_recurring(0, self.drawable().ticks_per_led())
             // If not, did we reposition? If yes, instantly draw
             .or_else(|| {
                 if force_redraw { Some(0) } else { None }
             })
             .and_then(|delta_ticks| {
-                let ticks_into_playable = match self.detailview {
+                let ticks_into_drawable = match self.detailview {
                     DetailView::Pattern => {
                         // Is currently showing pattern in playing patterns?
                         played_patterns.into_iter()
@@ -608,8 +614,8 @@ impl Sequencer {
                                     && played_pattern.index == self.instruments[*instrument].pattern
                             })
                             .and_then(|(_, played_pattern)| {
-                                let ticks_into_playable = cycle.start as i32 - played_pattern.start as i32;
-                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
+                                let ticks_into_drawable = cycle.start as i32 - played_pattern.start as i32;
+                                let switch_on_tick = ticks_into_drawable + delta_ticks as i32 - self.drawable().ticks_offset() as i32;
                                 // Keep track of pattern length to not show first led when next
                                 // pattern is other pattern
                                 let played_pattern_length = (played_pattern.end - played_pattern.start) as i32;
@@ -633,18 +639,18 @@ impl Sequencer {
                                     && *phrase == self.instruments[*instrument].phrase
                             })
                             .and_then(|_| {
-                                let ticks_into_playable = cycle.start as i32 % self.playable().ticks as i32;
-                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
+                                let ticks_into_drawable = cycle.start as i32 % self.drawable().ticks as i32;
+                                let switch_on_tick = ticks_into_drawable + delta_ticks as i32 - self.drawable().ticks_offset() as i32;
                                 // As we don't have a way to use sequence ticks here, we need to
-                                Some(switch_on_tick % self.playable().ticks as i32)
+                                Some(switch_on_tick % self.drawable().ticks as i32)
                             })
                     },
                 };
 
-                // If we are shwing current playable, draw indicator to grid
-                if let Some(switch_on_tick) = ticks_into_playable {
+                // If we are shwing current drawable, draw indicator to grid
+                if let Some(switch_on_tick) = ticks_into_drawable {
                     // Get current led by offsetting ticks by zoom offset
-                    let led = switch_on_tick / self.playable().ticks_per_led() as i32;
+                    let led = switch_on_tick / self.drawable().ticks_per_led() as i32;
 
                     if led >= 0 && led < 8 {
                         self.indicator_state_next[led as usize] = 1;
@@ -690,7 +696,7 @@ impl Sequencer {
 
                 match self.overview {
                     OverView::Instrument => {
-                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, cycle.was_repositioned, &played_patterns, &sequences) {
+                        if let Some(indicator_note_events) = self.drawable_indicator_note_events(cycle, cycle.was_repositioned, &played_patterns, &sequences) {
                             control_out_messages.extend(indicator_note_events);
                         }
                     },

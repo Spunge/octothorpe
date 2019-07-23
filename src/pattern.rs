@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use super::note::Note;
 use super::cycle::Cycle;
-use super::playable::{Playable, Drawable};
+use super::drawable::Drawable;
 use super::handlers::TimebaseHandler;
 
 pub struct Pattern {
@@ -16,14 +16,19 @@ pub struct Pattern {
     pub offset: u32,
 }
 
-impl Playable for Pattern {
-    // 4 beats of 1920 ticks
-    const MINIMUM_LENGTH: u32 = TimebaseHandler::TICKS_PER_BEAT;
-}
 impl Drawable for Pattern {
     // led states for head & tail
     const HEAD: u8 = 1;
     const TAIL: u8 = 5;
+    // 4 beats of 1920 ticks
+    const MINIMUM_LENGTH: u32 = TimebaseHandler::TICKS_PER_BEAT;
+
+    fn length(&self) -> u32 { self.length }
+    fn set_length(&mut self, ticks: u32) { self.length = ticks; }
+    fn zoom(&self) -> u32 { self.zoom }
+    fn set_zoom(&mut self, zoom: u32) { self.zoom = zoom; }
+    fn offset(&self) -> u32 { self.offset }
+    fn set_offset(&mut self, offset: u32) { self.offset = offset; }
 }
 
 impl Pattern {
@@ -31,14 +36,7 @@ impl Pattern {
     const DEFAULT_BASE_NOTE: u8 = 73;
 
     fn create(channel: u8, notes: Vec<Note>, base_note: u8) -> Self {
-        Pattern { 
-            channel, 
-            notes, 
-            base_note, 
-            zoom: 1, 
-            offset: 0,
-            length: Pattern::MINIMUM_LENGTH,
-        }
+        Pattern { channel, notes, base_note, zoom: 1, offset: 0, length: Pattern::MINIMUM_LENGTH }
     }
 
     pub fn new(channel: u8) -> Self {
@@ -62,11 +60,11 @@ impl Pattern {
             .map(|note| (note.start, note.end, self.base_note as i32 - note.key as i32))
             .collect();
 
-        self.playable.led_states(coords)
+        self.led_states(coords)
     }
 
     pub fn reset(&mut self) {
-        self.base_note = BASE_NOTE;
+        self.base_note = Pattern::DEFAULT_BASE_NOTE;
     }
 
     pub fn change_base_note(&mut self, delta: i32) {
@@ -79,8 +77,8 @@ impl Pattern {
     }
 
     pub fn toggle_note(&mut self, x: Range<u8>, y: u8) {
-        let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
-        let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
+        let start = self.ticks_offset() + self.ticks_per_led() * x.start as u32;
+        let end = self.ticks_offset() + self.ticks_per_led() * (x.end + 1) as u32;
 
         let key = self.base_note - y;
         // TODO Velocity

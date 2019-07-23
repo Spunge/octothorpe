@@ -16,6 +16,18 @@ impl TimebaseHandler {
     pub const BEATS_PER_BAR: u32 = 4;
     pub const TICKS_PER_BEAT: u32 = 1920;
 
+    pub fn beats_to_ticks(beats: f64) -> u32 {
+        (beats * TimebaseHandler::TICKS_PER_BEAT as f64) as u32
+    }
+
+    pub fn bars_to_beats(bars: u32) -> u32 {
+        bars * TimebaseHandler::BEATS_PER_BAR
+    }
+
+    pub fn bars_to_ticks(bars: u32) -> u32 {
+        TimebaseHandler::bars_to_beats(bars) * TimebaseHandler::TICKS_PER_BEAT
+    }
+
     pub fn new() -> Self {
         TimebaseHandler {
             beats_per_minute: 130.0,
