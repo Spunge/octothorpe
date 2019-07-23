@@ -460,7 +460,7 @@ impl Sequencer {
     }
 
     // Get playing phrases that fall in this cycle
-    fn playing_phrases(&self, cycle: &Cycle) -> Option<Vec<PlayingPhrase>> {
+    fn playing_phrases(&mut self, cycle: &Cycle) -> Option<Vec<PlayingPhrase>> {
         let playing_sequence = &self.sequences[self.sequence_playing];
 
         if let Some(sequence_length) = playing_sequence.length(&self.instruments) {
@@ -475,6 +475,10 @@ impl Sequencer {
                 let next_sequence_start = sequence_start + sequence_length;
 
                 if let Some(index) = self.sequence_queued {
+                    // Mark sequence as switched
+                    self.sequence_playing = index;
+                    self.sequence_queued = None;
+
                     phrases.extend(self.sequences[index].playing_phrases(&self.instruments, next_sequence_start))
                 } else {
                     phrases.extend(playing_sequence.playing_phrases(&self.instruments, next_sequence_start))
@@ -598,7 +602,7 @@ impl Sequencer {
                             .and_then(|_| {
                                 let ticks_into_playable = cycle.start as i32 % self.playable().length as i32;
                                 let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
-                                // As we don't have a way to use sequence ticks here, we need to
+
                                 Some(switch_on_tick % self.playable().length as i32)
                             })
                     },
