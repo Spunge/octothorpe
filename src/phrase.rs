@@ -1,15 +1,17 @@
 
 use std::ops::Range;
 
-use super::bars_to_ticks;
-use super::pattern::Pattern;
-use super::cycle::Cycle;
+use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
+use super::handlers::TimebaseHandler;
 
-#[derive(Debug, Clone)]
-pub struct PlayedPattern {
-    pub index: usize,
-    // Start & end in ticks
+#[derive(Debug)]
+pub struct PlayingPhrase {
+    // Index in sequencers instruments array
+    pub instrument: usize,
+    // Index in Instruments phrases array
+    pub phrase: usize,
+    // Start & end of phrases
     pub start: u32,
     pub end: u32,
 }
@@ -21,7 +23,7 @@ pub struct Phrase {
 
 impl Phrase {
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { playable: Playable::new(bars_to_ticks(4), bars_to_ticks(4), 3, 5), played_patterns, }
+        Phrase { playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), played_patterns, }
     }
 
     pub fn new() -> Self {
@@ -30,10 +32,10 @@ impl Phrase {
     
     pub fn default() -> Self {
         Phrase::create(vec![
-            PlayedPattern { index: 0, start: bars_to_ticks(0), end: bars_to_ticks(2) },
-            PlayedPattern { index: 1, start: bars_to_ticks(2), end: bars_to_ticks(4) },
-            //PlayedPattern { index: 0, start: bars_to_ticks(2), end: bars_to_ticks(3) },
-            //PlayedPattern { index: 0, start: bars_to_ticks(3), end: bars_to_ticks(4) },
+            PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(0), end: TimebaseHandler::bars_to_ticks(2) },
+            PlayedPattern { index: 1, start: TimebaseHandler::bars_to_ticks(2), end: TimebaseHandler::bars_to_ticks(4) },
+            //PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(2), end: TimebaseHandler::bars_to_ticks(3) },
+            //PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(3), end: TimebaseHandler::bars_to_ticks(4) },
         ])
     }
 
@@ -69,13 +71,13 @@ impl Phrase {
         }
     }
    
-    pub fn playing_patterns(&self, cycle: &Cycle, sequence_ticks: u32, patterns: &[Pattern]) -> Vec<PlayedPattern> {
+    pub fn playing_patterns(&self, patterns: &[Pattern], playing_phrase: &PlayingPhrase) -> Vec<PlayingPattern> {
         // Fill up patterns that are larger as 1 iterationn of pattern with multiple playedpatterns
         // of the same kind
         self.played_patterns.iter()
             .flat_map(|played_pattern| {
                 let played_pattern_length = played_pattern.end - played_pattern.start;
-                let pattern_length = patterns[played_pattern.index].playable.ticks;
+                let pattern_length = patterns[played_pattern.index].playable.length;
                 // Dirty way to round up
                 let iterations = (played_pattern_length + pattern_length - 1) / pattern_length;
 
@@ -90,30 +92,14 @@ impl Phrase {
 
                     // Return played pattern for this iteration through phrase & pattern for next
                     // iteration through phrase
-                    PlayedPattern { 
-                        // As it could be this is next sequence, add sequence ticks offset
-                        start: start + sequence_ticks,
-                        end: end + sequence_ticks,
-                        index: played_pattern.index 
+                    PlayingPattern { 
+                        // Add phrase start to get ticks that we can compare with cycle
+                        start: start + playing_phrase.start,
+                        end: end + playing_phrase.start,
+                        pattern: played_pattern.index,
+                        instrument: playing_phrase.instrument,
                     }
                 })
-            })
-            .filter_map(|mut played_pattern| {
-                let plays = cycle.start / self.playable.ticks;
-                let cycle_start = cycle.start % self.playable.ticks;
-                let cycle_end = cycle_start + cycle.ticks;
-
-                // Is pattern playing?
-                if played_pattern.start < cycle_end && played_pattern.end > cycle_start {
-                    // Move played pattern to current cycle so we don't need phrase to compare
-                    // notes
-                    played_pattern.start += plays * self.playable.ticks;
-                    played_pattern.end += plays * self.playable.ticks;
-
-                    Some(played_pattern)
-                } else {
-                    None
-                }
             })
             .collect()
     }

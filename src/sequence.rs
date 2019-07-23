@@ -1,5 +1,6 @@
 
 use super::instrument::Instrument;
+use super::phrase::PlayingPhrase;
 
 #[derive(Debug)]
 pub struct Sequence {
@@ -58,11 +59,11 @@ impl Sequence {
             })
     }
 
-    // Get bars of sequence based on the longest phrase it's playing
-    pub fn ticks(&self, instruments: &[Instrument]) -> Option<u32> {
+    // Get length in ticks of sequence based on the longest phrase it's playing
+    pub fn length(&self, instruments: &[Instrument]) -> Option<u32> {
         self.active_phrases()
             .map(|(instrument, phrase)| {
-                instruments[instrument].phrases[phrase].playable.ticks
+                instruments[instrument].phrases[phrase].playable.length
             })
             .max()
     }
@@ -83,19 +84,22 @@ impl Sequence {
         self.active[instrument as usize] = ! self.active[instrument as usize];
     }
 
-    pub fn playing_phrases(&self, instruments: &[Instrument]) -> Vec<(usize, usize, u32)> {
+    // Get playing phrases of this sequence
+    pub fn playing_phrases(&self, instruments: &[Instrument], sequence_start: u32) -> Vec<PlayingPhrase> {
         // Could be this is a 0 length sequence
-        if let Some(sequence_ticks) = self.ticks(instruments) {
+        if let Some(sequence_length) = self.length(instruments) {
             self.active_phrases()
                 .filter(|(instrument, _)| self.active[*instrument])
                 .flat_map(|(instrument, phrase)| {
-                    let phrase_ticks = instruments[instrument].phrases[phrase].playable.ticks;
+                    let phrase_length = instruments[instrument].phrases[phrase].playable.length;
 
-                    (0..sequence_ticks)
-                        .step_by(phrase_ticks as usize)
+                    (0..sequence_length)
+                        .step_by(phrase_length as usize)
                         .into_iter()
                         .map(move |ticks| {
-                            (instrument, phrase, ticks)
+                            let start = sequence_start + ticks;
+                            let end = start + phrase_length;
+                            PlayingPhrase { instrument, phrase, start, end }
                         })
                 })
                 .collect()

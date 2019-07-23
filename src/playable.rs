@@ -1,7 +1,7 @@
 
 pub struct Playable {
-    pub minimum_ticks: u32,
-    pub ticks: u32,
+    pub minimum_length: u32,
+    pub length: u32,
 
     pub zoom: u32,
     pub offset: u32,
@@ -12,19 +12,12 @@ pub struct Playable {
 }
 
 impl Playable {
-    pub fn new(ticks: u32, minimum_ticks: u32, head: u8, tail: u8) -> Self {
-        Playable {
-            minimum_ticks,
-            ticks,
-            zoom: 1, 
-            offset: 0,
-            head,
-            tail,
-        }
+    pub fn new(length: u32, minimum_length: u32, head: u8, tail: u8) -> Self {
+        Playable { minimum_length, length, zoom: 1, offset: 0, head, tail }
     }
 
     pub fn visible_ticks(&self) -> u32 {
-        self.ticks / self.zoom
+        self.length / self.zoom
     }
 
     pub fn ticks_per_led(&self) -> u32 {
@@ -71,13 +64,7 @@ impl Playable {
     pub fn change_length(&mut self, length_modifier: u8) {
         match length_modifier {
             1 | 2 | 4 | 8  => {
-                // Calculate new zoom level to keep pattern grid view the same if possible
-                //let zoom = self.zoom * length_modifier as u32 / (self.ticks / self.minimum_ticks);
-                self.ticks = length_modifier as u32 * self.minimum_ticks;
-                // Only set zoom when it's possible
-                //if zoom > 0 && zoom <= 8 {
-                    //self.zoom = zoom;
-                //}
+                self.length = length_modifier as u32 * self.minimum_length;
                 // Check if offset is still okay
                 if self.offset > self.zoom - 1 {
                     self.offset = self.zoom - 1;

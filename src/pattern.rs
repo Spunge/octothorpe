@@ -1,12 +1,27 @@
 
 use std::ops::Range;
 
-use super::{beats_to_ticks, bars_to_ticks};
 use super::note::Note;
 use super::playable::Playable;
 use super::cycle::Cycle;
+use super::handlers::TimebaseHandler;
 
-const BASE_NOTE: u8 = 73;
+#[derive(Debug, Clone)]
+pub struct PlayedPattern {
+    // Index in instruments patterns array
+    pub index: usize,
+    // Start & end in ticks
+    pub start: u32,
+    pub end: u32,
+}
+
+pub struct PlayingPattern {
+    pub instrument: usize,
+    pub pattern: usize,
+    // Start & end in ticks
+    pub start: u32,
+    pub end: u32,
+}
 
 pub struct Pattern {
     pub playable: Playable,
@@ -16,14 +31,16 @@ pub struct Pattern {
 }
 
 impl Pattern {
+    const BASE_NOTE: u8 = 73;
+
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
-            playable: Playable::new(bars_to_ticks(1), bars_to_ticks(1), 1, 5),
+            playable: Playable::new(TimebaseHandler::bars_to_ticks(1), TimebaseHandler::bars_to_ticks(1), 1, 5),
             channel,
             notes,
             // TODO - Use scales for this
             // Put a4 in center of grid
-            base_note: BASE_NOTE,
+            base_note: Self::BASE_NOTE,
         }
     }
 
@@ -33,10 +50,10 @@ impl Pattern {
 
     pub fn default(channel: u8) -> Self {
         let notes = vec![
-            Note::new(channel, beats_to_ticks(0.0), beats_to_ticks(0.5), 73, 127),
-            Note::new(channel, beats_to_ticks(1.0), beats_to_ticks(1.5), 69, 127),
-            Note::new(channel, beats_to_ticks(2.0), beats_to_ticks(2.5), 69, 127),
-            Note::new(channel, beats_to_ticks(3.0), beats_to_ticks(3.5), 69, 127),
+            Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(0.5), 73, 127),
+            Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 69, 127),
+            Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 69, 127),
+            Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 69, 127),
         ];
         Pattern::create(channel, notes)
     }
@@ -51,7 +68,7 @@ impl Pattern {
     }
 
     pub fn reset(&mut self) {
-        self.base_note = BASE_NOTE;
+        self.base_note = Self::BASE_NOTE;
     }
 
     pub fn change_base_note(&mut self, delta: i32) {

@@ -5,7 +5,6 @@ use std::sync::mpsc::{Sender, Receiver};
 use super::controller::Controller;
 use super::message::{TimedMessage, Message};
 use super::cycle::Cycle;
-use super::TICKS_PER_BEAT;
 
 pub struct TimebaseHandler {
     beats_per_minute: f64,
@@ -15,6 +14,21 @@ pub struct TimebaseHandler {
 }
 
 impl TimebaseHandler {
+    const TICKS_PER_BEAT: u32 = 1920;
+    const BEATS_PER_BAR: u32 = 4;
+
+    pub fn beats_to_ticks(beats: f64) -> u32 {
+        (beats * Self::TICKS_PER_BEAT as f64) as u32
+    }
+
+    pub fn bars_to_beats(bars: u32) -> u32 {
+        bars * Self::BEATS_PER_BAR
+    }
+
+    pub fn bars_to_ticks(bars: u32) -> u32 {
+        Self::bars_to_beats(bars) * Self::TICKS_PER_BEAT
+    }
+
     pub fn new() -> Self {
         TimebaseHandler {
             beats_per_minute: 130.0,
@@ -39,7 +53,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
             // Only update timebase when we are asked for it, or when our state changed
             if is_new_pos || ! self.is_up_to_date {
                 (*pos).beats_per_bar = self.beats_per_bar as f32;
-                (*pos).ticks_per_beat = TICKS_PER_BEAT as f64;
+                (*pos).ticks_per_beat = Self::TICKS_PER_BEAT as f64;
                 (*pos).beat_type = self.beat_type as f32;
                 (*pos).beats_per_minute = self.beats_per_minute;
                 
