@@ -459,60 +459,6 @@ impl Sequencer {
         output.into_iter().map(|message| TimedMessage::new(0, message)).collect()
     }
 
-    /*
-    fn set_playing_sequence(&mut self, sequence: usize) {
-        self.sequence_playing = sequence;
-        self.sequence_queued = None;
-    }
-
-    // Get playing sequences in form (offset_ticks, sequence_index)
-    fn current_playing_sequences(&self, cycle: &Cycle) -> Option<Vec<(u32, usize)>> {
-        // Get current sequence as we definitely have to play that
-        let current_sequence = &self.sequences[self.sequence_playing];
-        // Can we play current sequence, could be it has length 0 for no phrases playing
-        if let Some(ticks) = current_sequence.length(&self.instruments) {
-            // If we can, play it
-            let mut sequences = vec![ (0, self.sequence_playing) ];
-
-            // If cycle covers current sequence and next
-            if cycle.start % ticks > cycle.end % ticks {
-                if let Some(index) = self.sequence_queued {
-                    sequences.push((ticks, index));
-                } else {
-                    sequences.push((ticks, self.sequence_playing));
-                }
-            }
-
-            Some(sequences)
-        } else {
-            None
-        }
-    }
-
-    // Get sequences that fall in cycle, if we are going to play queued cycle, mark that as
-    // currently playing cycle
-    fn playing_sequences(&mut self, cycle: &Cycle) -> Option<Vec<(u32, usize)>> {
-        // Is something playing?
-        if let Some(sequences) = self.current_playing_sequences(cycle) {
-            if sequences.len() > 1 {
-                // It could be next sequence is queued sequence, in that case, mark it as playing
-                if sequences[0].1 != sequences[1].1 {
-                    self.set_playing_sequence(sequences[1].1);
-                }
-            }
-
-            Some(sequences)
-        } else {
-            if let Some(index) = self.sequence_queued {
-                self.set_playing_sequence(index);
-                self.current_playing_sequences(cycle)
-            } else {
-                None
-            }
-        }
-    }
-    */
-
     // Get playing phrases that fall in this cycle
     fn playing_phrases(&self, cycle: &Cycle) -> Option<Vec<PlayingPhrase>> {
         let playing_sequence = &self.sequences[self.sequence_playing];
@@ -542,14 +488,15 @@ impl Sequencer {
         }
     }
 
-    fn playing_patterns(&self, cycle: &Cycle, played_phrases: &Vec<PlayingPhrase>) -> Vec<PlayingPattern> {
-        played_phrases.iter()
+    fn playing_patterns(&self, cycle: &Cycle, playing_phrases: &Vec<PlayingPhrase>) -> Vec<PlayingPattern> {
+        playing_phrases.iter()
             // Get patterns that are playing for Instrument & played pattern
-            .flat_map(|playing_phrase| {
-                self.instruments[playing_phrase.instrument].phrases[playing_phrase.phrase]
+            .flat_map(|playing_phrases| {
+                self.instruments[playing_phrases.instrument].phrases[playing_phrases.phrase]
                     // TODO - sequence ticks is wrong, should be phrase ticks
-                    .playing_patterns(&self.instruments[playing_phrase.instrument].patterns, &playing_phrase)
+                    .playing_patterns(&self.instruments[playing_phrases.instrument].patterns, &playing_phrases)
             })
+            .filter(|playing_pattern| playing_pattern.start < cycle.end && playing_pattern.end > cycle.start)
             .collect()
     }
 
@@ -618,57 +565,54 @@ impl Sequencer {
             .and_then(|delta_ticks| {
                 let ticks_into_playable = match self.detailview {
                     DetailView::Pattern => {
-                        let ticks_offset = self.playable().ticks_offset() as i32;
-                        let ticks_per_led = self.playable().ticks_per_led() as i32;
-
                         // Is currently showing pattern in playing patterns?
                         playing_patterns.into_iter()
-                            // Get playing patterns of shown pattern
-                            .for_each(|playing_pattern| {
-                                let should_draw_led = playing_pattern.instrument == self.instrument as usize 
-                                    && playing_pattern.pattern == self.instruments[playing_pattern.instrument].pattern;
+                            .rev()
+                            // Get latest occurence instead of first
+                            .find(|playing_pattern| {
+                                playing_pattern.instrument == self.instrument as usize 
+                                    && playing_pattern.pattern == self.instruments[playing_pattern.instrument].pattern
+                            })
+                            .and_then(|playing_pattern| {
+                                let ticks_into_playable = cycle.start as i32 - playing_pattern.start as i32;
+                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
+                                // Keep track of pattern length to not show first led when next
+                                // pattern is other pattern
+                                let playing_pattern_length = (playing_pattern.end - playing_pattern.start) as i32;
 
-                                if should_draw_led {
-                                    let ticks_into_playable = cycle.start as i32 - playing_pattern.start as i32;
-                                    let switch_on_tick = ticks_into_playable + delta_ticks as i32 - ticks_offset;
-                                    // Keep track of pattern length to not show first led when next
-                                    // pattern is other pattern
-                                    let played_pattern_length = (playing_pattern.end - playing_pattern.start) as i32;
-
-                                    // If next switch is last, dont switch next led on as it will be 0
-                                    if switch_on_tick != played_pattern_length { 
-                                        // Get current led by offsetting ticks by zoom offset
-                                        let led = switch_on_tick / ticks_per_led;
-
-                                        if led >= 0 && led < 8 {
-                                            self.indicator_state_next[led as usize] = 1;
-                                        }
-                                    }
+                                // If next switch is last, dont switch next led on as it will be 0
+                                if switch_on_tick == playing_pattern_length { 
+                                    None 
+                                } else {
+                                    Some(switch_on_tick)
                                 }
                             })
                     },
                     DetailView::Phrase => {
                         // Is currently selected phrase playing?
-                        let playing_phrase = playing_phrases.iter()
+                        playing_phrases.iter()
                             .find(|playing_phrase| {
                                 playing_phrase.instrument == self.instrument as usize 
                                     && playing_phrase.phrase == self.instruments[playing_phrase.instrument].phrase
-                            });
-
-                        if let Some(_) = playing_phrase {
-                            let ticks_into_playable = cycle.start as i32 % self.playable().length as i32;
-                            let mut switch_on_tick = (ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32);
-                            switch_on_tick = switch_on_tick % self.playable().length as i32;
-
-                            // Get current led by offsetting ticks by zoom offset
-                            let led = switch_on_tick / self.playable().ticks_per_led() as i32;
-
-                            if led >= 0 && led < 8 {
-                                self.indicator_state_next[led as usize] = 1;
-                            }
-                        }
+                            })
+                            .and_then(|_| {
+                                let ticks_into_playable = cycle.start as i32 % self.playable().length as i32;
+                                let switch_on_tick = ticks_into_playable + delta_ticks as i32 - self.playable().ticks_offset() as i32;
+                                // As we don't have a way to use sequence ticks here, we need to
+                                Some(switch_on_tick % self.playable().length as i32)
+                            })
                     },
                 };
+
+                // If we are shwing current playable, draw indicator to grid
+                if let Some(switch_on_tick) = ticks_into_playable {
+                    // Get current led by offsetting ticks by zoom offset
+                    let led = switch_on_tick / self.playable().ticks_per_led() as i32;
+
+                    if led >= 0 && led < 8 {
+                        self.indicator_state_next[led as usize] = 1;
+                    }
+                }
 
                 // Create timed messages from indicator state
                 let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34).into_iter()
