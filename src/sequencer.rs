@@ -638,9 +638,12 @@ impl Sequencer {
                     sequence_out_messages.extend(sequence_note_ons);
                 }
 
+                // Draw dynamic indicators
                 match self.overview {
                     OverView::Instrument => {
-                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, cycle.was_repositioned, &playing_patterns, &playing_phrases) {
+                        // We should always redraw on reposition or button press
+                        let force_redraw = cycle.was_repositioned || self.should_render;
+                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
                             control_out_messages.extend(indicator_note_events);
                         }
                     },
