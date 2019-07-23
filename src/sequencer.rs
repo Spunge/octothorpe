@@ -3,6 +3,7 @@ use std::ops::Range;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
+use super::handlers::TimebaseHandler;
 use super::phrase::{Phrase, PlayingPhrase};
 use super::pattern::{Pattern, PlayingPattern};
 use super::sequence::Sequence;
@@ -73,8 +74,8 @@ pub struct Sequencer {
 
     indicator_state_current: [u8; 8],
     indicator_state_next: [u8; 8],
-    playables_state_current: [u8; 8],
-    playables_state_next: [u8; 8],
+    playables_state_current: [u8; 5],
+    playables_state_next: [u8; 5],
     sequences_state_current: [u8; 4],
     sequences_state_next: [u8; 4],
 }
@@ -131,8 +132,8 @@ impl Sequencer {
             // Dynamic button states
             indicator_state_current: [0; 8],
             indicator_state_next: [0; 8],
-            playables_state_current: [0; 8],
-            playables_state_next: [0; 8],
+            playables_state_current: [0; 5],
+            playables_state_next: [0; 5],
             sequences_state_current: [0; 4],
             sequences_state_next: [0; 4],
         }
@@ -324,6 +325,20 @@ impl Sequencer {
         self.should_render = true;
     }
 
+    pub fn output_vertical_grid(&self, current_state: &[u8], next_state: &[u8], y: u8) -> Vec<Message> {
+        let mut output = vec![];
+
+        for index in 0 .. current_state.len() {
+            if current_state[index] != next_state[index] {
+                let x: u8 = if next_state[index] == 0 { 0x80 } else { 0x90 };
+
+                output.push(Message::Note([x, y + index as u8, next_state[index]]));
+            }
+        }
+
+        output
+    }
+
     // Output a message for each changed state in the grid
     pub fn output_grid(&self, current_state: &[u8], next_state: &[u8], y: u8) -> Vec<Message> {
         let mut output = vec![];
@@ -429,11 +444,6 @@ impl Sequencer {
         };
     }
 
-    //fn draw_sequences_grid(&mut self) {
-    //}
-    //fn draw_playables_grid(&mut self) {
-    //}
-
     pub fn output_static_leds(&mut self) -> Vec<TimedMessage> {
         let mut output = vec![];
     
@@ -453,11 +463,14 @@ impl Sequencer {
             output.extend(self.output_button(self.index_group, 0x50));
             output.extend(self.output_button(self.index_detailview, 0x3E));
 
-            // Clear indicator grid when switching to sequence
+            // Clear dynamic grids when switching to sequence
             if let OverView::Sequence = self.overview {
                 self.indicator_state_current = [9; 8];
                 self.indicator_state_next = [0; 8];
                 output.extend(self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34));
+                self.playables_state_current = [9; 5];
+                self.playables_state_next = [0; 5];
+                output.extend(self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52));
             }
 
             // Switch buffer
@@ -567,7 +580,59 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
+    fn playable_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
+        -> Option<Vec<TimedMessage>> 
+    {
+        let blink_ticks = TimebaseHandler::beats_to_ticks(0.5);
+
+        cycle.delta_ticks_recurring(0, blink_ticks)
+            // Are we forced to redraw? If yes, instantly draw
+            .or_else(|| if force_redraw { Some(0) } else { None })
+            .and_then(|delta_ticks| {
+                let switch_on_tick = cycle.start + delta_ticks;
+
+                // Make playing playable blink
+                let playing_index = match self.detailview {
+                    DetailView::Pattern => {
+                        playing_patterns.iter()
+                            .filter(|playing_pattern| playing_pattern.instrument == self.instrument as usize)
+                            .map(|playing_pattern| playing_pattern.pattern)
+                            .last()
+                    }
+                    DetailView::Phrase => {
+                        playing_phrases.iter()
+                            .filter(|playing_phrase| playing_phrase.instrument == self.instrument as usize)
+                            .map(|playing_phrase| playing_phrase.phrase)
+                            .last()
+                    },
+                };
+
+                if let Some(index) = playing_index {
+                    self.playables_state_next[index] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
+                }
+
+                // Always mark selected playable
+                let selected_index = match self.detailview {
+                    DetailView::Pattern => self.instrument().pattern,
+                    DetailView::Phrase => self.instrument().phrase,
+                };
+                self.playables_state_next[selected_index] = 1;
+
+                // Create timed messages from indicator state
+                let messages = self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52).into_iter()
+                    .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
+                    .collect();
+
+                // Switch state
+                self.playables_state_current = self.playables_state_next;
+                self.playables_state_next = [0; 5];
+
+                // Return these beautifull messages
+                Some(messages)
+            })
+    }
+
+    fn indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
         // Do we have to switch now?
@@ -651,8 +716,11 @@ impl Sequencer {
                     OverView::Instrument => {
                         // We should always redraw on reposition or button press
                         let force_redraw = cycle.was_repositioned || self.should_render;
-                        if let Some(indicator_note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                        if let Some(indicator_note_events) = self.indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
                             control_out_messages.extend(indicator_note_events);
+                        }
+                        if let Some(playable_note_events) = self.playable_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                            control_out_messages.extend(playable_note_events);
                         }
                     },
                     OverView::Sequence => {
