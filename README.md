@@ -15,7 +15,7 @@ Patterns
 - [X] bank select moves viewport vertically
 - [X] Indicator shows in currently playing pattern
 - [X] Indicator should draw on reposition
-- [ ] Indicator should draw on instrument / pattern selection
+- [X] Indicator should draw on instrument / pattern selection
 - [ ] Use playable selector as indicator of base note / octave offset in octaves while scrolling, switching back to selected pattern after a while. 
 - [X] Notes in grid shouldn't be able to overlap, shorten previous note
 
@@ -40,7 +40,7 @@ Sequences
 - [X] Sequences are played
 - [X] Pan, send A etc. show corresponding sequence
 - [X] Queue sequence by shift clicking sequence button
-- [ ] Show active sequence by blinking sequence light in sequence grid
+- [X] Show active sequence by blinking sequence light in sequence grid
 - [X] Queued sequence starts after sequence hits a common denominator for all playing phrases
 - [X] row 0x32 -> instrument outputs yes/no
 - [X] Make indicator lights light up for notes played by instrument
@@ -70,4 +70,4 @@ Velocity
 - Add a way to change velocity of notes
 
 Effect knobs
-- Record effect knobs into patterns, how do we want to do this, holding rec key?
+- Record effect knobs into patterns, how do we want to do this
