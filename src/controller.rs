@@ -1,7 +1,6 @@
 
 use super::message::{TimedMessage, Message};
 use super::sequencer::Sequencer;
-use super::cycle::Cycle;
 
 pub struct Controller {
     pub sequencer: Sequencer,
@@ -14,7 +13,7 @@ impl Controller {
         }
     }
 
-    fn key_pressed(&mut self, message: jack::RawMidi, cycle: &Cycle, client: &jack::Client) {
+    fn key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) {
         // Output in hex so we can compare to apc40 manual easily
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
         //println!("{}, {}, {}", message.bytes[0], message.bytes[1], message.bytes[2]);
@@ -28,7 +27,7 @@ impl Controller {
                     _ => client.transport_reposition(jack::Position::default()),
                 };
             },
-            _ => self.sequencer.key_pressed(message, cycle),
+            _ => self.sequencer.key_pressed(message),
         }
     }
 
@@ -36,7 +35,7 @@ impl Controller {
         self.sequencer.key_released(message)
     }
 
-    pub fn process_midi_messages<'a, I>(&mut self, input: I, cycle: &Cycle, client: &jack::Client) -> Vec<TimedMessage>
+    pub fn process_midi_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
@@ -47,7 +46,7 @@ impl Controller {
                 if message.bytes.len() > 3 {
                     self.process_sysex_message(message)
                 } else {
-                    self.process_message(message, cycle, client);
+                    self.process_message(message, client);
                     None
                 }
             })
@@ -77,11 +76,11 @@ impl Controller {
         }
     }
 
-    fn process_message(&mut self, message: jack::RawMidi, cycle: &Cycle, client: &jack::Client) {
+    fn process_message(&mut self, message: jack::RawMidi, client: &jack::Client) {
         println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         match message.bytes[0] {
-            0x90...0x97 => self.key_pressed(message, cycle, client),
+            0x90...0x97 => self.key_pressed(message, client),
             0x80...0x87 => self.key_released(message),
             _ => (),
         }

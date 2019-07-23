@@ -208,7 +208,7 @@ impl Sequencer {
         }
     }
 
-    pub fn key_pressed(&mut self, message: jack::RawMidi, cycle: &Cycle) {
+    pub fn key_pressed(&mut self, message: jack::RawMidi) {
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
 
@@ -511,6 +511,7 @@ impl Sequencer {
             Some(phrases)
         } else {
             // 0 length sequence, so nothing is playing
+            // TODO - Check quueued here?
             None
         }
     }
@@ -520,7 +521,6 @@ impl Sequencer {
             // Get patterns that are playing for Instrument & played pattern
             .flat_map(|playing_phrases| {
                 self.instruments[playing_phrases.instrument].phrases[playing_phrases.phrase]
-                    // TODO - sequence ticks is wrong, should be phrase ticks
                     .playing_patterns(&self.instruments[playing_phrases.instrument].patterns, &playing_phrases)
             })
             .filter(|playing_pattern| playing_pattern.start < cycle.end && playing_pattern.end > cycle.start)
@@ -580,7 +580,44 @@ impl Sequencer {
         (note_offs, note_ons)
     }
 
-    fn playable_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
+    //
+    // TODO TODO TODO v the following indicator subroutines look alot alike, stay dry
+    //
+
+    // Show playing, queued and selected sequence
+    fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {
+        let blink_ticks = TimebaseHandler::beats_to_ticks(0.5);
+
+        cycle.delta_ticks_recurring(0, blink_ticks)
+            // Are we forced to redraw? If yes, instantly draw
+            .or_else(|| if force_redraw { Some(0) } else { None })
+            .and_then(|delta_ticks| {
+                let switch_on_tick = cycle.start + delta_ticks;
+
+                // Add queued when it's there
+                if let Some(index) = self.sequence_queued {
+                    self.sequences_state_next[index] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
+                }
+
+                // Set playing sequence
+                self.sequences_state_next[self.sequence_playing] = 1;
+
+                // Create timed messages from indicator state
+                let messages = self.output_vertical_grid(&self.sequences_state_current, &self.sequences_state_next, 0x57).into_iter()
+                    .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
+                    .collect();
+
+                // Switch state
+                self.sequences_state_current = self.sequences_state_next;
+                self.sequences_state_next = [0; 4];
+
+                // Return these beautifull messages
+                Some(messages)
+            })
+    }
+        
+    // Show playing & selected pattern or phrase
+    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
         let blink_ticks = TimebaseHandler::beats_to_ticks(0.5);
@@ -632,7 +669,7 @@ impl Sequencer {
             })
     }
 
-    fn indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
+    fn main_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
         // Do we have to switch now?
@@ -711,16 +748,17 @@ impl Sequencer {
                     sequence_out_messages.extend(sequence_note_ons);
                 }
 
+                // We should always redraw on reposition or button press
+                let force_redraw = cycle.was_repositioned || self.should_render;
+
                 // Draw dynamic indicators
                 match self.overview {
                     OverView::Instrument => {
-                        // We should always redraw on reposition or button press
-                        let force_redraw = cycle.was_repositioned || self.should_render;
-                        if let Some(indicator_note_events) = self.indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                            control_out_messages.extend(indicator_note_events);
+                        if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                            control_out_messages.extend(note_events);
                         }
-                        if let Some(playable_note_events) = self.playable_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                            control_out_messages.extend(playable_note_events);
+                        if let Some(note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                            control_out_messages.extend(note_events);
                         }
                     },
                     OverView::Sequence => {
@@ -733,6 +771,12 @@ impl Sequencer {
                     }
                 }
 
+                // Always trigger draw of sequence indicator as it will always be active
+                if let Some(note_events) = self.sequence_indicator_note_events(cycle, force_redraw) {
+                    control_out_messages.extend(note_events);
+                }
+
+                // Also push note offs (TODO - Why after all this stuff?)
                 if cycle.is_rolling {
                     self.sequence_note_offs.extend(sequence_note_offs);
                 }
