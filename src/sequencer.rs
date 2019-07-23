@@ -589,14 +589,14 @@ impl Sequencer {
                     },
                 };
 
-                shown_playables.iter().for_each(|(start, end)| {
-                    // Amount of ticks in region (patterns can be short)
+                shown_playables.into_iter().for_each(|(start, end)| {
+                    // Amount of ticks in region (playing patterns can be shorter as pattern they play)
                     let ticks = end - start;
                     let switch_on_tick = cycle.start + delta_ticks;
-                    let playable_tick = switch_on_tick - start;
-                    let led = playable_tick / self.playable().ticks_per_led();
+                    let playable_tick = switch_on_tick as i32 - start as i32 - self.playable().ticks_offset() as i32;
+                    let led = playable_tick / self.playable().ticks_per_led() as i32;
 
-                    if led >= 0 && led < 8 && playable_tick < ticks {
+                    if led >= 0 && led < 8 && playable_tick < ticks as i32 {
                         self.indicator_state_next[led as usize] = 1;
                     }
                 });
