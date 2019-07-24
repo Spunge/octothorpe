@@ -646,24 +646,31 @@ impl Sequencer {
                 let switch_on_tick = cycle.start + delta_ticks;
 
                 // Make playing playable blink
-                let playing_index = match self.detailview {
+                let playing_indexes: Vec<usize> = match self.detailview {
                     DetailView::Pattern => {
                         playing_patterns.iter()
-                            .filter(|playing_pattern| playing_pattern.instrument == self.instrument as usize)
+                            .filter(|playing_pattern| {
+                                playing_pattern.instrument == self.instrument as usize
+                                    && playing_pattern.end > cycle.end
+                            })
                             .map(|playing_pattern| playing_pattern.pattern)
-                            .last()
+                            .collect()
                     }
                     DetailView::Phrase => {
                         playing_phrases.iter()
-                            .filter(|playing_phrase| playing_phrase.instrument == self.instrument as usize)
+                            .filter(|playing_phrase| {
+                                playing_phrase.instrument == self.instrument as usize
+                                    && playing_phrase.end > cycle.end
+                            })
                             .map(|playing_phrase| playing_phrase.phrase)
-                            .last()
+                            .collect()
                     },
                 };
 
-                if let Some(index) = playing_index {
+                // Multiple patterns or phrases can be playing
+                playing_indexes.into_iter().for_each(|index| {
                     self.playables_state_next[index] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
-                }
+                });
 
                 // Always mark selected playable
                 let selected_index = match self.detailview {
