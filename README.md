@@ -50,7 +50,7 @@ Tempo
 - [ ] Fix tap tempo
 
 Effect knobs
-- [ ] Send knobs input to output directly for channel of selected instrument
+- [ ] Send knobs input to output for channel of selected instrument
 
 Improvements
 - [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
@@ -64,7 +64,6 @@ Patterns / Phrases
 - Fold pattern grid to notes in key / all notes
 - shift + row 0x31 -> move zoom viewport
 - Do smart stuff with the octave indicator, like 6 on/6 off on octave 0, 7on/5off on octave 1, 5on/7off on octave -1
-- Make a toggle to only show notes in key
 
 Velocity
 - Add a way to change velocity of notes

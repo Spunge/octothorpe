@@ -38,7 +38,7 @@ impl KeyPress {
 }
 
 pub struct Sequencer {
-    group: u8,
+    instrument_group: u8,
 
     sequence_note_offs: Vec<(u32, Message)>,
     indicator_note_offs: Vec<(u32, Message)>,
@@ -59,13 +59,14 @@ pub struct Sequencer {
     detailview: DetailView,
 
     pub should_render: bool,
-    static_state_current: [u8; 75],
-    static_state_next: [u8; 75],
+    static_state_current: [u8; 79],
+    static_state_next: [u8; 79],
     // Buttons
-    index_group: usize,
+    index_instrument_group: usize,
     index_detailview: usize,
     index_overview: usize,
     // Static
+    index_knob_groups: Range<usize>,
     index_instruments: Range<usize>,
     index_main: Range<usize>,
     index_green: Range<usize>,
@@ -98,7 +99,8 @@ impl Sequencer {
         Sequencer {
             instruments,
             instrument: 0,
-            group: 0,
+
+            instrument_group: 0,
 
             keys_pressed: vec![],
             sequence_note_offs: vec![],
@@ -116,18 +118,19 @@ impl Sequencer {
 
             // Static button states
             should_render: false,
-            static_state_current: [0; 75],
-            static_state_next: [0; 75],
-            // Static grids
+            static_state_current: [0; 79],
+            static_state_next: [0; 79],
+            // Indexes of where in the state array grid state is located
             index_main: 0..40,
             index_green: 40..48,
             index_instruments: 48..56,
             index_red: 56..64,
             index_blue: 64..72,
             // Static buttons
-            index_group: 72,
+            index_instrument_group: 72,
             index_detailview: 73,
             index_overview: 74,
+            index_knob_groups: 75..79,
 
             // Dynamic button states
             indicator_state_current: [0; 8],
@@ -140,7 +143,7 @@ impl Sequencer {
     }
 
     fn instrument(&mut self) -> &mut Instrument {
-        &mut self.instruments[(self.group * 8 + self.instrument) as usize]
+        &mut self.instruments[(self.instrument_group * 8 + self.instrument) as usize]
     }
 
     fn sequence(&mut self) -> &mut Sequence {
@@ -194,7 +197,7 @@ impl Sequencer {
         match message.bytes[1] {
             0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90),
             0x35 ... 0x39 => {
-                let instrument = message.bytes[0] - 0x90 + self.group * 8;
+                let instrument = message.bytes[0] - 0x90 + self.instrument_group * 8;
                 self.sequence().toggle_phrase(instrument, message.bytes[1] - 0x35);
             },
             _ => (),
@@ -208,29 +211,18 @@ impl Sequencer {
         }
     }
 
-    fn knob_turned(&mut self, knob: u8, value: u8) -> Option<Vec<TimedMessage>> {
-        println!("knob_{:?} turned to value: {:?}", knob, value);
-        None
-    }
-
-    pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
-        // APC knobs are ordered weird, reorder them from to 0..16
-        match message.bytes[1] {
-            0x10...0x17 => self.knob_turned(message.bytes[1] - 8, message.bytes[2]),
-            0x30...0x37 => self.knob_turned(message.bytes[1] - 48, message.bytes[2]),
-            _ => None,
-        }
-    }
-
     pub fn key_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
+        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
 
         match message.bytes[1] {
-            // TODO - On switching group && instrument etc, draw indicator with cycle
-            0x50 => self.switch_group(),
+            // TODO - On switching instrument_group && instrument etc, draw indicator with cycle
+            0x50 => self.switch_instrument_group(),
+            0x3A ... 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
-            0x57 | 0x58 | 0x59 | 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
+            0x57 ... 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
             // Playable select
             0x52 ... 0x56 => self.shared_key_pressed(message),
@@ -255,8 +247,47 @@ impl Sequencer {
         None
     }
 
-    fn switch_group(&mut self) {
-        self.group = if self.group == 1 { 0 } else { 1 };
+    // One of the control knobs on the APC was turned
+    fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> TimedMessage {
+        println!("knob_{:?} turned to value: {:?}", knob, value);
+
+        // Get the channel & knob that APC knob should send out of, first 8 channels are for
+        // instruments, next 2 are used for sequences (sequence channels will be used for bus
+        // effects)
+        let (out_channel, out_knob) = match self.overview {
+            OverView::Instrument => {
+                let instrument_knob = self.instrument().set_knob_value(knob, value);
+                (self.instrument / 2, instrument_knob + (self.instrument % 2) * 64)
+            },
+            OverView::Sequence => {
+                let sequence_knob = self.sequence().set_knob_value(knob, value);
+                // Sequence channels are after the instruments channels, therefore +
+                // instruments.len / 2
+                (self.instrument / 2 + self.instruments.len() as u8 / 2, sequence_knob + (self.sequence % 2) * 64)
+            },
+        };
+
+        TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))
+    }
+
+    pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
+        // APC knobs are ordered weird, reorder them from to 0..16
+        match message.bytes[1] {
+            0x10...0x17 => Some(self.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
+            0x30...0x37 => Some(self.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
+            _ => None,
+        }
+    }
+
+    fn switch_instrument_group(&mut self) {
+        self.instrument_group = if self.instrument_group == 1 { 0 } else { 1 };
+    }
+
+    fn switch_knob_group(&mut self, group: u8) {
+        match self.overview {
+            OverView::Instrument => self.instrument().switch_knob_group(group),
+            OverView::Sequence => self.sequence().switch_knob_group(group),
+        }
     }
 
     fn switch_sequence(&mut self, sequence: u8) {
@@ -337,8 +368,8 @@ impl Sequencer {
 
     pub fn reset(&mut self) {
         // Use non-existant state to always redraw
-        self.static_state_current = [9; 75];
-        self.static_state_next = [0; 75];
+        self.static_state_current = [9; 79];
+        self.static_state_next = [0; 79];
         self.sequences_state_current = [9; 4];
 
         self.should_render = true;
@@ -384,14 +415,14 @@ impl Sequencer {
 
     fn draw_main_grid(&mut self) {
         // Why do i have to do this?
-        let group = self.group;
+        let instrument_group = self.instrument_group;
 
         let states = match self.overview {
             OverView::Instrument => match self.detailview {
                 DetailView::Pattern => self.instrument().pattern().led_states(),
                 DetailView::Phrase => self.instrument().phrase().led_states(),
             }
-            OverView::Sequence => self.sequence().led_states(group),
+            OverView::Sequence => self.sequence().led_states(instrument_group),
         };
 
         // Get states that are within grid
@@ -416,7 +447,7 @@ impl Sequencer {
                 },
                 // In Sequence, green grid shows active instruments
                 OverView::Sequence => {
-                    let instrument = self.group as usize * 8 + led;
+                    let instrument = self.instrument_group as usize * 8 + led;
                     if self.sequence().active[instrument] { 1 } else { 0 }
                 }
             }
@@ -441,7 +472,7 @@ impl Sequencer {
     fn draw_instruments_grid(&mut self) {
         for index in self.index_instruments.clone() {
             let led = index - self.index_instruments.start;
-            let instrument = self.group * 8 + self.instrument;
+            let instrument = self.instrument_group * 8 + self.instrument;
 
             // Force clear as sequence indicator uses the same grid and does not clear it
             self.static_state_current[index] = 9;
@@ -452,8 +483,21 @@ impl Sequencer {
         }
     }
 
+    fn draw_knob_groups_grid(&mut self) {
+        for index in self.index_knob_groups.clone() {
+            let led = index - self.index_knob_groups.start;
+
+            let active_group = match self.overview {
+                OverView::Instrument => self.instrument().knob_group,
+                OverView::Sequence => self.sequence().knob_group,
+            };
+
+            self.static_state_next[index] = if led as u8 == active_group { 1 } else { 0 };
+        }
+    }
+
     fn draw_group_button(&mut self) {
-        self.static_state_next[self.index_group] = self.group;
+        self.static_state_next[self.index_instrument_group] = self.instrument_group;
     }
 
     fn draw_detailview_button(&mut self) {
@@ -463,7 +507,7 @@ impl Sequencer {
         };
     }
 
-    pub fn output_static_leds(&mut self) -> Vec<TimedMessage> {
+    pub fn output_static(&mut self) -> Vec<TimedMessage> {
         let mut output = vec![];
     
         // Draw if we have to
@@ -472,6 +516,7 @@ impl Sequencer {
             self.draw_green_grid();
             self.draw_blue_grid();
             self.draw_instruments_grid();
+            self.draw_knob_groups_grid();
             self.draw_group_button();
             self.draw_detailview_button();
 
@@ -479,7 +524,8 @@ impl Sequencer {
             output.extend(self.output_grid(&self.static_state_current[self.index_blue.clone()], &self.static_state_next[self.index_blue.clone()], 0x31));
             output.extend(self.output_grid(&self.static_state_current[self.index_main.clone()], &self.static_state_next[self.index_main.clone()], 0x35));
             output.extend(self.output_grid(&self.static_state_current[self.index_instruments.clone()], &self.static_state_next[self.index_instruments.clone()], 0x33));
-            output.extend(self.output_button(self.index_group, 0x50));
+            output.extend(self.output_vertical_grid(&self.static_state_current[self.index_knob_groups.clone()], &self.static_state_next[self.index_knob_groups.clone()], 0x3A));
+            output.extend(self.output_button(self.index_instrument_group, 0x50));
             output.extend(self.output_button(self.index_detailview, 0x3E));
 
             // Clear dynamic grids when switching to sequence
@@ -490,9 +536,23 @@ impl Sequencer {
                 output.extend(self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52));
             }
 
+            // Output knob values for currently selected inst/seq
+            let knob_values = match self.overview {
+                OverView::Instrument => self.instrument().get_knob_values(),
+                OverView::Sequence => self.sequence().get_knob_values(),
+            };
+
+            for (index, value) in knob_values.iter().enumerate() {
+                // Get APC knob id from instrumen knob id
+                let knob_id = if index < 8 { 0x30 } else { 0x10 - 8 } + index;
+                //output.extend(Message::)
+                // 0xB0 = apc control channel
+                output.push(Message::Note([0xB0, knob_id as u8, *value]));
+            }
+
             // Switch buffer
             self.static_state_current = self.static_state_next;
-            self.static_state_next = [0; 75];
+            self.static_state_next = [0; 79];
             self.should_render = false;
         }
  
@@ -723,17 +783,20 @@ impl Sequencer {
                     },
                 };
 
-                shown_playables.into_iter().for_each(|(start, end)| {
-                    // Amount of ticks in region (playing patterns can be shorter as pattern they play)
-                    let ticks = end - start;
-                    let switch_on_tick = cycle.start + delta_ticks;
-                    let playable_tick = switch_on_tick as i32 - start as i32 - self.playable().ticks_offset() as i32;
-                    let led = playable_tick / self.playable().ticks_per_led() as i32;
+                shown_playables.into_iter()
+                    // Only show led for unfinished playables
+                    .filter(|(_, end)| *end > cycle.end)
+                    .for_each(|(start, end)| {
+                        // Amount of ticks in region (playing patterns can be shorter as pattern they play)
+                        let ticks = end - start;
+                        let switch_on_tick = cycle.start + delta_ticks;
+                        let playable_tick = switch_on_tick as i32 - start as i32 - self.playable().ticks_offset() as i32;
+                        let led = playable_tick / self.playable().ticks_per_led() as i32;
 
-                    if led >= 0 && led < 8 && playable_tick < ticks as i32 {
-                        self.indicator_state_next[led as usize] = 1;
-                    }
-                });
+                        if led >= 0 && led < 8 && playable_tick < ticks as i32 {
+                            self.indicator_state_next[led as usize] = 1;
+                        }
+                    });
 
                 // Create timed messages from indicator state
                 let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34).into_iter()

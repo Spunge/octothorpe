@@ -1,12 +1,15 @@
 
 use super::instrument::Instrument;
 use super::phrase::PlayingPhrase;
+use super::message::{Message, TimedMessage};
 
-#[derive(Debug)]
 pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
     phrases: [Option<usize>; 16],
     pub active: [bool; 16],
+
+    pub knob_group: u8,
+    knob_values: [u8; 64],
 }
 
 impl Sequence {
@@ -14,6 +17,9 @@ impl Sequence {
         Sequence {
             phrases,
             active: [true; 16],
+
+            knob_group: 0,
+            knob_values: [0; 64],
         }
     }
 
@@ -106,5 +112,20 @@ impl Sequence {
         } else {
             vec![]
         }
+    }
+
+    pub fn switch_knob_group(&mut self, group: u8) {
+        self.knob_group = group;
+    }
+
+    pub fn set_knob_value(&mut self, index: u8, value: u8) -> u8 {
+        let knob = self.knob_group * 16 + index;
+        self.knob_values[knob as usize] = value;
+        knob
+    }
+    pub fn get_knob_values(&self) -> &[u8] {
+        let start = self.knob_group as usize * 16;
+        let end = start as usize + 16;
+        &self.knob_values[start .. end]
     }
 }

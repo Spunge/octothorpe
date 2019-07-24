@@ -48,7 +48,6 @@ impl Controller {
                     self.process_sysex_message(message)
                 } else {
                     // Only process channel note messages
-                    //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
                     match message.bytes[0] {
                         // Key press & release
                         0x90...0x9F => self.key_pressed(message, client),
@@ -75,7 +74,7 @@ impl Controller {
                     None
                 } else {
                     // Only process channel note messages
-                    //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                    println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
                     match message.bytes[0] {
                         // Key press & release
                         0xB0...0xBF => self.sequencer.control_changed(message),
@@ -83,7 +82,6 @@ impl Controller {
                     }
                 }
             })
-            .flatten()
             .collect()
     }
 
@@ -94,6 +92,8 @@ impl Controller {
             && message.bytes[5] == 0x47 && message.bytes[6] == 0x73 
         {
             // Introduce ourselves to controller
+            // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
+            // 0x42 is ableton alternate mode (all leds controlled from host)
             let message = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
             let introduction = TimedMessage::new(0, message);
 
@@ -101,7 +101,7 @@ impl Controller {
             self.sequencer.reset();
             let mut messages = vec![introduction];
             // TODO - Before we timed the messages after introduction to 128 frames, why?
-            messages.extend(self.sequencer.output_static_leds());
+            messages.extend(self.sequencer.output_static());
 
             Some(messages)
         } else {

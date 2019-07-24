@@ -151,11 +151,11 @@ impl jack::ProcessHandler for ProcessHandler {
             apc_messages.push(message);
         }
 
-        // Draw all the grids that don't change much
-        apc_messages.extend(self.controller.sequencer.output_static_leds());
+        // Draw all the grids that don't change much & output control knob values
+        apc_messages.extend(self.controller.sequencer.output_static());
+
         // Process incoming midi notes from APC (these correspond to button presses)
         apc_messages.extend(self.controller.process_midi_note_messages(self.apc_in.iter(process_scope), client));
-        
         // Process incoming control change messages from APC (knob turns etc.)
         control_messages.extend(self.controller.process_midi_control_change_messages(self.apc_in.iter(process_scope), client));
     
