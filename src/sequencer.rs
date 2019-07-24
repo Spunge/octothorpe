@@ -321,6 +321,7 @@ impl Sequencer {
         // Use non-existant state to always redraw
         self.static_state_current = [9; 75];
         self.static_state_next = [0; 75];
+        self.sequences_state_current = [9; 4];
 
         self.should_render = true;
     }
@@ -466,10 +467,8 @@ impl Sequencer {
             // Clear dynamic grids when switching to sequence
             if let OverView::Sequence = self.overview {
                 self.indicator_state_current = [9; 8];
-                self.indicator_state_next = [0; 8];
                 output.extend(self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34));
                 self.playables_state_current = [9; 5];
-                self.playables_state_next = [0; 5];
                 output.extend(self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52));
             }
 
@@ -732,7 +731,7 @@ impl Sequencer {
         let mut control_out_messages = Sequencer::note_off_messages(cycle, &mut self.indicator_note_offs);
 
         // Only output sequencer notes when playing, but output indicators on reposition aswell
-        if cycle.is_rolling || cycle.was_repositioned {
+        if cycle.is_rolling || cycle.was_repositioned || self.should_render {
             // Get playing sequences
             if let Some(playing_phrases) = self.playing_phrases(cycle) {
                 // Output those
