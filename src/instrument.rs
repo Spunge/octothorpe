@@ -6,7 +6,8 @@ pub struct Instrument {
     // TODO - these are public as we're testing with premade patterns
     pub patterns: [Pattern; 5],
     pub phrases: [Phrase; 5],
-    
+    pub knobs: [u8; 64],
+
     pub phrase: usize,
     pub pattern: usize,
 }
@@ -19,6 +20,7 @@ impl Instrument {
         Instrument {
             phrases,
             patterns,
+            knobs: [0; 64],
 
             phrase: 0,
             pattern: 0,

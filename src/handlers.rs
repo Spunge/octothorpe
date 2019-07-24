@@ -75,6 +75,8 @@ struct MidiOut {
     port: jack::Port<jack::MidiOut>,
 }
 
+// We use a wrapper so we can sort the messages before outputting them to jack, as out off order
+// messages produce runtime errors
 impl MidiOut {
     fn write(&mut self, process_scope: &jack::ProcessScope, mut messages: Vec<TimedMessage>) {
         let mut writer = self.port.writer(process_scope);
@@ -99,27 +101,34 @@ pub struct ProcessHandler {
     ticks_elapsed: u32,
     was_repositioned: bool,
 
+    apc_in: jack::Port<jack::MidiIn>,
+    apc_out: MidiOut,
+
     control_in: jack::Port<jack::MidiIn>,
     control_out: MidiOut,
 
-    midi_out: MidiOut,
+    sequence_out: MidiOut,
 }
 
 impl ProcessHandler {
     pub fn new(controller: Controller, receiver: Receiver<TimedMessage>, client: &jack::Client) -> Self {
         // Create ports
+        let apc_in = client.register_port("apc_in", jack::MidiIn::default()).unwrap();
+        let apc_out = client.register_port("apc_out", jack::MidiOut::default()).unwrap();
         let control_in = client.register_port("control_in", jack::MidiIn::default()).unwrap();
         let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
-        let midi_out = client.register_port("midi_out", jack::MidiOut::default()).unwrap();
+        let sequence_out = client.register_port("sequence_out", jack::MidiOut::default()).unwrap();
 
         ProcessHandler { 
             controller, 
             receiver,
             ticks_elapsed: 0,
             was_repositioned: false,
+            apc_in,
+            apc_out: MidiOut{ port: apc_out },
             control_in,
             control_out: MidiOut{ port: control_out },
-            midi_out: MidiOut{ port: midi_out },
+            sequence_out: MidiOut{ port: sequence_out },
         }
     }
 }
@@ -134,24 +143,32 @@ impl jack::ProcessHandler for ProcessHandler {
         // TODO - cycle.absolute_start hack is dirty
         self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
+        let mut apc_messages = vec![];
         let mut control_messages = vec![];
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
-            control_messages.push(message);
+            apc_messages.push(message);
         }
 
-        // Control out when there's somebody listening
-        control_messages.extend(self.controller.sequencer.output_static_leds());
-
-        // Process incoming midi
-        control_messages.extend(self.controller.process_midi_messages(self.control_in.iter(process_scope), client));
+        // Draw all the grids that don't change much
+        apc_messages.extend(self.controller.sequencer.output_static_leds());
+        // Process incoming midi notes from APC (these correspond to button presses)
+        apc_messages.extend(self.controller.process_midi_note_messages(self.apc_in.iter(process_scope), client));
+        
+        // Process incoming control change messages from APC (knob turns etc.)
+        control_messages.extend(self.controller.process_midi_control_change_messages(self.apc_in.iter(process_scope), client));
+    
+        // Get dynamic grids (indicators and whatnot) & midi messages
+        // These are both returned by one function as playing notes will also be used for
+        // sequence indicators
         let (dynamic_grid_messages, sequencer_messages) = self.controller.sequencer.output_midi(&cycle);
-        control_messages.extend(dynamic_grid_messages);
+        apc_messages.extend(dynamic_grid_messages);
 
         // Get cycle based control & midi
+        self.apc_out.write(process_scope, apc_messages);
+        self.sequence_out.write(process_scope, sequencer_messages);
         self.control_out.write(process_scope, control_messages);
-        self.midi_out.write(process_scope, sequencer_messages);
 
         jack::Control::Continue
     }

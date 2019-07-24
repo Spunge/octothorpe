@@ -208,7 +208,21 @@ impl Sequencer {
         }
     }
 
-    pub fn key_pressed(&mut self, message: jack::RawMidi) {
+    fn knob_turned(&mut self, knob: u8, value: u8) -> Option<Vec<TimedMessage>> {
+        println!("knob_{:?} turned to value: {:?}", knob, value);
+        None
+    }
+
+    pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
+        // APC knobs are ordered weird, reorder them from to 0..16
+        match message.bytes[1] {
+            0x10...0x17 => self.knob_turned(message.bytes[1] - 8, message.bytes[2]),
+            0x30...0x37 => self.knob_turned(message.bytes[1] - 48, message.bytes[2]),
+            _ => None,
+        }
+    }
+
+    pub fn key_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
 
@@ -226,15 +240,19 @@ impl Sequencer {
         };
 
         self.should_render = true;
+
+        None
     }
 
     // Key released is 0x80 + channel instead of 0x90 + channel
-    pub fn key_released(&mut self, message: jack::RawMidi) {
+    pub fn key_released(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         self.keys_pressed.retain(|key_pressed| {
             key_pressed.channel != message.bytes[0] + 16
                 || key_pressed.note != message.bytes[1]
                 || key_pressed.velocity != message.bytes[2]
         });
+
+        None
     }
 
     fn switch_group(&mut self) {
@@ -595,11 +613,11 @@ impl Sequencer {
 
                 // Add queued when it's there
                 if let Some(index) = self.sequence_queued {
-                    self.sequences_state_next[index] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
+                    self.sequences_state_next[index] = 1;
                 }
 
                 // Set playing sequence
-                self.sequences_state_next[self.sequence_playing] = 1;
+                self.sequences_state_next[self.sequence_playing] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
 
                 // Create timed messages from indicator state
                 let messages = self.output_vertical_grid(&self.sequences_state_current, &self.sequences_state_next, 0x57).into_iter()

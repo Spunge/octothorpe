@@ -13,29 +13,30 @@ impl Controller {
         }
     }
 
-    fn key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) {
+    fn key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) -> Option<Vec<TimedMessage>> {
         // Output in hex so we can compare to apc40 manual easily
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
         //println!("{}, {}, {}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         match message.bytes[1] {
-            0x5B => client.transport_start(),
+            0x5B => {
+                client.transport_start();
+                None
+            },
             0x5C => {
                 let (state, _) = client.transport_query();
                 match state {
                     1 => client.transport_stop(),
                     _ => client.transport_reposition(jack::Position::default()),
                 };
+                None
             },
             _ => self.sequencer.key_pressed(message),
         }
     }
 
-    fn key_released(&mut self, message: jack::RawMidi) {
-        self.sequencer.key_released(message)
-    }
-
-    pub fn process_midi_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
+    // Process messages from APC controller keys being pushed
+    pub fn process_midi_note_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
@@ -46,8 +47,40 @@ impl Controller {
                 if message.bytes.len() > 3 {
                     self.process_sysex_message(message)
                 } else {
-                    self.process_message(message, client);
+                    // Only process channel note messages
+                    //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                    match message.bytes[0] {
+                        // Key press & release
+                        0x90...0x9F => self.key_pressed(message, client),
+                        0x80...0x8F => self.sequencer.key_released(message),
+                        _ => None,
+                    }
+                }
+            })
+            .flatten()
+            .collect()
+    }
+
+    // Process messages from APC controller knobs being turned
+    // This is a seperate function as we want to send responses to these messages to a diferent port
+    pub fn process_midi_control_change_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
+        where
+            I: Iterator<Item = jack::RawMidi<'a>>,
+    {
+        input
+            .filter_map(|message| {
+                // Sysex events pass us a lot of data
+                // It's cleaner to check the first byte though
+                if message.bytes.len() != 3 {
                     None
+                } else {
+                    // Only process channel note messages
+                    //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                    match message.bytes[0] {
+                        // Key press & release
+                        0xB0...0xBF => self.sequencer.control_changed(message),
+                        _ => None,
+                    }
                 }
             })
             .flatten()
@@ -73,16 +106,6 @@ impl Controller {
             Some(messages)
         } else {
             None
-        }
-    }
-
-    fn process_message(&mut self, message: jack::RawMidi, client: &jack::Client) {
-        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-
-        match message.bytes[0] {
-            0x90...0x97 => self.key_pressed(message, client),
-            0x80...0x87 => self.key_released(message),
-            _ => (),
         }
     }
 }
