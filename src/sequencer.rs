@@ -248,8 +248,8 @@ impl Sequencer {
     }
 
     // One of the control knobs on the APC was turned
-    fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> TimedMessage {
-        println!("knob_{:?} turned to value: {:?}", knob, value);
+    fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> Vec<TimedMessage> {
+        //println!("knob_{:?} turned to value: {:?}", knob, value);
 
         // Get the channel & knob that APC knob should send out of, first 8 channels are for
         // instruments, next 2 are used for sequences (sequence channels will be used for bus
@@ -267,16 +267,22 @@ impl Sequencer {
             },
         };
 
-        TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))
+        println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
+        vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
     }
 
-    pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
+    pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         // APC knobs are ordered weird, reorder them from to 0..16
         match message.bytes[1] {
             0x10...0x17 => Some(self.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
             0x30...0x37 => Some(self.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
             _ => None,
         }
+    }
+
+    pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
+        println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
+        None
     }
 
     fn switch_instrument_group(&mut self) {

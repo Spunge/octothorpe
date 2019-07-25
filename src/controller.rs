@@ -36,24 +36,37 @@ impl Controller {
     }
 
     // Process messages from APC controller keys being pushed
-    pub fn process_midi_note_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
+    pub fn process_apc_note_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
         input
             .filter_map(|message| {
-                // Sysex events pass us a lot of data
-                // It's cleaner to check the first byte though
-                if message.bytes.len() > 3 {
-                    self.process_sysex_message(message)
-                } else {
-                    // Only process channel note messages
-                    match message.bytes[0] {
-                        // Key press & release
-                        0x90...0x9F => self.key_pressed(message, client),
-                        0x80...0x8F => self.sequencer.key_released(message),
-                        _ => None,
-                    }
+                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                // Only process channel note messages
+                match message.bytes[0] {
+                    0xF0 => self.process_sysex_message(message),
+                    0x90...0x9F => self.key_pressed(message, client),
+                    0x80...0x8F => self.sequencer.key_released(message),
+                    _ => None,
+                }
+            })
+            .flatten()
+            .collect()
+    }
+
+    // Process messages from APC controller keys being pushed
+    pub fn process_apc_control_change_messages<'a, I>(&mut self, input: I) -> Vec<TimedMessage>
+        where
+            I: Iterator<Item = jack::RawMidi<'a>>,
+    {
+        input
+            .filter_map(|message| {
+                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                // Only process channel note messages
+                match message.bytes[0] {
+                    0xB0 => self.sequencer.control_changed(message),
+                    _ => None,
                 }
             })
             .flatten()
@@ -62,24 +75,16 @@ impl Controller {
 
     // Process messages from APC controller knobs being turned
     // This is a seperate function as we want to send responses to these messages to a diferent port
-    pub fn process_midi_control_change_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
+    pub fn process_plugin_control_change_messages<'a, I>(&mut self, input: I) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
         input
             .filter_map(|message| {
-                // Sysex events pass us a lot of data
-                // It's cleaner to check the first byte though
-                if message.bytes.len() != 3 {
-                    None
-                } else {
-                    // Only process channel note messages
-                    println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-                    match message.bytes[0] {
-                        // Key press & release
-                        0xB0...0xBF => self.sequencer.control_changed(message),
-                        _ => None,
-                    }
+                // Only process channel note messages
+                match message.bytes[0] {
+                    0xB0...0xBF => self.sequencer.plugin_parameter_changed(message),
+                    _ => None,
                 }
             })
             .collect()

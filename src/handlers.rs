@@ -101,13 +101,15 @@ pub struct ProcessHandler {
     ticks_elapsed: u32,
     was_repositioned: bool,
 
+    // Ports that connect to APC
     apc_in: jack::Port<jack::MidiIn>,
     apc_out: MidiOut,
 
+    // Port that receives updates from plugin host about parameters changing
     control_in: jack::Port<jack::MidiIn>,
-    control_out: MidiOut,
 
-    sequence_out: MidiOut,
+    // Sequencer out & cc out etc.
+    midi_out: MidiOut,
 }
 
 impl ProcessHandler {
@@ -116,8 +118,7 @@ impl ProcessHandler {
         let apc_in = client.register_port("apc_in", jack::MidiIn::default()).unwrap();
         let apc_out = client.register_port("apc_out", jack::MidiOut::default()).unwrap();
         let control_in = client.register_port("control_in", jack::MidiIn::default()).unwrap();
-        let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
-        let sequence_out = client.register_port("sequence_out", jack::MidiOut::default()).unwrap();
+        let midi_out = client.register_port("midi_out", jack::MidiOut::default()).unwrap();
 
         ProcessHandler { 
             controller, 
@@ -127,8 +128,7 @@ impl ProcessHandler {
             apc_in,
             apc_out: MidiOut{ port: apc_out },
             control_in,
-            control_out: MidiOut{ port: control_out },
-            sequence_out: MidiOut{ port: sequence_out },
+            midi_out: MidiOut{ port: midi_out },
         }
     }
 }
@@ -144,7 +144,6 @@ impl jack::ProcessHandler for ProcessHandler {
         self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
         let mut apc_messages = vec![];
-        let mut control_messages = vec![];
 
         // Write midi from notification handler
         while let Ok(message) = self.receiver.try_recv() {
@@ -155,20 +154,22 @@ impl jack::ProcessHandler for ProcessHandler {
         apc_messages.extend(self.controller.sequencer.output_static());
 
         // Process incoming midi notes from APC (these correspond to button presses)
-        apc_messages.extend(self.controller.process_midi_note_messages(self.apc_in.iter(process_scope), client));
-        // Process incoming control change messages from APC (knob turns etc.)
-        control_messages.extend(self.controller.process_midi_control_change_messages(self.apc_in.iter(process_scope), client));
-    
+        apc_messages.extend(self.controller.process_apc_note_messages(self.apc_in.iter(process_scope), client));
+        apc_messages.extend(self.controller.process_plugin_control_change_messages(self.control_in.iter(process_scope)));
+
+        
         // Get dynamic grids (indicators and whatnot) & midi messages
         // These are both returned by one function as playing notes will also be used for
         // sequence indicators
-        let (dynamic_grid_messages, sequencer_messages) = self.controller.sequencer.output_midi(&cycle);
+        let (dynamic_grid_messages, mut sequencer_messages) = self.controller.sequencer.output_midi(&cycle);
+        // Process incoming control change messages from APC (knob turns etc.), output adjusted cc
+        // messages on sequencer messages channel
+        sequencer_messages.extend(self.controller.process_apc_control_change_messages(self.apc_in.iter(process_scope)));
         apc_messages.extend(dynamic_grid_messages);
 
         // Get cycle based control & midi
         self.apc_out.write(process_scope, apc_messages);
-        self.sequence_out.write(process_scope, sequencer_messages);
-        self.control_out.write(process_scope, control_messages);
+        self.midi_out.write(process_scope, sequencer_messages);
 
         jack::Control::Continue
     }
