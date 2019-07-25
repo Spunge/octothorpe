@@ -249,8 +249,6 @@ impl Sequencer {
 
     // One of the control knobs on the APC was turned
     fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> Vec<TimedMessage> {
-        //println!("knob_{:?} turned to value: {:?}", knob, value);
-
         // Get the channel & knob that APC knob should send out of, first 8 channels are for
         // instruments, next 2 are used for sequences (sequence channels will be used for bus
         // effects)
@@ -267,7 +265,7 @@ impl Sequencer {
             },
         };
 
-        println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
+        //println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
         vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
     }
 
@@ -281,8 +279,61 @@ impl Sequencer {
     }
 
     pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
-        println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
-        None
+        //println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
+
+        let mut knob = message.bytes[1];
+        // Collections of 64 knobs
+        let mut knob_collection = (message.bytes[0] - 0xB0) * 2;
+
+        // Mulitple sequences and instruments live in same channels
+        if knob >= 64 {
+            knob_collection = knob_collection + 1;
+            knob = knob - 64;
+        }
+
+        let knob_group = knob / 16;
+        let apc_knob = knob % 16;
+
+        // Pass change to correct knob group container
+        let changed_knob = if knob_collection < 16 {
+            self.instruments[knob_collection as usize].knob_value_changed(knob, message.bytes[2])
+                // Knob was changed, see if instrument & knob_group are currently shown, if it is,
+                // update knob on APC
+                .and_then(|_| {
+                    // Check if changed virtual knob is visible at the moment
+                    if let OverView::Instrument = self.overview {
+                        if self.instrument == knob_collection && self.instrument().knob_group == knob_group {
+                            Some(apc_knob)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+        } else {
+            self.sequences[knob_collection as usize - 16].knob_value_changed(knob, message.bytes[2])
+                .and_then(|value| {
+                    if let OverView::Sequence = self.overview {
+                        // Sequence knob collections are placed after instrument groups
+                        let sequence = knob_collection - 16;
+                        if self.sequence == sequence && self.sequence().knob_group == knob_group {
+                            Some(apc_knob)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+        };
+
+        // If knob was actually changed, pass message through to APC
+        changed_knob
+            .and_then(|mut knob| {
+                knob = if knob < 8 { 0x30 + knob } else { 0x10 + knob - 8 };
+                Some(TimedMessage::new(message.time, Message::Note([0xB0, knob, message.bytes[2]])))
+            })
     }
 
     fn switch_instrument_group(&mut self) {

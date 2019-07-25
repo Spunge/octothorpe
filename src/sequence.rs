@@ -1,7 +1,6 @@
 
 use super::instrument::Instrument;
 use super::phrase::PlayingPhrase;
-use super::message::{Message, TimedMessage};
 
 pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
@@ -127,5 +126,14 @@ impl Sequence {
         let start = self.knob_group as usize * 16;
         let end = start as usize + 16;
         &self.knob_values[start .. end]
+    }
+
+    pub fn knob_value_changed(&mut self, knob: u8, value: u8) -> Option<u8> {
+        if self.knob_values[knob as usize] != value {
+            self.knob_values[knob as usize] = value;
+            Some(value)
+        } else {
+            None
+        }
     }
 }
