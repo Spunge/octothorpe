@@ -110,7 +110,7 @@ pub struct ProcessHandler {
     control_out: MidiOut,
 
     // Sequencer out & cc out etc.
-    midi_out: MidiOut,
+    sequence_out: MidiOut,
 }
 
 impl ProcessHandler {
@@ -120,7 +120,7 @@ impl ProcessHandler {
         let apc_out = client.register_port("apc_out", jack::MidiOut::default()).unwrap();
         let control_in = client.register_port("control_in", jack::MidiIn::default()).unwrap();
         let control_out = client.register_port("control_out", jack::MidiOut::default()).unwrap();
-        let midi_out = client.register_port("midi_out", jack::MidiOut::default()).unwrap();
+        let sequence_out = client.register_port("sequence_out", jack::MidiOut::default()).unwrap();
 
         ProcessHandler { 
             controller, 
@@ -131,7 +131,7 @@ impl ProcessHandler {
             apc_out: MidiOut{ port: apc_out },
             control_in,
             control_out: MidiOut{ port: control_out },
-            midi_out: MidiOut{ port: midi_out },
+            sequence_out: MidiOut{ port: sequence_out },
         }
     }
 }
@@ -174,7 +174,7 @@ impl jack::ProcessHandler for ProcessHandler {
         // Get cycle based control & midi
         self.apc_out.write(process_scope, apc_messages);
         self.control_out.write(process_scope, control_messages);
-        self.midi_out.write(process_scope, sequencer_messages);
+        self.sequence_out.write(process_scope, sequencer_messages);
 
         jack::Control::Continue
     }
