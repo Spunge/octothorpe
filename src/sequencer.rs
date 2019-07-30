@@ -632,13 +632,18 @@ impl Sequencer {
                 let next_sequence_start = sequence_start + sequence_length;
 
                 if let Some(index) = self.sequence_queued {
-                    // Mark sequence as switched
-                    self.sequence_playing = index;
-                    self.sequence_queued = None;
-
                     phrases.extend(self.sequences[index].playing_phrases(&self.instruments, next_sequence_start))
                 } else {
                     phrases.extend(playing_sequence.playing_phrases(&self.instruments, next_sequence_start))
+                }
+            }
+
+            // Activate next sequence
+            if sequence_end <= cycle.end {
+                if let Some(index) = self.sequence_queued {
+                    // Mark sequence as switched
+                    self.sequence_playing = index;
+                    self.sequence_queued = None;
                 }
             }
 
