@@ -1,15 +1,28 @@
 
 use super::message::{TimedMessage, Message};
 use super::sequencer::Sequencer;
+use super::cycle::Cycle;
+use super::handlers::TimebaseHandler;
 
 pub struct Controller {
     pub sequencer: Sequencer,
+    key_presses: Vec<KeyPress>,
+}
+
+#[derive(Debug)]
+struct KeyPress {
+    time: u32,
+    channel: u8,
+    key: u8,
 }
 
 impl Controller {
+    const DOUBLE_PRESS_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT / 2;
+
     pub fn new() -> Self {
         Controller {
             sequencer: Sequencer::new(),
+            key_presses: vec![],
         }
     }
 
@@ -36,7 +49,7 @@ impl Controller {
     }
 
     // Process messages from APC controller keys being pushed
-    pub fn process_apc_note_messages<'a, I>(&mut self, input: I, client: &jack::Client) -> Vec<TimedMessage>
+    pub fn process_apc_note_messages<'a, I>(&mut self, input: I, cycle: &Cycle, client: &jack::Client) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
     {
@@ -46,8 +59,49 @@ impl Controller {
                 // Only process channel note messages
                 match message.bytes[0] {
                     0xF0 => self.process_sysex_message(message),
-                    0x90...0x9F => self.key_pressed(message, client),
-                    0x80...0x8F => self.sequencer.key_released(message),
+                    0x90..=0x9F => {
+                        let keypress = KeyPress { 
+                            time: cycle.absolute_start + message.time, 
+                            channel: message.bytes[0],
+                            key: message.bytes[1],
+                        };
+
+                        // Remove keypresses that are not within double press range
+                        self.key_presses.retain(|previous| {
+                            keypress.time - previous.time < Controller::DOUBLE_PRESS_TICKS
+                        });
+
+                        // Check for old keypresses matching currently pressed key
+                        let double_presses: Vec<bool> = self.key_presses.iter()
+                            .filter_map(|previous| {
+                                if previous.channel == keypress.channel && previous.key == keypress.key {
+                                    Some(true)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        let mut output: Vec<TimedMessage> = vec![];
+
+                        // Always single press 
+                        if let Some(messages) = self.key_pressed(message, client) {
+                            output.extend(messages);
+                        }
+
+                        // Double keypress when its there
+                        if double_presses.len() > 0 {
+                            if let Some(messages) = self.sequencer.key_double_pressed(message) {
+                                output.extend(messages);
+                            }
+                        }
+
+                        // Save keypress
+                        self.key_presses.push(keypress);
+
+                        Some(output)
+                    },
+                    0x80..=0x8F => self.sequencer.key_released(message),
                     _ => None,
                 }
             })
@@ -83,7 +137,7 @@ impl Controller {
             .filter_map(|message| {
                 // Only process channel note messages
                 match message.bytes[0] {
-                    0xB0...0xBF => self.sequencer.plugin_parameter_changed(message),
+                    0xB0..=0xBF => self.sequencer.plugin_parameter_changed(message),
                     _ => None,
                 }
             })

@@ -14,7 +14,7 @@ pub struct TimebaseHandler {
 }
 
 impl TimebaseHandler {
-    const TICKS_PER_BEAT: u32 = 1920;
+    pub const TICKS_PER_BEAT: u32 = 1920;
     const BEATS_PER_BAR: u32 = 4;
 
     pub fn beats_to_ticks(beats: f64) -> u32 {
@@ -31,7 +31,7 @@ impl TimebaseHandler {
 
     pub fn new() -> Self {
         TimebaseHandler {
-            beats_per_minute: 140.0,
+            beats_per_minute: 120.0,
             is_up_to_date: false,
             beats_per_bar: 4,
             beat_type: 4,
@@ -158,7 +158,7 @@ impl jack::ProcessHandler for ProcessHandler {
         apc_messages.extend(self.controller.sequencer.output_static());
 
         // Process incoming midi notes from APC (these correspond to button presses)
-        apc_messages.extend(self.controller.process_apc_note_messages(self.apc_in.iter(process_scope), client));
+        apc_messages.extend(self.controller.process_apc_note_messages(self.apc_in.iter(process_scope), &cycle, client));
         apc_messages.extend(self.controller.process_plugin_control_change_messages(self.control_in.iter(process_scope)));
 
         // Process incoming control change messages from APC (knob turns etc.), output adjusted cc

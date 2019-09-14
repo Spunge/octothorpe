@@ -28,10 +28,11 @@ pub struct Pattern {
     channel: u8,
     pub notes: Vec<Note>,
     base_note: u8,
+    pub is_recording: bool,
 }
 
 impl Pattern {
-    const BASE_NOTE: u8 = 73;
+    const BASE_NOTE: u8 = 49;
 
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
@@ -41,6 +42,7 @@ impl Pattern {
             // TODO - Use scales for this
             // Put a4 in center of grid
             base_note: Self::BASE_NOTE,
+            is_recording: false,
         }
     }
 
@@ -50,10 +52,10 @@ impl Pattern {
 
     pub fn default(channel: u8) -> Self {
         let notes = vec![
-            Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(0.5), 73, 127),
-            Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 69, 127),
-            Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 69, 127),
-            Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 69, 127),
+            Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(2.0), 45, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 45, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 45, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 45, 127),
         ];
         Pattern::create(channel, notes)
     }
@@ -78,6 +80,11 @@ impl Pattern {
         if base_note >= 25 && base_note <= 127 {
             self.base_note = base_note as u8;
         }
+    }
+
+    // Start recording notes from input into pattern
+    pub fn switch_recording_state(&mut self) {
+        self.is_recording = ! self.is_recording;
     }
 
     pub fn toggle_note(&mut self, x: Range<u8>, y: u8) {

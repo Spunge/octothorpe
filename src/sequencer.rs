@@ -160,9 +160,9 @@ impl Sequencer {
         match message.bytes[1] {
             0x3E | 0x51 => self.switch_detailview(),
             // Playable grid
-            0x52 ... 0x56 => self.switch_playable(message.bytes[1] - 0x52),
+            0x52 ..= 0x56 => self.switch_playable(message.bytes[1] - 0x52),
             // TODO - Grid should add notes & add phrases
-            0x35 ... 0x39 => {
+            0x35 ..= 0x39 => {
                 // Get start & end in grid of pressed keys
                 let from = self.keys_pressed.iter()
                     .filter(|keypress| keypress.note == message.bytes[1])
@@ -196,7 +196,7 @@ impl Sequencer {
     fn sequence_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90),
-            0x35 ... 0x39 => {
+            0x35 ..= 0x39 => {
                 let instrument = message.bytes[0] - 0x90 + self.instrument_group * 8;
                 self.sequence().toggle_phrase(instrument, message.bytes[1] - 0x35);
             },
@@ -220,18 +220,33 @@ impl Sequencer {
         match message.bytes[1] {
             // TODO - On switching instrument_group && instrument etc, draw indicator with cycle
             0x50 => self.switch_instrument_group(),
-            0x3A ... 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
+            0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
-            0x57 ... 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
+            0x57 ..= 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
             // Playable select
-            0x52 ... 0x56 => self.shared_key_pressed(message),
+            0x52 ..= 0x56 => self.shared_key_pressed(message),
             // Main grid
-            0x35 ... 0x39 => self.shared_key_pressed(message),
+            0x35 ..= 0x39 => self.shared_key_pressed(message),
             _ => (),
         };
 
         self.should_render = true;
+
+        None
+    }
+
+    pub fn key_double_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
+        match message.bytes[1] {
+            // Playable grid
+            0x52 ..= 0x56 => {
+                match self.overview {
+                    OverView::Instrument => self.record_playable(message.bytes[1] - 0x52),
+                    _ => (),
+                }
+            },
+            _ => (),
+        };
 
         None
     }
@@ -272,8 +287,8 @@ impl Sequencer {
     pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         // APC knobs are ordered weird, reorder them from to 0..16
         match message.bytes[1] {
-            0x10...0x17 => Some(self.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
-            0x30...0x37 => Some(self.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
+            0x10..=0x17 => Some(self.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
+            0x30..=0x37 => Some(self.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
             _ => None,
         }
     }
@@ -377,6 +392,16 @@ impl Sequencer {
             if let OverView::Sequence = self.overview {
                 self.switch_overview();
             }
+        }
+    }
+
+    // Set a playable to recording mode
+    fn record_playable(&mut self, playable: u8) {
+        match self.detailview {
+            DetailView::Pattern => {
+                self.instrument().pattern().switch_recording_state()
+            },
+            _ => (),
         }
     }
 
@@ -725,9 +750,9 @@ impl Sequencer {
 
     // Show playing, queued and selected sequence
     fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {
-        let blink_ticks = TimebaseHandler::beats_to_ticks(0.5);
+        let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
 
-        cycle.delta_ticks_recurring(0, blink_ticks)
+        cycle.delta_ticks_recurring(0, playing_ticks)
             // Are we forced to redraw? If yes, instantly draw
             .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
@@ -739,7 +764,7 @@ impl Sequencer {
                 }
 
                 // Set playing sequence
-                self.sequences_state_next[self.sequence_playing] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
+                self.sequences_state_next[self.sequence_playing] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
 
                 // Create timed messages from indicator state
                 let messages = self.output_vertical_grid(&self.sequences_state_current, &self.sequences_state_next, 0x57).into_iter()
@@ -759,9 +784,10 @@ impl Sequencer {
     fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
-        let blink_ticks = TimebaseHandler::beats_to_ticks(0.5);
+        let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
+        let recording_ticks = TimebaseHandler::beats_to_ticks(0.5);
 
-        cycle.delta_ticks_recurring(0, blink_ticks)
+        cycle.delta_ticks_recurring(0, recording_ticks)
             // Are we forced to redraw? If yes, instantly draw
             .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
@@ -791,7 +817,7 @@ impl Sequencer {
 
                 // Multiple patterns or phrases can be playing
                 playing_indexes.into_iter().for_each(|index| {
-                    self.playables_state_next[index] = if ((switch_on_tick / blink_ticks) % 2) == 0 { 1 } else { 0 };
+                    self.playables_state_next[index] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
                 });
 
                 // Always mark selected playable
@@ -800,6 +826,23 @@ impl Sequencer {
                     DetailView::Phrase => self.instrument().phrase,
                 };
                 self.playables_state_next[selected_index] = 1;
+
+                // Always (most importantly, so last) render recording playables
+                let recording_indexes: Vec<usize> = match self.detailview {
+                    DetailView::Pattern => {
+                        self.instrument().patterns.iter().enumerate()
+                            .filter_map(|(index, pattern)| {
+                                if pattern.is_recording { Some(index) } else { None }
+                            })
+                            .collect()
+                    }
+                    _ => vec![],
+                };
+
+                recording_indexes.into_iter().for_each(|index| {
+                    self.playables_state_next[index] = if ((switch_on_tick / recording_ticks) % 2) == 0 { 1 } else { 0 };
+                });
+
 
                 // Create timed messages from indicator state
                 let messages = self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52).into_iter()
