@@ -23,12 +23,20 @@ pub struct PlayingPattern {
     pub end: u32,
 }
 
+struct RecordedMessage {
+    cycle_start: u32,
+    channel: u8,
+    key: u8,
+    velocity: u8,
+}
+
 pub struct Pattern {
     pub playable: Playable,
     channel: u8,
     pub notes: Vec<Note>,
-    base_note: u8,
+    pub base_note: u8,
     pub is_recording: bool,
+    recorded_messages: Vec<RecordedMessage>,
 }
 
 impl Pattern {
@@ -43,6 +51,7 @@ impl Pattern {
             // Put a4 in center of grid
             base_note: Self::BASE_NOTE,
             is_recording: false,
+            recorded_messages: vec![],
         }
     }
 
@@ -52,10 +61,10 @@ impl Pattern {
 
     pub fn default(channel: u8) -> Self {
         let notes = vec![
-            Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(2.0), 45, 127),
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 45, 127),
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 45, 127),
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 45, 127),
+            Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(2.0), 45, 127, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 45, 127, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 45, 127, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 45, 127, 127),
         ];
         Pattern::create(channel, notes)
     }
@@ -87,30 +96,52 @@ impl Pattern {
         self.is_recording = ! self.is_recording;
     }
 
-    pub fn toggle_note(&mut self, x: Range<u8>, y: u8) {
+    pub fn record_message(&mut self, cycle_start: u32, message: jack::RawMidi) {
+        // TODO - if message is note on, push it into recorded messages array
+        // TODO - If message is note off, look in recorded messages for last note on and create a note
+        
+        println!("{:?}", cycle_start);
+        println!("Key played: note_{:?} on channel {:?} played with velocity: {:?}", message.bytes[1], message.bytes[0], message.bytes[2]);
+    }
+
+    pub fn toggle_led_range(&mut self, x: Range<u8>, y: u8, velocity_on: u8, velocity_off: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
 
         let key = self.base_note - y;
-        // TODO Velocity
 
+        self.toggle_note(start, end, key, velocity_on, velocity_off)
+    }
+
+    pub fn toggle_note(&mut self, start: u32, end: u32, key: u8, velocity_on: u8, velocity_off: u8) {
         let notes = self.notes.len();
         
+        let mut toggle_on = true;
+
         // Shorten pattern when a button is clicked that falls in the range of the note
         for note in &mut self.notes {
             if note.start < start && note.end > start && note.key == key {
                 note.end = start;
+                toggle_on = false;
             }
         }
 
+        // Keep the notes that dont collide with current note
         self.notes.retain(|note| {
-            (note.start < start && note.end <= start || note.start >= end) || note.key != key
+            let keep_note = (note.start < start && note.end <= start || note.start >= end) || note.key != key;
+            if ! keep_note && note.start == start && note.end == end {
+                toggle_on = false;
+            }
+            if ! keep_note && note.start == start && note.end > end {
+                toggle_on = false;
+            }
+            keep_note
         });
 
         // No notes were removed, add new note, when note is longer as 1, the 1 note from the
         // previous keypress is removed, so ignore that
-        if notes == self.notes.len() || x.start != x.end {
-            self.notes.push(Note::new(self.channel, start, end, key, 127));
+        if toggle_on {
+            self.notes.push(Note::new(self.channel, start, end, key, velocity_on, velocity_off));
         }
     }
 

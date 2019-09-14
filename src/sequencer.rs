@@ -47,6 +47,9 @@ pub struct Sequencer {
     instruments: [Instrument; 16],
     instrument: u8,
 
+    pub keyboard_target: u8,
+    pub drumpad_target: u8,
+
     sequences: [Sequence; 4],
     sequence: u8,
 
@@ -101,6 +104,9 @@ impl Sequencer {
             instrument: 0,
 
             instrument_group: 0,
+
+            keyboard_target: 0,
+            drumpad_target: 0,
 
             keys_pressed: vec![],
             sequence_note_offs: vec![],
@@ -177,7 +183,7 @@ impl Sequencer {
                     .channel - 0x90;
 
                 match self.detailview {
-                    DetailView::Pattern => self.instrument().pattern().toggle_note(from..to, message.bytes[1] - 0x35),
+                    DetailView::Pattern => self.instrument().pattern().toggle_led_range(from..to, message.bytes[1] - 0x35, 127, 127),
                     DetailView::Phrase => self.instrument().phrase().toggle_pattern(from..to, message.bytes[1] - 0x35),
                 }
             },
@@ -351,6 +357,17 @@ impl Sequencer {
             })
     }
 
+    pub fn recording_key_played(&mut self, instrument: u8, offset: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
+        if cycle.is_rolling {
+            self.instruments[instrument as usize].record_message(cycle.start, message);
+        }
+
+        // We're subtracting 9 as drumpads of my keyboard are outputting on channel 9
+        let channel = message.bytes[0] - offset + instrument;
+
+        TimedMessage::new(message.time, Message::Note([channel, message.bytes[1], message.bytes[2]]))
+    }
+
     fn switch_instrument_group(&mut self) {
         self.instrument_group = if self.instrument_group == 1 { 0 } else { 1 };
     }
@@ -388,6 +405,8 @@ impl Sequencer {
         } else {
             // Otherwise select instrument && switch
             self.instrument = instrument;
+            self.keyboard_target = instrument;
+            self.drumpad_target = instrument;
 
             if let OverView::Sequence = self.overview {
                 self.switch_overview();
@@ -704,7 +723,6 @@ impl Sequencer {
             .collect()
     }
 
-
     // Get messages for noteoffs that fall in this frame
     fn note_off_messages(cycle: &Cycle, buffer: &mut Vec<(u32, Message)>) -> Vec<TimedMessage> {
         let mut messages = vec![];
@@ -730,23 +748,19 @@ impl Sequencer {
                 let length = note.end - note.start;
                 let tick = cycle.absolute_start + delta_ticks;
 
-                (tick + length / modifier, note.message(0x80, key, velocity_off))
+                (tick + length / modifier, note.off_message(0x80, key, velocity_off))
             })
             .collect();
 
         let note_ons: Vec<_> = notes.iter()
             .map(|(delta_ticks, note)| {
                 let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                TimedMessage::new(delta_frames, note.message(0x90, key, velocity_on))
+                TimedMessage::new(delta_frames, note.on_message(0x90, key, velocity_on))
             })
             .collect();
 
         (note_offs, note_ons)
     }
-
-    //
-    // TODO TODO TODO v the following indicator subroutines look alot alike, stay dry
-    //
 
     // Show playing, queued and selected sequence
     fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {

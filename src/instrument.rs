@@ -63,4 +63,10 @@ impl Instrument {
             None
         }
     }
+
+    pub fn record_message(&mut self, cycle_start: u32, message: jack::RawMidi) {
+        self.patterns.iter_mut()
+            .filter(|pattern| pattern.is_recording)
+            .for_each(|pattern| pattern.record_message(cycle_start, message));
+    }
 }

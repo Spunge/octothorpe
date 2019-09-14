@@ -144,6 +144,22 @@ impl Controller {
             .collect()
     }
 
+    pub fn process_instrument_messages<'a, I>(&mut self, cycle: &Cycle, input: I) -> Vec<TimedMessage>
+        where
+            I: Iterator<Item = jack::RawMidi<'a>>,
+    {
+        input
+            .filter_map(|message| {
+                // Only process channel note messages
+                match message.bytes[0] {
+                    0x90 | 0x80 => Some(self.sequencer.recording_key_played(self.sequencer.keyboard_target, 0, cycle, message)),
+                    0x99 | 0x89 => Some(self.sequencer.recording_key_played(self.sequencer.drumpad_target, 9, cycle, message)),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
     fn process_sysex_message(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         // 0x06 = inquiry e, 0x02 = inquiry response
         // 0x47 = akai manufacturer, 0x73 = model nr
