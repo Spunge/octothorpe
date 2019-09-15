@@ -23,6 +23,7 @@ pub struct PlayingPattern {
     pub end: u32,
 }
 
+#[derive(Clone)]
 pub struct Pattern {
     pub playable: Playable,
     channel: u8,

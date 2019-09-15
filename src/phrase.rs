@@ -16,6 +16,7 @@ pub struct PlayingPhrase {
     pub end: u32,
 }
 
+#[derive(Clone)]
 pub struct Phrase {
     pub playable: Playable,
     pub played_patterns: Vec<PlayedPattern>,

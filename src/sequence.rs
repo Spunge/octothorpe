@@ -27,13 +27,11 @@ impl Sequence {
     }
 
     pub fn default() -> Self {
-        let mut phrases = [Some(0); 16];
-        Sequence::create(phrases)
+        Sequence::create([Some(0); 16])
     }
 
     pub fn alternate_default() -> Self {
-        let mut phrases = [Some(1); 16];
-        Sequence::create(phrases)
+        Sequence::create([Some(1); 16])
     }
 
     pub fn led_states(&mut self, group: u8) -> Vec<(i32, i32, u8)> {

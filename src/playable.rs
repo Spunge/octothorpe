@@ -1,4 +1,5 @@
 
+#[derive(Clone)]
 pub struct Playable {
     pub minimum_length: u32,
     pub length: u32,

@@ -160,14 +160,22 @@ impl Sequencer {
             0x52 ..= 0x56 => {
                 // Get start & end in grid of pressed keys
                 let from = self.keys_pressed.iter()
-                    .filter(|keypress| keypress.note == message.bytes[1])
-                    .min_by_key(|keypress| keypress.channel)
+                    .find(|keypress| [0x52, 0x53, 0x54, 0x55, 0x56].contains(&keypress.note))
                     .unwrap()
-                    .channel - 0x90;
+                    .note;
 
-                self.switch_playable(message.bytes[1] - 0x52)
+                let to = self.keys_pressed.iter().rev()
+                    .find(|keypress| [0x52, 0x53, 0x54, 0x55, 0x56].contains(&keypress.note))
+                    .unwrap()
+                    .note;
+
+                if from != to {
+                    self.copy_playable(from - 0x52, to - 0x52);
+                }
+
+                self.switch_playable(to - 0x52);
             },
-            // TODO - Grid should add notes & add phrases
+            // Grid should add notes & add phrases
             0x35 ..= 0x39 => {
                 // Get start & end in grid of pressed keys
                 let from = self.keys_pressed.iter()
@@ -294,8 +302,6 @@ impl Sequencer {
     pub fn cue_knob_turned(&mut self, value: u8) {
         if let OverView::Instrument = self.overview {
             if let DetailView::Pattern = self.detailview {
-                let mut delta = value;
-
                 let delta = if value >= 64 { value as i32 - 128 } else { value as i32 };
 
                 self.instrument().pattern().change_base_note(delta);
@@ -466,6 +472,17 @@ impl Sequencer {
                 self.instrument().pattern().switch_recording_state()
             },
             _ => (),
+        }
+    }
+
+    fn copy_playable(&mut self, from: u8, to: u8) {
+        match self.detailview {
+            DetailView::Pattern => {
+                self.instrument().patterns[to as usize] = self.instrument().patterns[from as usize].clone();
+            },
+            DetailView::Phrase => {
+                self.instrument().phrases[to as usize] = self.instrument().phrases[from as usize].clone();
+            },
         }
     }
 
