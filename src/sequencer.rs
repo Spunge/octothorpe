@@ -283,6 +283,21 @@ impl Sequencer {
         vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
     }
 
+    // Cue knob
+    pub fn cue_knob_turned(&mut self, value: u8) {
+        if let OverView::Instrument = self.overview {
+            if let DetailView::Pattern = self.detailview {
+                let mut delta = value;
+
+                let delta = if value >= 64 { value as i32 - 128 } else { value as i32 };
+
+                self.instrument().pattern().change_base_note(delta);
+            }
+        }
+
+        self.should_render = true;
+    }
+
     pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         // APC knobs are ordered weird, reorder them from to 0..16
         match message.bytes[1] {

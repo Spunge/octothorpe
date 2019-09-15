@@ -88,7 +88,7 @@ impl Pattern {
         self.is_recording = ! self.is_recording;
     }
 
-    // TODO - Toggle led range should support removing parts of the led grid
+    // Toggle led range should support removing parts of the led grid
     pub fn toggle_led_range(&mut self, x: Range<u8>, y: u8, velocity_on: u8, velocity_off: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
@@ -114,10 +114,10 @@ impl Pattern {
         }
     }
 
-    // TODO - Toggle note should draw note onto pattern grid so keyboard logic can use this to
+    // Toggle note should draw note onto pattern grid so keyboard logic can use this to
     pub fn toggle_note(&mut self, mut start: u32, mut end: u32, key: u8, velocity_on: u8, velocity_off: u8) {
         start = start % self.playable.length;
-        end = end % self.playable.length;
+        end = if end == self.playable.length { self.playable.length } else { end % self.playable.length };
 
         // Center view on notes we are recording
         if key > self.base_note {

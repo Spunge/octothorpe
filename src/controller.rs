@@ -55,9 +55,16 @@ impl Controller {
     {
         input
             .filter_map(|message| {
-                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
                 // Only process channel note messages
                 match message.bytes[0] {
+                    0xB0 => {
+                        if message.bytes[1] == 0x2F {
+                            self.sequencer.cue_knob_turned(message.bytes[2]);
+                        }
+
+                        None
+                    },
                     0xF0 => self.process_sysex_message(message),
                     0x90..=0x9F => {
                         let keypress = KeyPress { 
