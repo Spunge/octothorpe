@@ -29,6 +29,10 @@ impl Playable {
         self.offset * self.visible_ticks()
     }
 
+    pub fn length_modifier(&self) -> u32 {
+        self.length / self.minimum_length 
+    }
+
     // Takes start-tick, end-tick, y
     pub fn led_states(&self, coords: Vec<(u32, u32, i32)>) -> Vec<(i32, i32, u8)> {
         return coords.into_iter()
@@ -62,16 +66,18 @@ impl Playable {
         }
     }
     
-    pub fn change_length(&mut self, length_modifier: u8) {
+    pub fn change_length(&mut self, length_modifier: u32) -> Option<u32> {
         match length_modifier {
             1 | 2 | 4 | 8  => {
-                self.length = length_modifier as u32 * self.minimum_length;
+                self.length = length_modifier * self.minimum_length;
                 // Check if offset is still okay
                 if self.offset > self.zoom - 1 {
                     self.offset = self.zoom - 1;
                 }
+
+                Some(length_modifier)
             },
-            _ => (),
+            _ => None,
         }
     }
 

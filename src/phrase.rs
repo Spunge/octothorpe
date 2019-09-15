@@ -43,6 +43,48 @@ impl Phrase {
         self.playable.led_states(coords)
     }
 
+    pub fn change_length(&mut self, length_modifier: u32) {
+        let current_modifier = self.playable.length_modifier();
+        let current_length = self.playable.length;
+
+        if let Some(next_modifier) = self.playable.change_length(length_modifier) {
+            // Add to current patterns
+            if current_modifier < next_modifier {
+                let times = next_modifier / current_modifier;
+
+                let played_patterns: Vec<PlayedPattern> = (1..times).into_iter()
+                    .flat_map(|multiplier| -> Vec<PlayedPattern> {
+                        self.played_patterns.iter()
+                            .map(|played_pattern| played_pattern.clone())
+                            .map(|mut played_pattern| { 
+                                played_pattern.start = played_pattern.start + multiplier * current_length;
+                                played_pattern.end = played_pattern.end + multiplier * current_length;
+                                played_pattern
+                            })
+                            .collect()
+                    })
+                    .collect();
+
+                self.played_patterns.extend(played_patterns);
+            } 
+
+            // Cut from current patterns
+            if current_modifier > next_modifier {
+                let new_length = next_modifier * self.playable.minimum_length;
+
+                self.played_patterns.retain(|played_pattern| {
+                    played_pattern.start < new_length
+                });
+
+                self.played_patterns.iter_mut().for_each(|played_pattern| {
+                    if played_pattern.end > new_length {
+                        played_pattern.end = new_length;
+                    }
+                });
+            }
+        }
+    }
+
     pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;

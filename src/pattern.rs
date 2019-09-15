@@ -79,6 +79,48 @@ impl Pattern {
         self.is_recording = ! self.is_recording;
     }
 
+    pub fn change_length(&mut self, length_modifier: u32) {
+        let current_modifier = self.playable.length_modifier();
+        let current_length = self.playable.length;
+
+        if let Some(next_modifier) = self.playable.change_length(length_modifier) {
+            // Add to current patterns
+            if current_modifier < next_modifier {
+                let times = next_modifier / current_modifier;
+
+                let notes: Vec<Note> = (1..times).into_iter()
+                    .flat_map(|multiplier| -> Vec<Note> {
+                        self.notes.iter()
+                            .map(|note| note.clone())
+                            .map(|mut note| { 
+                                note.start = note.start + multiplier * current_length;
+                                note.end = note.end + multiplier * current_length;
+                                note
+                            })
+                            .collect()
+                    })
+                    .collect();
+
+                self.notes.extend(notes);
+            } 
+
+            // Cut from current patterns
+            if current_modifier > next_modifier {
+                let new_length = next_modifier * self.playable.minimum_length;
+
+                self.notes.retain(|note| {
+                    note.start < new_length
+                });
+
+                self.notes.iter_mut().for_each(|note| {
+                    if note.end > new_length {
+                        note.end = new_length;
+                    }
+                });
+            }
+        }
+    }
+
     // Toggle led range should support removing parts of the led grid
     pub fn toggle_led_range(&mut self, x: Range<u8>, y: u8, velocity_on: u8, velocity_off: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
@@ -87,7 +129,7 @@ impl Pattern {
         let key = self.base_note - y;
 
         // Check if we only need to remove notes
-        if let Some(note) = self.notes.iter()
+        if let Some(_) = self.notes.iter()
             .find(|note| {
                   let note_clicked = note.start == start && note.key == key;
 

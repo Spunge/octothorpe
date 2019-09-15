@@ -4,8 +4,8 @@ use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
 use super::handlers::TimebaseHandler;
-use super::phrase::{Phrase, PlayingPhrase};
-use super::pattern::{Pattern, PlayingPattern};
+use super::phrase::PlayingPhrase;
+use super::pattern::PlayingPattern;
 use super::sequence::Sequence;
 use super::playable::Playable;
 use super::note::Note;
@@ -67,14 +67,14 @@ pub struct Sequencer {
     // Buttons
     index_instrument_group: Range<usize>,
     index_detailview: Range<usize>,
-    index_overview: Range<usize>,
+    //index_overview: Range<usize>,
     // Static
     index_knob_groups: Range<usize>,
     index_instruments: Range<usize>,
     index_main: Range<usize>,
     index_green: Range<usize>,
     index_blue: Range<usize>,
-    index_red: Range<usize>,
+    //index_red: Range<usize>,
 
     index_indicator: Range<usize>,
     index_playables: Range<usize>,
@@ -84,7 +84,7 @@ pub struct Sequencer {
 impl Sequencer {
     pub fn new() -> Self {
         // Build instruments for each midi channel
-        let mut instruments = [
+        let instruments = [
             Instrument::new(0), Instrument::new(1), Instrument::new(2), Instrument::new(3),
             Instrument::new(4), Instrument::new(5), Instrument::new(6), Instrument::new(7),
             Instrument::new(8), Instrument::new(9), Instrument::new(10), Instrument::new(11),
@@ -125,12 +125,12 @@ impl Sequencer {
             index_main: 0..40,
             index_green: 40..48,
             index_instruments: 48..56,
-            index_red: 56..64,
+            //index_red: 56..64,
             index_blue: 64..72,
             // Static buttons
             index_instrument_group: 72..73,
             index_detailview: 73..74,
-            index_overview: 74..75,
+            //index_overview: 74..75,
             index_knob_groups: 75..79,
             // Dynamic button states
             index_indicator: 79..87,
@@ -200,7 +200,12 @@ impl Sequencer {
             0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
             // TODO - when shortening length, notes or phrases that are longer as playable length
             // should be cut shorter aswell
-            0x32 => self.playable().change_length(message.bytes[0] - 0x90 + 1),
+            0x32 => {
+                match self.detailview {
+                    DetailView::Pattern => self.instrument().pattern().change_length((message.bytes[0] - 0x90 + 1) as u32),
+                    DetailView::Phrase => self.instrument().phrase().change_length((message.bytes[0] - 0x90 + 1) as u32),
+                }
+            },
             0x61 => self.playable().change_offset(-1),
             0x60 => self.playable().change_offset(1),
             _ => (),
@@ -469,7 +474,7 @@ impl Sequencer {
     fn record_playable(&mut self, playable: u8) {
         match self.detailview {
             DetailView::Pattern => {
-                self.instrument().pattern().switch_recording_state()
+                self.instrument().patterns[playable as usize].switch_recording_state()
             },
             _ => (),
         }

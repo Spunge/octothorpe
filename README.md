@@ -36,7 +36,7 @@ Instruments
 - [X] master switches between first & second group of 8 instuments
 - [X] scene lauch row selects patterns in pattern view
 - [X] scene lauch row selects phrases in phrase view
-- [ ] Copy playables by holding playable key & clicking other playable key
+- [X] Copy playables by holding playable key & clicking other playable key
 - [X] Shift + playable clears view of pattern / phrase
 
 Sequences
