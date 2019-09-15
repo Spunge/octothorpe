@@ -23,20 +23,12 @@ pub struct PlayingPattern {
     pub end: u32,
 }
 
-struct RecordedMessage {
-    cycle_start: u32,
-    channel: u8,
-    key: u8,
-    velocity: u8,
-}
-
 pub struct Pattern {
     pub playable: Playable,
     channel: u8,
     pub notes: Vec<Note>,
     pub base_note: u8,
     pub is_recording: bool,
-    recorded_messages: Vec<RecordedMessage>,
 }
 
 impl Pattern {
@@ -51,7 +43,6 @@ impl Pattern {
             // Put a4 in center of grid
             base_note: Self::BASE_NOTE,
             is_recording: false,
-            recorded_messages: vec![],
         }
     }
 
@@ -61,7 +52,7 @@ impl Pattern {
 
     pub fn default(channel: u8) -> Self {
         let notes = vec![
-            Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(2.0), 45, 127, 127),
+            //Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(2.0), 45, 127, 127),
             //Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 45, 127, 127),
             //Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 45, 127, 127),
             //Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 45, 127, 127),
@@ -96,53 +87,63 @@ impl Pattern {
         self.is_recording = ! self.is_recording;
     }
 
-    pub fn record_message(&mut self, cycle_start: u32, message: jack::RawMidi) {
-        // TODO - if message is note on, push it into recorded messages array
-        // TODO - If message is note off, look in recorded messages for last note on and create a note
-        
-        println!("{:?}", cycle_start);
-        println!("Key played: note_{:?} on channel {:?} played with velocity: {:?}", message.bytes[1], message.bytes[0], message.bytes[2]);
-    }
-
+    // TODO - Toggle led range should support removing parts of the led grid
     pub fn toggle_led_range(&mut self, x: Range<u8>, y: u8, velocity_on: u8, velocity_off: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
         let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
 
         let key = self.base_note - y;
 
-        self.toggle_note(start, end, key, velocity_on, velocity_off)
+        // Check if we only need to remove notes
+        if let Some(note) = self.notes.iter()
+            .find(|note| {
+                  let note_clicked = note.start == start && note.key == key;
+
+                  let is_one_led = note.end == note.start + self.playable.ticks_per_led();
+
+                  note_clicked && (! is_one_led || note.end == end)
+            }) 
+        {
+            // Remove colliding notes
+            self.notes.retain(|note| {
+                note.end <= start || note.start >= end || note.key != key
+            });
+        } else {
+            self.toggle_note(start, end, key, velocity_on, velocity_off)
+        }
     }
 
-    pub fn toggle_note(&mut self, start: u32, end: u32, key: u8, velocity_on: u8, velocity_off: u8) {
-        let notes = self.notes.len();
-        
-        let mut toggle_on = true;
+    // Make space in the matrix to fit a new note
+    pub fn clear_notes(&mut self, start: u32, end: u32, key: u8) {
+    }
 
-        // Shorten pattern when a button is clicked that falls in the range of the note
+    // TODO - Toggle note should draw note onto pattern grid so keyboard logic can use this to
+    pub fn toggle_note(&mut self, mut start: u32, mut end: u32, key: u8, velocity_on: u8, velocity_off: u8) {
+        start = start % self.playable.length;
+        end = end % self.playable.length;
+
+        if end < start {
+            end = end + self.playable.length;
+        }
+
+        // Shorten previous note when a note is played
         for note in &mut self.notes {
             if note.start < start && note.end > start && note.key == key {
                 note.end = start;
-                toggle_on = false;
+            }
+            if note.start < end && note.end > end && note.key == key {
+                note.start = end;
             }
         }
 
         // Keep the notes that dont collide with current note
         self.notes.retain(|note| {
-            let keep_note = (note.start < start && note.end <= start || note.start >= end) || note.key != key;
-            if ! keep_note && note.start == start && note.end == end {
-                toggle_on = false;
-            }
-            if ! keep_note && note.start == start && note.end > end {
-                toggle_on = false;
-            }
-            keep_note
+            let remove_note = note.start >= start && note.end <= end && note.key == key;
+
+            ! remove_note
         });
 
-        // No notes were removed, add new note, when note is longer as 1, the 1 note from the
-        // previous keypress is removed, so ignore that
-        if toggle_on {
-            self.notes.push(Note::new(self.channel, start, end, key, velocity_on, velocity_off));
-        }
+        self.notes.push(Note::new(self.channel, start, end, key, velocity_on, velocity_off));
     }
 
     pub fn playing_notes(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(u32, &Note)> {

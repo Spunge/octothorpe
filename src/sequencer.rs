@@ -358,14 +358,32 @@ impl Sequencer {
     }
 
     pub fn recording_key_played(&mut self, instrument: u8, offset: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
-        if cycle.is_rolling {
-            self.instruments[instrument as usize].record_message(cycle.start, message);
-        }
 
         // We're subtracting 9 as drumpads of my keyboard are outputting on channel 9
-        let channel = message.bytes[0] - offset + instrument;
+        let raw_channel = message.bytes[0] - offset;
+        let mut instrument_channel = raw_channel + instrument;
 
-        TimedMessage::new(message.time, Message::Note([channel, message.bytes[1], message.bytes[2]]))
+        if cycle.is_rolling {
+            // Could be this is a note down meant for previously selected instrument
+            let target: &mut Instrument = if self.instruments[instrument as usize].recorded_messages.len() == 0 && raw_channel == 0x80 {
+                // Send message to instrument that has recorded messages left
+                let (index, instrument) = self.instruments.iter_mut().enumerate()
+                    .find(|(_, instrument)| instrument.recorded_messages.len() > 0)
+                    .unwrap();
+
+                instrument_channel = raw_channel + index as u8;
+                instrument
+            } else {
+                // It was meant for current instrument instead
+                &mut self.instruments[instrument as usize]
+            };
+
+            // Only record when cycle is rolling
+            target.record_message(cycle.start + message.time, raw_channel, message.bytes[1], message.bytes[2]);
+        }
+
+        // Always play the note
+        TimedMessage::new(message.time, Message::Note([instrument_channel, message.bytes[1], message.bytes[2]])) 
     }
 
     fn switch_instrument_group(&mut self) {
