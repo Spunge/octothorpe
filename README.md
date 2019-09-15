@@ -18,6 +18,8 @@ Patterns
 - [X] Indicator should draw on instrument / pattern selection
 - [ ] Use playable selector as indicator of base note / octave offset in octaves while scrolling, switching back to selected pattern after a while. 
 - [X] Notes in grid shouldn't be able to overlap, shorten previous note
+- [X] Record notes of keyboard & drumpad
+- [ ] Update note grid in realtime on cycles with keyboard input
 
 Phrases
 - [X] Render phrases
@@ -50,7 +52,9 @@ Tempo
 - [ ] Fix tap tempo
 
 Effect knobs
-- [ ] Send knobs input to output for channel of selected instrument
+- [X] Send knobs input to output for channel of selected instrument
+- [X] Keep knob state around and dispatch to controller when plugin parameters change
+- [ ] Record effect knobs into phrases
 
 Improvements
 - [X] Create one playable abstraction for pattern / phrase so we dont have to write zoom / length / etc. code twice
@@ -67,6 +71,3 @@ Patterns / Phrases
 
 Velocity
 - Add a way to change velocity of notes
-
-Effect knobs
-- Record effect knobs into patterns, how do we want to do this
