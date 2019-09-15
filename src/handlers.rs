@@ -175,8 +175,8 @@ impl jack::ProcessHandler for ProcessHandler {
         sequencer_messages.extend(self.controller.process_instrument_messages(&cycle, self.sequence_in.iter(process_scope)));
 
         // Draw all the grids that don't change much & output control knob values
-        //let (messages, _) = self.sequence_in.iter(process_scope).size_hint();
-        apc_messages.extend(self.controller.sequencer.output_static());
+        let (messages, _) = self.sequence_in.iter(process_scope).size_hint();
+        apc_messages.extend(self.controller.sequencer.output_static(messages > 0));
 
         // Get cycle based control & midi
         self.apc_out.write(process_scope, apc_messages);

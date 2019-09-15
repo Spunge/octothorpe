@@ -634,12 +634,18 @@ impl Sequencer {
         }
     }
 
-    pub fn output_static(&mut self) -> Vec<TimedMessage> {
+    pub fn output_static(&mut self, should_render_main_grid: bool) -> Vec<TimedMessage> {
+        // Output vector
         let mut output = vec![];
+
+        // Also render main grid when notes where input
+        if self.should_render || should_render_main_grid {
+            self.draw_main_grid();
+            output.extend(self.output_horizontal_grid(self.index_main.clone(), 0x35));
+        }
 
         // Draw if we have to
         if self.should_render {
-            self.draw_main_grid();
             self.draw_green_grid();
             self.draw_blue_grid();
             self.draw_instruments_grid();
@@ -647,7 +653,6 @@ impl Sequencer {
             self.draw_group_button();
             self.draw_detailview_button();
 
-            output.extend(self.output_horizontal_grid(self.index_main.clone(), 0x35));
             output.extend(self.output_horizontal_grid(self.index_green.clone(), 0x32));
             output.extend(self.output_horizontal_grid(self.index_blue.clone(), 0x31));
             output.extend(self.output_horizontal_grid(self.index_instruments.clone(), 0x33));

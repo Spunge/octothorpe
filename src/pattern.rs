@@ -71,6 +71,7 @@ impl Pattern {
 
     pub fn reset(&mut self) {
         self.base_note = Self::BASE_NOTE;
+        self.notes = vec![];
     }
 
     pub fn change_base_note(&mut self, delta: i32) {
@@ -118,10 +119,13 @@ impl Pattern {
         start = start % self.playable.length;
         end = end % self.playable.length;
 
+        // Center view on notes we are recording
         if key > self.base_note {
             self.base_note = key;
         } 
-        //println!("{:?}, {:?}", key, self.base_note);
+        if key < self.base_note - 4 {
+            self.base_note = key + 4;
+        }
 
         if end < start {
             end = end + self.playable.length;

@@ -176,7 +176,7 @@ impl Controller {
             self.sequencer.reset();
             let mut messages = vec![introduction];
             // TODO - Before we timed the messages after introduction to 128 frames, why?
-            messages.extend(self.sequencer.output_static());
+            messages.extend(self.sequencer.output_static(true));
 
             Some(messages)
         } else {
