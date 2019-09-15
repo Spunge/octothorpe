@@ -55,7 +55,7 @@ impl Controller {
     {
         input
             .filter_map(|message| {
-                println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
                 // Only process channel note messages
                 match message.bytes[0] {
                     0xB0 => {
@@ -126,7 +126,7 @@ impl Controller {
                 //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
                 // Only process channel note messages
                 match message.bytes[0] {
-                    0xB0 => self.sequencer.control_changed(message),
+                    0xB0 ..= 0xB8 => self.sequencer.control_changed(message),
                     _ => None,
                 }
             })

@@ -19,7 +19,8 @@ Patterns
 - [ ] Use playable selector as indicator of base note / octave offset in octaves while scrolling, switching back to selected pattern after a while. 
 - [X] Notes in grid shouldn't be able to overlap, shorten previous note
 - [X] Record notes of keyboard & drumpad
-- [ ] Update note grid in realtime on cycles with keyboard input
+- [X] Update note grid in realtime on cycles with keyboard input
+- [X] Make cue knob navigate notes view
 
 Phrases
 - [X] Render phrases

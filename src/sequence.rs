@@ -27,18 +27,12 @@ impl Sequence {
     }
 
     pub fn default() -> Self {
-        let mut phrases = [None; 16];
-        phrases[0] = Some(0);
-        phrases[1] = Some(0);
-
+        let mut phrases = [Some(0); 16];
         Sequence::create(phrases)
     }
 
     pub fn alternate_default() -> Self {
-        let mut phrases = [None; 16];
-        phrases[0] = Some(1);
-        phrases[1] = Some(1);
-
+        let mut phrases = [Some(1); 16];
         Sequence::create(phrases)
     }
 

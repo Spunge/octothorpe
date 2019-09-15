@@ -27,15 +27,8 @@ impl Phrase {
     }
 
     pub fn new() -> Self {
-        Phrase::create(vec![])
-    }
-    
-    pub fn default() -> Self {
         Phrase::create(vec![
             PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(0), end: TimebaseHandler::bars_to_ticks(4) },
-            //PlayedPattern { index: 1, start: TimebaseHandler::bars_to_ticks(2), end: TimebaseHandler::bars_to_ticks(4) },
-            //PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(2), end: TimebaseHandler::bars_to_ticks(3) },
-            //PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(3), end: TimebaseHandler::bars_to_ticks(4) },
         ])
     }
 

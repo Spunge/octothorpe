@@ -81,7 +81,7 @@ impl Instrument {
 
         let recorded_message = RecordedMessage { time, channel, key, velocity, };
 
-        // TODO - if note is note down, merge it with previous note on on the same key
+        // if note is note down, merge it with previous note on on the same key
         if channel == 0x80 {
             let index = self.recorded_messages.iter().position(|message| {
                 message.key == recorded_message.key && message.channel == 0x90
@@ -105,10 +105,5 @@ impl Instrument {
         } else {
             self.recorded_messages.push(recorded_message);
         }
-        //println!("{:?}", self.recorded_messages);
-
-        //self.patterns.iter_mut()
-            //.filter(|pattern| pattern.is_recording)
-            //.for_each(|pattern| pattern.record_message(cycle_start, message));
     }
 }

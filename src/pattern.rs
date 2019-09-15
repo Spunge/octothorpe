@@ -49,16 +49,6 @@ impl Pattern {
     pub fn new(channel: u8) -> Self {
         Pattern::create(channel, vec![])
     }
-
-    pub fn default(channel: u8) -> Self {
-        let notes = vec![
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(0.0), TimebaseHandler::beats_to_ticks(2.0), 45, 127, 127),
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(1.0), TimebaseHandler::beats_to_ticks(1.5), 45, 127, 127),
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(2.0), TimebaseHandler::beats_to_ticks(2.5), 45, 127, 127),
-            //Note::new(channel, TimebaseHandler::beats_to_ticks(3.0), TimebaseHandler::beats_to_ticks(3.5), 45, 127, 127),
-        ];
-        Pattern::create(channel, notes)
-    }
     
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
         let coords = self.notes.iter()

@@ -90,8 +90,6 @@ impl Sequencer {
             Instrument::new(8), Instrument::new(9), Instrument::new(10), Instrument::new(11),
             Instrument::new(12), Instrument::new(13), Instrument::new(14), Instrument::new(15),
         ];
-        instruments[0].patterns[0] = Pattern::default(0);
-        instruments[0].phrases[0] = Phrase::default();
     
         // Build sequence we can trigger
         let sequences = [ Sequence::default(), Sequence::alternate_default(), Sequence::new(), Sequence::new(), ];
@@ -159,7 +157,16 @@ impl Sequencer {
         match message.bytes[1] {
             0x3E | 0x51 => self.switch_detailview(),
             // Playable grid
-            0x52 ..= 0x56 => self.switch_playable(message.bytes[1] - 0x52),
+            0x52 ..= 0x56 => {
+                // Get start & end in grid of pressed keys
+                let from = self.keys_pressed.iter()
+                    .filter(|keypress| keypress.note == message.bytes[1])
+                    .min_by_key(|keypress| keypress.channel)
+                    .unwrap()
+                    .channel - 0x90;
+
+                self.switch_playable(message.bytes[1] - 0x52)
+            },
             // TODO - Grid should add notes & add phrases
             0x35 ..= 0x39 => {
                 // Get start & end in grid of pressed keys
@@ -211,7 +218,7 @@ impl Sequencer {
     }
 
     pub fn key_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
-        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+        //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
@@ -298,11 +305,23 @@ impl Sequencer {
         self.should_render = true;
     }
 
+    fn fader_adjusted(&mut self, time: u32, fader: u8, value: u8) -> Vec<TimedMessage> {
+        // Output on channel 16
+        let out_knob = fader + self.instrument_group * 8;
+        vec![TimedMessage::new(time, Message::Note([0xB0 + 15, out_knob, value]))]
+    }
+
+    fn master_adjusted(&mut self, time: u32, value: u8) -> Vec<TimedMessage> {
+        vec![TimedMessage::new(time, Message::Note([0xB0 + 15, 127, value]))]
+    }
+
     pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
         // APC knobs are ordered weird, reorder them from to 0..16
         match message.bytes[1] {
             0x10..=0x17 => Some(self.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
             0x30..=0x37 => Some(self.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
+            0x7 => Some(self.fader_adjusted(message.time, message.bytes[0] - 0xB0, message.bytes[2])),
+            0xE => Some(self.master_adjusted(message.time, message.bytes[2])),
             _ => None,
         }
     }
@@ -387,7 +406,7 @@ impl Sequencer {
             };
 
             // Only record when cycle is rolling
-            target.record_message(cycle.start + message.time, raw_channel, message.bytes[1], message.bytes[2]);
+            target.record_message(cycle.start - message.time, raw_channel, message.bytes[1], message.bytes[2]);
         }
 
         // Always play the note
