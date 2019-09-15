@@ -101,8 +101,6 @@ impl Instrument {
                     );
                 });
 
-            println!("Started at {:?}", self.recorded_messages[index].time);
-
             self.recorded_messages.remove(index);
         } else {
             self.recorded_messages.push(recorded_message);

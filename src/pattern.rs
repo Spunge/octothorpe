@@ -113,14 +113,15 @@ impl Pattern {
         }
     }
 
-    // Make space in the matrix to fit a new note
-    pub fn clear_notes(&mut self, start: u32, end: u32, key: u8) {
-    }
-
     // TODO - Toggle note should draw note onto pattern grid so keyboard logic can use this to
     pub fn toggle_note(&mut self, mut start: u32, mut end: u32, key: u8, velocity_on: u8, velocity_off: u8) {
         start = start % self.playable.length;
         end = end % self.playable.length;
+
+        if key > self.base_note {
+            self.base_note = key;
+        } 
+        //println!("{:?}, {:?}", key, self.base_note);
 
         if end < start {
             end = end + self.playable.length;

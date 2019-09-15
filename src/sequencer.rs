@@ -62,12 +62,12 @@ pub struct Sequencer {
     detailview: DetailView,
 
     pub should_render: bool,
-    static_state_current: [u8; 79],
-    static_state_next: [u8; 79],
+    state_current: [u8; 96],
+    state_next: [u8; 96],
     // Buttons
-    index_instrument_group: usize,
-    index_detailview: usize,
-    index_overview: usize,
+    index_instrument_group: Range<usize>,
+    index_detailview: Range<usize>,
+    index_overview: Range<usize>,
     // Static
     index_knob_groups: Range<usize>,
     index_instruments: Range<usize>,
@@ -76,12 +76,9 @@ pub struct Sequencer {
     index_blue: Range<usize>,
     index_red: Range<usize>,
 
-    indicator_state_current: [u8; 8],
-    indicator_state_next: [u8; 8],
-    playables_state_current: [u8; 5],
-    playables_state_next: [u8; 5],
-    sequences_state_current: [u8; 4],
-    sequences_state_next: [u8; 4],
+    index_indicator: Range<usize>,
+    index_playables: Range<usize>,
+    index_sequences: Range<usize>,
 }
 
 impl Sequencer {
@@ -124,8 +121,8 @@ impl Sequencer {
 
             // Static button states
             should_render: false,
-            static_state_current: [0; 79],
-            static_state_next: [0; 79],
+            state_current: [0; 96],
+            state_next: [0; 96],
             // Indexes of where in the state array grid state is located
             index_main: 0..40,
             index_green: 40..48,
@@ -133,18 +130,14 @@ impl Sequencer {
             index_red: 56..64,
             index_blue: 64..72,
             // Static buttons
-            index_instrument_group: 72,
-            index_detailview: 73,
-            index_overview: 74,
+            index_instrument_group: 72..73,
+            index_detailview: 73..74,
+            index_overview: 74..75,
             index_knob_groups: 75..79,
-
             // Dynamic button states
-            indicator_state_current: [0; 8],
-            indicator_state_next: [0; 8],
-            playables_state_current: [0; 5],
-            playables_state_next: [0; 5],
-            sequences_state_current: [0; 4],
-            sequences_state_next: [0; 4],
+            index_indicator: 79..87,
+            index_playables: 87..92,
+            index_sequences: 92..96,
         }
     }
 
@@ -487,46 +480,48 @@ impl Sequencer {
 
     pub fn reset(&mut self) {
         // Use non-existant state to always redraw
-        self.static_state_current = [9; 79];
-        self.static_state_next = [0; 79];
-        self.sequences_state_current = [9; 4];
-
+        self.state_current = [9; 96];
+        self.state_next = [0; 96];
         self.should_render = true;
     }
 
-    pub fn output_vertical_grid(&self, current_state: &[u8], next_state: &[u8], y: u8) -> Vec<Message> {
+    pub fn output_vertical_grid(&mut self, range: Range<usize>, y: u8) -> Vec<Message> {
         let mut output = vec![];
 
-        for index in 0 .. current_state.len() {
-            if current_state[index] != next_state[index] {
-                let x: u8 = if next_state[index] == 0 { 0x80 } else { 0x90 };
+        for index in range.start..range.end {
+            if self.state_current[index] != self.state_next[index] {
+                let x: u8 = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
 
-                output.push(Message::Note([x, y + index as u8, next_state[index]]));
+                output.push(Message::Note([x, y + (index - range.start) as u8, self.state_next[index]]));
             }
         }
+
+        self.switch_state(range.clone());
 
         output
     }
 
     // Output a message for each changed state in the grid
-    pub fn output_grid(&self, current_state: &[u8], next_state: &[u8], y: u8) -> Vec<Message> {
+    pub fn output_horizontal_grid(&mut self, range: Range<usize>, y: u8) -> Vec<Message> {
         let mut output = vec![];
 
-        for index in 0 .. current_state.len() {
-            if current_state[index] != next_state[index] {
-                let x = if next_state[index] == 0 { 0x80 } else { 0x90 };
+        for index in range.start..range.end {
+            if self.state_current[index] != self.state_next[index] {
+                let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
 
-                output.push(Message::Note([x + index as u8 % 8, y + index as u8 / 8, next_state[index]]));
+                output.push(Message::Note([x + (index - range.start) as u8 % 8, y + (index - range.start) as u8 / 8, self.state_next[index]]));
             }
         }
+
+        self.switch_state(range.clone());
 
         output
     }
 
     pub fn output_button(&self, index: usize, y: u8) -> Option<Message> {
-        if self.static_state_current[index] != self.static_state_next[index] {
-            let x = if self.static_state_next[index] == 0 { 0x80 } else { 0x90 };
-            Some(Message::Note([x, y, self.static_state_next[index]]))
+        if self.state_current[index] != self.state_next[index] {
+            let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
+            Some(Message::Note([x, y, self.state_next[index]]))
         } else {
             None
         }
@@ -550,7 +545,7 @@ impl Sequencer {
         });
 
         for (x, y, state) in valid_states {
-            self.static_state_next[y as usize * 8 + x as usize] = state;
+            self.state_next[y as usize * 8 + x as usize] = state;
         }
     }
 
@@ -558,7 +553,7 @@ impl Sequencer {
         for index in self.index_green.clone() {
             let led = index - self.index_green.start;
 
-            self.static_state_next[index] = match self.overview {
+            self.state_next[index] = match self.overview {
                 // In instrument, green grid shows length of playable
                 OverView::Instrument => {
                     let length = (self.playable().length / self.playable().minimum_length) as usize;
@@ -584,7 +579,7 @@ impl Sequencer {
         for index in self.index_blue.clone() {
             let led = index - self.index_blue.start;
 
-            self.static_state_next[index] = if led >= start && led < end { 1 } else { 0 };
+            self.state_next[index] = if led >= start && led < end { 1 } else { 0 };
         }
     }
 
@@ -594,8 +589,8 @@ impl Sequencer {
             let instrument = self.instrument_group * 8 + self.instrument;
 
             // Force clear as sequence indicator uses the same grid and does not clear it
-            self.static_state_current[index] = 9;
-            self.static_state_next[index] = match self.overview {
+            self.state_current[index] = 9;
+            self.state_next[index] = match self.overview {
                 OverView::Instrument => if led as u8 == instrument { 1 } else { 0 },
                 _ => 0,
             };
@@ -611,24 +606,37 @@ impl Sequencer {
                 OverView::Sequence => self.sequence().knob_group,
             };
 
-            self.static_state_next[index] = if led as u8 == active_group { 1 } else { 0 };
+            self.state_next[index] = if led as u8 == active_group { 1 } else { 0 };
         }
     }
 
     fn draw_group_button(&mut self) {
-        self.static_state_next[self.index_instrument_group] = self.instrument_group;
+        self.state_next[self.index_instrument_group.start] = self.instrument_group;
     }
 
     fn draw_detailview_button(&mut self) {
-        self.static_state_next[self.index_detailview] = match self.overview {
+        self.state_next[self.index_detailview.start] = match self.overview {
             OverView::Instrument => match self.detailview { DetailView::Pattern => 1, _ => 0 },
             _ => 0,
         };
     }
 
+    pub fn switch_state(&mut self, range: Range<usize>) {
+        for i in range.start..range.end {
+            self.state_current[i] = self.state_next[i];
+            self.state_next[i] = 0;
+        }
+    }
+
+    pub fn force_clear_state(&mut self, range: Range<usize>) {
+        for i in range.start..range.end {
+            self.state_current[i] = 9;
+        }
+    }
+
     pub fn output_static(&mut self) -> Vec<TimedMessage> {
         let mut output = vec![];
-    
+
         // Draw if we have to
         if self.should_render {
             self.draw_main_grid();
@@ -639,20 +647,20 @@ impl Sequencer {
             self.draw_group_button();
             self.draw_detailview_button();
 
-            output.extend(self.output_grid(&self.static_state_current[self.index_green.clone()], &self.static_state_next[self.index_green.clone()], 0x32));
-            output.extend(self.output_grid(&self.static_state_current[self.index_blue.clone()], &self.static_state_next[self.index_blue.clone()], 0x31));
-            output.extend(self.output_grid(&self.static_state_current[self.index_main.clone()], &self.static_state_next[self.index_main.clone()], 0x35));
-            output.extend(self.output_grid(&self.static_state_current[self.index_instruments.clone()], &self.static_state_next[self.index_instruments.clone()], 0x33));
-            output.extend(self.output_vertical_grid(&self.static_state_current[self.index_knob_groups.clone()], &self.static_state_next[self.index_knob_groups.clone()], 0x3A));
-            output.extend(self.output_button(self.index_instrument_group, 0x50));
-            output.extend(self.output_button(self.index_detailview, 0x3E));
+            output.extend(self.output_horizontal_grid(self.index_main.clone(), 0x35));
+            output.extend(self.output_horizontal_grid(self.index_green.clone(), 0x32));
+            output.extend(self.output_horizontal_grid(self.index_blue.clone(), 0x31));
+            output.extend(self.output_horizontal_grid(self.index_instruments.clone(), 0x33));
+            output.extend(self.output_vertical_grid(self.index_knob_groups.clone(), 0x3A));
+            output.extend(self.output_horizontal_grid(self.index_instrument_group.clone(), 0x50));
+            output.extend(self.output_horizontal_grid(self.index_detailview.clone(), 0x3E));
 
             // Clear dynamic grids when switching to sequence
             if let OverView::Sequence = self.overview {
-                self.indicator_state_current = [9; 8];
-                output.extend(self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34));
-                self.playables_state_current = [9; 5];
-                output.extend(self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52));
+                self.force_clear_state(self.index_indicator.clone());
+                output.extend(self.output_horizontal_grid(self.index_indicator.clone(), 0x34));
+                self.force_clear_state(self.index_playables.clone());
+                output.extend(self.output_vertical_grid(self.index_playables.clone(), 0x52));
             }
 
             // Output knob values for currently selected inst/seq
@@ -669,12 +677,9 @@ impl Sequencer {
                 output.push(Message::Note([0xB0, knob_id as u8, *value]));
             }
 
-            // Switch buffer
-            self.static_state_current = self.static_state_next;
-            self.static_state_next = [0; 79];
             self.should_render = false;
         }
- 
+
         output.into_iter().map(|message| TimedMessage::new(0, message)).collect()
     }
 
@@ -792,20 +797,16 @@ impl Sequencer {
 
                 // Add queued when it's there
                 if let Some(index) = self.sequence_queued {
-                    self.sequences_state_next[index] = 1;
+                    self.state_next[self.index_sequences.start + index] = 1;
                 }
 
                 // Set playing sequence
-                self.sequences_state_next[self.sequence_playing] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
+                self.state_next[self.index_sequences.start + self.sequence_playing] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
 
                 // Create timed messages from indicator state
-                let messages = self.output_vertical_grid(&self.sequences_state_current, &self.sequences_state_next, 0x57).into_iter()
+                let messages = self.output_vertical_grid(self.index_sequences.clone(), 0x57).into_iter()
                     .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
                     .collect();
-
-                // Switch state
-                self.sequences_state_current = self.sequences_state_next;
-                self.sequences_state_next = [0; 4];
 
                 // Return these beautifull messages
                 Some(messages)
@@ -849,7 +850,7 @@ impl Sequencer {
 
                 // Multiple patterns or phrases can be playing
                 playing_indexes.into_iter().for_each(|index| {
-                    self.playables_state_next[index] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
+                    self.state_next[self.index_playables.start + index] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
                 });
 
                 // Always mark selected playable
@@ -857,7 +858,7 @@ impl Sequencer {
                     DetailView::Pattern => self.instrument().pattern,
                     DetailView::Phrase => self.instrument().phrase,
                 };
-                self.playables_state_next[selected_index] = 1;
+                self.state_next[self.index_playables.start + selected_index] = 1;
 
                 // Always (most importantly, so last) render recording playables
                 let recording_indexes: Vec<usize> = match self.detailview {
@@ -872,18 +873,13 @@ impl Sequencer {
                 };
 
                 recording_indexes.into_iter().for_each(|index| {
-                    self.playables_state_next[index] = if ((switch_on_tick / recording_ticks) % 2) == 0 { 1 } else { 0 };
+                    self.state_next[self.index_playables.start + index] = if ((switch_on_tick / recording_ticks) % 2) == 0 { 1 } else { 0 };
                 });
 
-
                 // Create timed messages from indicator state
-                let messages = self.output_vertical_grid(&self.playables_state_current, &self.playables_state_next, 0x52).into_iter()
+                let messages = self.output_vertical_grid(self.index_playables.clone(), 0x52).into_iter()
                     .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
                     .collect();
-
-                // Switch state
-                self.playables_state_current = self.playables_state_next;
-                self.playables_state_next = [0; 5];
 
                 // Return these beautifull messages
                 Some(messages)
@@ -931,18 +927,14 @@ impl Sequencer {
                         let led = playable_tick / self.playable().ticks_per_led() as i32;
 
                         if led >= 0 && led < 8 && playable_tick < ticks as i32 {
-                            self.indicator_state_next[led as usize] = 1;
+                            self.state_next[self.index_indicator.start + led as usize] = 1;
                         }
                     });
 
                 // Create timed messages from indicator state
-                let messages = self.output_grid(&self.indicator_state_current, &self.indicator_state_next, 0x34).into_iter()
+                let messages = self.output_horizontal_grid(self.index_indicator.clone(), 0x34).into_iter()
                     .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
                     .collect();
-
-                // Switch state
-                self.indicator_state_current = self.indicator_state_next;
-                self.indicator_state_next = [0; 8];
 
                 // Return these beautifull messages
                 Some(messages)
