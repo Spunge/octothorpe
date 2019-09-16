@@ -38,7 +38,7 @@ impl KeyPress {
 }
 
 pub struct Sequencer {
-    instrument_group: u8,
+    pub instrument_group: u8,
 
     sequence_note_offs: Vec<(u32, Message)>,
     indicator_note_offs: Vec<(u32, Message)>,
@@ -395,10 +395,8 @@ impl Sequencer {
             })
     }
 
-    pub fn recording_key_played(&mut self, instrument: u8, offset: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
-
+    pub fn recording_key_played(&mut self, instrument: u8, raw_channel: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
         // We're subtracting 9 as drumpads of my keyboard are outputting on channel 9
-        let raw_channel = message.bytes[0] - offset;
         let mut instrument_channel = raw_channel + instrument;
 
         if cycle.is_rolling {
@@ -417,7 +415,10 @@ impl Sequencer {
             };
 
             // Only record when cycle is rolling
-            target.record_message(cycle.start - message.time, raw_channel, message.bytes[1], message.bytes[2]);
+            let cycle_length = cycle.end - cycle.start;
+            // Message was recorded in previous frame
+            let message_time = (cycle.start - cycle_length) + message.time;
+            target.record_message(message_time, raw_channel, message.bytes[1], message.bytes[2]);
         }
 
         // Always play the note
@@ -642,12 +643,11 @@ impl Sequencer {
     fn draw_instruments_grid(&mut self) {
         for index in self.index_instruments.clone() {
             let led = index - self.index_instruments.start;
-            let instrument = self.instrument_group * 8 + self.instrument;
 
             // Force clear as sequence indicator uses the same grid and does not clear it
             self.state_current[index] = 9;
             self.state_next[index] = match self.overview {
-                OverView::Instrument => if led as u8 == instrument { 1 } else { 0 },
+                OverView::Instrument => if led as u8 == self.instrument { 1 } else { 0 },
                 _ => 0,
             };
         }

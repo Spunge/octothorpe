@@ -157,11 +157,17 @@ impl Controller {
     {
         input
             .filter_map(|message| {
-                // Only process channel note messages
-                match message.bytes[0] {
-                    0x90 | 0x80 => Some(self.sequencer.recording_key_played(self.sequencer.keyboard_target, 0, cycle, message)),
-                    0x99 | 0x89 => Some(self.sequencer.recording_key_played(self.sequencer.drumpad_target, 9, cycle, message)),
+                let option = match message.bytes[0] {
+                    0x90 | 0x80 => Some((self.sequencer.keyboard_target, 0)),
+                    0x99 | 0x89 => Some((self.sequencer.drumpad_target, 9)),
                     _ => None,
+                };
+
+                // Only process channel note messages
+                if let Some((index, offset)) = option {
+                    Some(self.sequencer.recording_key_played(index + self.sequencer.instrument_group * 8, message.bytes[0] - offset, cycle, message))
+                } else {
+                    None
                 }
             })
             .collect()
