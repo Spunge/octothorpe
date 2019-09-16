@@ -49,6 +49,7 @@ pub struct Sequencer {
 
     pub keyboard_target: u8,
     pub drumpad_target: u8,
+    is_quantizing: bool,
 
     sequences: [Sequence; 4],
     sequence: u8,
@@ -67,7 +68,7 @@ pub struct Sequencer {
     // Buttons
     index_instrument_group: Range<usize>,
     index_detailview: Range<usize>,
-    //index_overview: Range<usize>,
+    index_quantizing: Range<usize>,
     // Static
     index_knob_groups: Range<usize>,
     index_instruments: Range<usize>,
@@ -102,6 +103,7 @@ impl Sequencer {
 
             keyboard_target: 0,
             drumpad_target: 0,
+            is_quantizing: false,
 
             keys_pressed: vec![],
             sequence_note_offs: vec![],
@@ -130,7 +132,7 @@ impl Sequencer {
             // Static buttons
             index_instrument_group: 72..73,
             index_detailview: 73..74,
-            //index_overview: 74..75,
+            index_quantizing: 74..75,
             index_knob_groups: 75..79,
             // Dynamic button states
             index_indicator: 79..87,
@@ -230,8 +232,8 @@ impl Sequencer {
         }
     }
 
-    pub fn key_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
-        //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+    pub fn key_pressed(&mut self, message: jack::RawMidi) {
+        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
@@ -241,6 +243,7 @@ impl Sequencer {
             0x50 => self.switch_instrument_group(),
             0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
+            0x3F => self.switch_quantizing(),
             0x57 ..= 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
             0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
             // Playable select
@@ -251,8 +254,6 @@ impl Sequencer {
         };
 
         self.should_render = true;
-
-        None
     }
 
     pub fn key_double_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
@@ -471,6 +472,10 @@ impl Sequencer {
         }
     }
 
+    fn switch_quantizing(&mut self) {
+        self.is_quantizing = ! self.is_quantizing;
+    }
+
     // Set a playable to recording mode
     fn record_playable(&mut self, playable: u8) {
         match self.detailview {
@@ -670,6 +675,10 @@ impl Sequencer {
         self.state_next[self.index_instrument_group.start] = self.instrument_group;
     }
 
+    fn draw_quantize_button(&mut self) {
+        self.state_next[self.index_quantizing.start] = if self.is_quantizing { 1 } else { 0 };
+    }
+
     fn draw_detailview_button(&mut self) {
         self.state_next[self.index_detailview.start] = match self.overview {
             OverView::Instrument => match self.detailview { DetailView::Pattern => 1, _ => 0 },
@@ -707,6 +716,7 @@ impl Sequencer {
             self.draw_instruments_grid();
             self.draw_knob_groups_grid();
             self.draw_group_button();
+            self.draw_quantize_button();
             self.draw_detailview_button();
 
             output.extend(self.output_horizontal_grid(self.index_green.clone(), 0x32));
@@ -714,6 +724,7 @@ impl Sequencer {
             output.extend(self.output_horizontal_grid(self.index_instruments.clone(), 0x33));
             output.extend(self.output_vertical_grid(self.index_knob_groups.clone(), 0x3A));
             output.extend(self.output_horizontal_grid(self.index_instrument_group.clone(), 0x50));
+            output.extend(self.output_horizontal_grid(self.index_quantizing.clone(), 0x3F));
             output.extend(self.output_horizontal_grid(self.index_detailview.clone(), 0x3E));
 
             // Clear dynamic grids when switching to sequence
@@ -824,7 +835,7 @@ impl Sequencer {
         messages
     }
 
-    fn sequence_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>, modifier: u32, key: Option<u8>, velocity_on: Option<u8>, velocity_off: Option<u8>) 
+    fn sequence_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>, modifier: u32, channel_modifier: u8, key: Option<u8>, velocity_on: Option<u8>, velocity_off: Option<u8>) 
         -> (Vec<(u32, Message)>, Vec<TimedMessage>) 
     {
         let note_offs: Vec<_> = notes.iter()
@@ -832,14 +843,14 @@ impl Sequencer {
                 let length = note.end - note.start;
                 let tick = cycle.absolute_start + delta_ticks;
 
-                (tick + length / modifier, note.off_message(0x80, key, velocity_off))
+                (tick + length / modifier, note.off_message(0x80 - channel_modifier, key, velocity_off))
             })
             .collect();
 
         let note_ons: Vec<_> = notes.iter()
             .map(|(delta_ticks, note)| {
                 let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                TimedMessage::new(delta_frames, note.on_message(0x90, key, velocity_on))
+                TimedMessage::new(delta_frames, note.on_message(0x90 - channel_modifier, key, velocity_on))
             })
             .collect();
 
@@ -1019,7 +1030,7 @@ impl Sequencer {
 
                 // Output note events
                 let (sequence_note_offs, sequence_note_ons) 
-                    = Sequencer::sequence_note_events(cycle, &notes, 1, None, None, None);
+                    = Sequencer::sequence_note_events(cycle, &notes, 1, 0, None, None, None);
 
                 if cycle.is_rolling {
                     sequence_out_messages.extend(sequence_note_ons);
@@ -1041,7 +1052,8 @@ impl Sequencer {
                     OverView::Sequence => {
                         if cycle.is_rolling {
                             let (indicator_note_offs, control_note_ons) 
-                                = Sequencer::sequence_note_events(cycle, &notes, 3, Some(0x33), Some(1), Some(0));
+                                = Sequencer::sequence_note_events(cycle, &notes, 3, self.instrument_group * 8, Some(0x33), Some(1), Some(0));
+
                             self.indicator_note_offs.extend(indicator_note_offs);
                             control_out_messages.extend(control_note_ons);
                         }

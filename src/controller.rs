@@ -26,23 +26,19 @@ impl Controller {
         }
     }
 
-    fn key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) -> Option<Vec<TimedMessage>> {
+    fn key_pressed(&mut self, message: jack::RawMidi, client: &jack::Client) {
         // Output in hex so we can compare to apc40 manual easily
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
         //println!("{}, {}, {}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         match message.bytes[1] {
-            0x5B => {
-                client.transport_start();
-                None
-            },
+            0x5B => { client.transport_start() },
             0x5C => {
                 let (state, _) = client.transport_query();
                 match state {
                     1 => client.transport_stop(),
                     _ => client.transport_reposition(jack::Position::default()),
                 };
-                None
             },
             _ => self.sequencer.key_pressed(message),
         }
@@ -92,9 +88,7 @@ impl Controller {
                         let mut output: Vec<TimedMessage> = vec![];
 
                         // Always single press 
-                        if let Some(messages) = self.key_pressed(message, client) {
-                            output.extend(messages);
-                        }
+                        self.key_pressed(message, client);
 
                         // Double keypress when its there
                         if double_presses.len() > 0 {
