@@ -27,9 +27,9 @@ impl Phrase {
         Phrase { playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), played_patterns, }
     }
 
-    pub fn new() -> Self {
+    pub fn new(index: usize) -> Self {
         Phrase::create(vec![
-            PlayedPattern { index: 0, start: TimebaseHandler::bars_to_ticks(0), end: TimebaseHandler::bars_to_ticks(4) },
+            PlayedPattern { index, start: TimebaseHandler::bars_to_ticks(0), end: TimebaseHandler::bars_to_ticks(4) },
         ])
     }
 
@@ -43,6 +43,8 @@ impl Phrase {
         self.playable.led_states(coords)
     }
 
+    // TODO - when shortening length, notes that are longer as playable length
+    // should be cut shorter aswell
     pub fn change_length(&mut self, length_modifier: u32) {
         let current_modifier = self.playable.length_modifier();
         let current_length = self.playable.length;

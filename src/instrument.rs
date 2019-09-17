@@ -22,12 +22,13 @@ pub struct Instrument {
     knob_values: [u8; 64],
 
     pub recorded_messages: Vec<RecordedMessage>,
+    pub quantize_level: u8,
 }
 
 impl Instrument {
     pub fn new(c: u8) -> Self {
         let patterns = [ Pattern::new(c), Pattern::new(c), Pattern::new(c), Pattern::new(c), Pattern::new(c), ];
-        let phrases = [ Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), ];
+        let phrases = [ Phrase::new(0), Phrase::new(1), Phrase::new(2), Phrase::new(3), Phrase::new(4), ];
 
         Instrument {
             phrases,
@@ -40,6 +41,7 @@ impl Instrument {
             knob_values: [0; 64],
 
             recorded_messages: vec![],
+            quantize_level: 4,
         }
     }
 
@@ -76,9 +78,14 @@ impl Instrument {
         }
     }
 
+    pub fn change_quantize_level(&mut self, level: u8) {
+        if level != 7 {
+            self.quantize_level = level;
+        }
+    }
+
     pub fn record_message(&mut self, time: u32, channel: u8, key: u8, velocity: u8) {
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-
         let recorded_message = RecordedMessage { time, channel, key, velocity, };
 
         // if note is note down, merge it with previous note on on the same key

@@ -75,7 +75,7 @@ pub struct Sequencer {
     index_main: Range<usize>,
     index_green: Range<usize>,
     index_blue: Range<usize>,
-    //index_red: Range<usize>,
+    index_red: Range<usize>,
 
     index_indicator: Range<usize>,
     index_playables: Range<usize>,
@@ -127,7 +127,7 @@ impl Sequencer {
             index_main: 0..40,
             index_green: 40..48,
             index_instruments: 48..56,
-            //index_red: 56..64,
+            index_red: 56..64,
             index_blue: 64..72,
             // Static buttons
             index_instrument_group: 72..73,
@@ -199,9 +199,8 @@ impl Sequencer {
             },
             0x5E => self.instrument().pattern().change_base_note(4),
             0x5F => self.instrument().pattern().change_base_note(-4),
+            0x30 => self.instrument().change_quantize_level((message.bytes[0] - 0x90 + 1) as u8),
             0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
-            // TODO - when shortening length, notes or phrases that are longer as playable length
-            // should be cut shorter aswell
             0x32 => {
                 match self.detailview {
                     DetailView::Pattern => self.instrument().pattern().change_length((message.bytes[0] - 0x90 + 1) as u32),
@@ -233,7 +232,7 @@ impl Sequencer {
     }
 
     pub fn key_pressed(&mut self, message: jack::RawMidi) {
-        println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+        //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
         // Remember remember
         self.keys_pressed.push(KeyPress::new(message));
@@ -245,7 +244,7 @@ impl Sequencer {
             0x33 => self.switch_instrument(message.bytes[0] - 0x90),
             0x3F => self.switch_quantizing(),
             0x57 ..= 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
-            0x3E | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
+            0x3E | 0x30 | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
             // Playable select
             0x52 ..= 0x56 => self.shared_key_pressed(message),
             // Main grid
@@ -611,6 +610,19 @@ impl Sequencer {
         }
     }
 
+    fn draw_red_grid(&mut self) {
+        let quantize_level = match self.overview {
+            OverView::Instrument => self.instrument().quantize_level as usize,
+            _ => 0,
+        };
+
+        for index in self.index_red.clone() {
+            let led = index - self.index_red.start;
+
+            self.state_next[index] = if led < quantize_level { 1 } else { 0 };
+        }
+    }
+
     fn draw_green_grid(&mut self) {
         for index in self.index_green.clone() {
             let led = index - self.index_green.start;
@@ -711,6 +723,7 @@ impl Sequencer {
 
         // Draw if we have to
         if self.should_render {
+            self.draw_red_grid();
             self.draw_green_grid();
             self.draw_blue_grid();
             self.draw_instruments_grid();
@@ -719,6 +732,7 @@ impl Sequencer {
             self.draw_quantize_button();
             self.draw_detailview_button();
 
+            output.extend(self.output_horizontal_grid(self.index_red.clone(), 0x30));
             output.extend(self.output_horizontal_grid(self.index_green.clone(), 0x32));
             output.extend(self.output_horizontal_grid(self.index_blue.clone(), 0x31));
             output.extend(self.output_horizontal_grid(self.index_instruments.clone(), 0x33));
@@ -897,13 +911,14 @@ impl Sequencer {
             .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
                 let switch_on_tick = cycle.start + delta_ticks;
+                let instrument = (self.instrument + self.instrument_group * 8) as usize;
 
                 // Make playing playable blink
                 let playing_indexes: Vec<usize> = match self.detailview {
                     DetailView::Pattern => {
                         playing_patterns.iter()
                             .filter(|playing_pattern| {
-                                playing_pattern.instrument == self.instrument as usize
+                                playing_pattern.instrument == instrument
                                     && playing_pattern.end > cycle.end
                             })
                             .map(|playing_pattern| playing_pattern.pattern)
@@ -912,7 +927,7 @@ impl Sequencer {
                     DetailView::Phrase => {
                         playing_phrases.iter()
                             .filter(|playing_phrase| {
-                                playing_phrase.instrument == self.instrument as usize
+                                playing_phrase.instrument == instrument
                                     && playing_phrase.end > cycle.end
                             })
                             .map(|playing_phrase| playing_phrase.phrase)
