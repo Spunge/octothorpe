@@ -299,7 +299,7 @@ impl Sequencer {
             },
         };
 
-        println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
+        //println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
         vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
     }
 
@@ -338,7 +338,7 @@ impl Sequencer {
     }
 
     pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
-        println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
+        //println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
 
         let mut knob = message.bytes[1];
         // Collections of 64 knobs
