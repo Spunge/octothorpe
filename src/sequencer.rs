@@ -290,7 +290,7 @@ impl Sequencer {
         let (out_channel, out_knob) = match self.overview {
             OverView::Instrument => {
                 let instrument_knob = self.instrument().set_knob_value(knob, value);
-                (self.instrument / 2, instrument_knob + (self.instrument % 2) * 64)
+                (self.instrument / 2 + self.instrument_group * 4, instrument_knob + (self.instrument % 2) * 64)
             },
             OverView::Sequence => {
                 let sequence_knob = self.sequence().set_knob_value(knob, value);
@@ -362,7 +362,7 @@ impl Sequencer {
                 .and_then(|_| {
                     // Check if changed virtual knob is visible at the moment
                     if let OverView::Instrument = self.overview {
-                        if self.instrument == knob_collection && self.instrument().knob_group == knob_group {
+                        if self.instrument + self.instrument_group * 8 == knob_collection && self.instrument().knob_group == knob_group {
                             Some(apc_knob)
                         } else {
                             None
