@@ -84,17 +84,19 @@ impl Instrument {
         }
     }
 
-    pub fn record_message(&mut self, time: u32, channel: u8, key: u8, velocity: u8) {
+    // Record a note message into recording patterns
+    pub fn record_message(&mut self, time: u32, channel: u8, key: u8, velocity: u8, is_quantizing: bool) {
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
         let recorded_message = RecordedMessage { time, channel, key, velocity, };
 
-        // if note is note down, merge it with previous note on on the same key
+        // if note is note off, merge it with previous note on on the same key
         if channel == 0x80 {
             let index = self.recorded_messages.iter().position(|message| {
                 message.key == recorded_message.key && message.channel == 0x90
             }).unwrap();
 
             let message = &self.recorded_messages[index];
+            let quantize_level = self.quantize_level;
 
             self.patterns.iter_mut()
                 .filter(|pattern| pattern.is_recording)
@@ -105,11 +107,14 @@ impl Instrument {
                         recorded_message.key,
                         message.velocity,
                         recorded_message.velocity,
+                        quantize_level,
+                        is_quantizing,
                     );
                 });
 
             self.recorded_messages.remove(index);
         } else {
+            // If this is a note on message, push it onto the stack
             self.recorded_messages.push(recorded_message);
         }
     }

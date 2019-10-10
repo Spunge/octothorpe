@@ -418,7 +418,7 @@ impl Sequencer {
             let cycle_length = cycle.end - cycle.start;
             // Message was recorded in previous frame
             let message_time = (cycle.start - cycle_length) + message.time;
-            target.record_message(message_time, raw_channel, message.bytes[1], message.bytes[2]);
+            target.record_message(message_time, raw_channel, message.bytes[1], message.bytes[2], self.is_quantizing);
         }
 
         // Always play the note
@@ -514,7 +514,6 @@ impl Sequencer {
     fn switch_overview(&mut self) {
         match self.overview {
             OverView::Instrument => {
-                // TODO - When switching to sequence view, clear indicator grid
                 self.overview = OverView::Sequence
             },
             OverView::Sequence => {
@@ -744,7 +743,7 @@ impl Sequencer {
             // Clear dynamic grids when switching to sequence
             if let OverView::Sequence = self.overview {
                 self.force_clear_state(self.index_indicator.clone());
-                output.extend(self.output_horizontal_grid(self.index_indicator.clone(), 0x34));
+                //output.extend(self.output_horizontal_grid(self.index_indicator.clone(), 0x34));
                 self.force_clear_state(self.index_playables.clone());
                 output.extend(self.output_vertical_grid(self.index_playables.clone(), 0x52));
             }
@@ -981,42 +980,63 @@ impl Sequencer {
             // Are we forced to redraw? If yes, instantly draw
             .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
+                let switch_on_tick = cycle.start + delta_ticks;
+
                 // Get playing regions of playables that are shown at the moment
-                let shown_playables: Vec<(u32, u32)> = match self.detailview {
-                    DetailView::Pattern => {
-                        playing_patterns.into_iter()
-                            .filter(|playing_pattern| {
-                                playing_pattern.instrument == self.instrument as usize 
-                                    && playing_pattern.pattern == self.instruments[playing_pattern.instrument].pattern
-                            })
-                            .map(|playing_pattern| (playing_pattern.start, playing_pattern.end))
-                            .collect()
+                match self.overview {
+                    OverView::Sequence => {
+                        let longest_phrase = playing_phrases.into_iter()
+                            .map(|playing_phrase| self.instruments[playing_phrase.instrument].phrases[playing_phrase.phrase].playable.length)
+                            .max()
+                            .unwrap();
+
+                        let ticks_per_led = longest_phrase / 8;
+
+                        let sequence_tick = switch_on_tick as i32 % longest_phrase as i32;
+                        let led = sequence_tick / ticks_per_led as i32;
+
+                        if led >= 0 && led < 8 && sequence_tick < longest_phrase as i32 {
+                            self.state_next[self.index_indicator.start + led as usize] = 1;
+                        }
                     },
-                    DetailView::Phrase => {
-                        playing_phrases.into_iter()
-                            .filter(|playing_phrase| {
-                                playing_phrase.instrument == self.instrument as usize 
-                                    && playing_phrase.phrase == self.instruments[playing_phrase.instrument].phrase
-                            })
-                            .map(|playing_phrase| (playing_phrase.start, playing_phrase.end))
-                            .collect()
+                    OverView::Instrument => {
+                        let shown_playables: Vec<(u32, u32)> = match self.detailview {
+                            DetailView::Pattern => {
+                                playing_patterns.into_iter()
+                                    .filter(|playing_pattern| {
+                                        playing_pattern.instrument == self.instrument as usize 
+                                            && playing_pattern.pattern == self.instruments[playing_pattern.instrument].pattern
+                                    })
+                                    .map(|playing_pattern| (playing_pattern.start, playing_pattern.end))
+                                    .collect()
+                            },
+                            DetailView::Phrase => {
+                                playing_phrases.into_iter()
+                                    .filter(|playing_phrase| {
+                                        playing_phrase.instrument == self.instrument as usize 
+                                            && playing_phrase.phrase == self.instruments[playing_phrase.instrument].phrase
+                                    })
+                                    .map(|playing_phrase| (playing_phrase.start, playing_phrase.end))
+                                    .collect()
+                            },
+                        };
+
+                        shown_playables.into_iter()
+                            // Only show led for unfinished playables
+                            .filter(|(_, end)| *end > cycle.end)
+                            .for_each(|(start, end)| {
+                                // Amount of ticks in region (playing patterns can be shorter as pattern they play)
+                                let ticks = end - start;
+                                let playable_tick = switch_on_tick as i32 - start as i32 - self.playable().ticks_offset() as i32;
+                                let led = playable_tick / self.playable().ticks_per_led() as i32;
+
+                                if led >= 0 && led < 8 && playable_tick < ticks as i32 {
+                                    self.state_next[self.index_indicator.start + led as usize] = 1;
+                                }
+                            });
                     },
                 };
 
-                shown_playables.into_iter()
-                    // Only show led for unfinished playables
-                    .filter(|(_, end)| *end > cycle.end)
-                    .for_each(|(start, end)| {
-                        // Amount of ticks in region (playing patterns can be shorter as pattern they play)
-                        let ticks = end - start;
-                        let switch_on_tick = cycle.start + delta_ticks;
-                        let playable_tick = switch_on_tick as i32 - start as i32 - self.playable().ticks_offset() as i32;
-                        let led = playable_tick / self.playable().ticks_per_led() as i32;
-
-                        if led >= 0 && led < 8 && playable_tick < ticks as i32 {
-                            self.state_next[self.index_indicator.start + led as usize] = 1;
-                        }
-                    });
 
                 // Create timed messages from indicator state
                 let messages = self.output_horizontal_grid(self.index_indicator.clone(), 0x34).into_iter()
@@ -1041,6 +1061,15 @@ impl Sequencer {
                 // Output those
                 // TODO - Sequence with phrases of different length
                 let playing_patterns = self.playing_patterns(cycle, &playing_phrases);
+
+                // We should always redraw on reposition or button press
+                let force_redraw = cycle.was_repositioned || self.should_render;
+
+                if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                    control_out_messages.extend(note_events);
+                }
+
+                // Get playing notes for sequencer
                 let notes = self.playing_notes(cycle, &playing_patterns);
 
                 // Output note events
@@ -1051,15 +1080,9 @@ impl Sequencer {
                     sequence_out_messages.extend(sequence_note_ons);
                 }
 
-                // We should always redraw on reposition or button press
-                let force_redraw = cycle.was_repositioned || self.should_render;
-
                 // Draw dynamic indicators
                 match self.overview {
                     OverView::Instrument => {
-                        if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                            control_out_messages.extend(note_events);
-                        }
                         if let Some(note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
                             control_out_messages.extend(note_events);
                         }

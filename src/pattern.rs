@@ -143,14 +143,38 @@ impl Pattern {
                 note.end <= start || note.start >= end || note.key != key
             });
         } else {
-            self.toggle_note(start, end, key, velocity_on, velocity_off)
+            self.toggle_note(start, end, key, velocity_on, velocity_off, 0, false)
+        }
+    }
+
+    pub fn quantize(&self, tick: u32, quantize_level: u8) -> u32 {
+        let quantize_by_ticks = TimebaseHandler::beats_to_ticks(1.0) / quantize_level as u32;
+        let offset = tick % quantize_by_ticks;
+    
+        if offset < quantize_by_ticks / 2 {
+            tick - offset
+        } else {
+            (tick - offset) + quantize_by_ticks
         }
     }
 
     // Toggle note should draw note onto pattern grid so keyboard logic can use this to
-    pub fn toggle_note(&mut self, mut start: u32, mut end: u32, key: u8, velocity_on: u8, velocity_off: u8) {
+    pub fn toggle_note(&mut self, mut start: u32, mut end: u32, key: u8, velocity_on: u8, velocity_off: u8, quantize_level: u8, is_quantizing: bool) {
+        // Make start fit in pattern
         start = start % self.playable.length;
-        end = if end == self.playable.length { self.playable.length } else { end % self.playable.length };
+
+        // When end is exactly at the end of this playable, thats okay
+        end = if end == self.playable.length { 
+            self.playable.length 
+        } else { 
+            // TODO - If played note is longer than pattern we should create multiple notes
+            end % self.playable.length
+        };
+
+        if is_quantizing {
+            start = self.quantize(start, quantize_level);
+            end = self.quantize(end, quantize_level);
+        }
 
         // Center view on notes we are recording
         if key > self.base_note {
