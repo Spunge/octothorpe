@@ -975,8 +975,15 @@ impl Sequencer {
     fn main_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
+        // Minimum switch time for sequence indicator
+        let mut ticks_interval = self.playable().ticks_per_led();
+        // TODO - Ugly hotfix, plz fix
+        if ticks_interval > TimebaseHandler::beats_to_ticks(1.0) {
+            ticks_interval = TimebaseHandler::beats_to_ticks(1.0);
+        }
+
         // Do we have to switch now?
-        cycle.delta_ticks_recurring(0, self.playable().ticks_per_led())
+        cycle.delta_ticks_recurring(0, ticks_interval)
             // Are we forced to redraw? If yes, instantly draw
             .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
