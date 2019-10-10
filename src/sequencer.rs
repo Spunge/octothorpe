@@ -103,7 +103,7 @@ impl Sequencer {
 
             keyboard_target: 0,
             drumpad_target: 0,
-            is_quantizing: false,
+            is_quantizing: true,
 
             keys_pressed: vec![],
             sequence_note_offs: vec![],

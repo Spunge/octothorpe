@@ -41,7 +41,7 @@ impl Instrument {
             knob_values: [0; 64],
 
             recorded_messages: vec![],
-            quantize_level: 4,
+            quantize_level: 2,
         }
     }
 
