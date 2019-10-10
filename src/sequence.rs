@@ -26,12 +26,8 @@ impl Sequence {
         Sequence::create([None; 16])
     }
 
-    pub fn default() -> Self {
-        Sequence::create([Some(0); 16])
-    }
-
-    pub fn alternate_default() -> Self {
-        Sequence::create([Some(1); 16])
+    pub fn default(value: usize) -> Self {
+        Sequence::create([Some(value); 16])
     }
 
     pub fn led_states(&mut self, group: u8) -> Vec<(i32, i32, u8)> {
@@ -63,6 +59,10 @@ impl Sequence {
                 instruments[instrument].phrases[phrase].playable.length
             })
             .max()
+    }
+
+    pub fn toggle_row(&mut self, phrase: u8) {
+        self.phrases = [Some(phrase as usize); 16];
     }
 
     pub fn toggle_phrase(&mut self, instrument: u8, phrase: u8) {

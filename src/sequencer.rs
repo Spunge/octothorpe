@@ -93,7 +93,7 @@ impl Sequencer {
         ];
     
         // Build sequence we can trigger
-        let sequences = [ Sequence::default(), Sequence::alternate_default(), Sequence::new(), Sequence::new(), ];
+        let sequences = [ Sequence::default(0), Sequence::default(1), Sequence::default(2), Sequence::default(3), ];
 
         Sequencer {
             instruments,
@@ -220,6 +220,7 @@ impl Sequencer {
                 let instrument = message.bytes[0] - 0x90 + self.instrument_group * 8;
                 self.sequence().toggle_phrase(instrument, message.bytes[1] - 0x35);
             },
+            0x52 ..= 0x56 => self.sequence().toggle_row(message.bytes[1] - 0x52),
             _ => (),
         }
     }
