@@ -296,7 +296,7 @@ impl Sequencer {
                 let sequence_knob = self.sequence().set_knob_value(knob, value);
                 // Sequence channels are after the instruments channels, therefore +
                 // instruments.len / 2
-                (self.instrument / 2 + self.instruments.len() as u8 / 2, sequence_knob + (self.sequence % 2) * 64)
+                (self.sequence / 2 + self.instruments.len() as u8 / 2, sequence_knob + (self.sequence % 2) * 64)
             },
         };
 
@@ -372,11 +372,12 @@ impl Sequencer {
                     }
                 })
         } else {
+            // TODO - Sequence knob groups broken!
             self.sequences[knob_collection as usize - 16].knob_value_changed(knob, message.bytes[2])
                 .and_then(|_| {
                     if let OverView::Sequence = self.overview {
                         // Sequence knob collections are placed after instrument groups
-                        let sequence = knob_collection - 16;
+                        let sequence = (knob_collection - 16) / 4;
                         if self.sequence == sequence && self.sequence().knob_group == knob_group {
                             Some(apc_knob)
                         } else {
