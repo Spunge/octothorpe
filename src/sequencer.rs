@@ -719,6 +719,7 @@ impl Sequencer {
         }
     }
 
+    // Should render main grid is passed when there's notes played on sequence_in this frame
     pub fn output_static(&mut self, should_render_main_grid: bool) -> Vec<TimedMessage> {
         // Output vector
         let mut output = vec![];
@@ -1085,11 +1086,11 @@ impl Sequencer {
                 }
 
                 // Get playing notes for sequencer
-                let notes = self.playing_notes(cycle, &playing_patterns);
+                let playing_notes = self.playing_notes(cycle, &playing_patterns);
 
                 // Output note events
                 let (sequence_note_offs, sequence_note_ons) 
-                    = Sequencer::sequence_note_events(cycle, &notes, 1, 0, None, None, None);
+                    = Sequencer::sequence_note_events(cycle, &playing_notes, 1, 0, None, None, None);
 
                 if cycle.is_rolling {
                     sequence_out_messages.extend(sequence_note_ons);
@@ -1105,7 +1106,7 @@ impl Sequencer {
                     OverView::Sequence => {
                         if cycle.is_rolling {
                             let (indicator_note_offs, control_note_ons) 
-                                = Sequencer::sequence_note_events(cycle, &notes, 3, self.instrument_group * 8, Some(0x33), Some(1), Some(0));
+                                = Sequencer::sequence_note_events(cycle, &playing_notes, 3, self.instrument_group * 8, Some(0x33), Some(1), Some(0));
 
                             self.indicator_note_offs.extend(indicator_note_offs);
                             control_out_messages.extend(control_note_ons);

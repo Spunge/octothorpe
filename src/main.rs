@@ -23,13 +23,15 @@ fn main() {
     let (client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
-    let (sender, receiver) = channel();
+    let (notification_sender, notification_receiver) = channel();
+    let (timebase_sender, timebase_receiver) = channel();
 
-    let controller = Controller::new();
+    // TODO - Pass client to cotroller
+    let controller = Controller::new(/*&client*/);
 
-    let processhandler = ProcessHandler::new(controller, receiver, &client);
-    let timebasehandler = TimebaseHandler::new();
-    let notificationhandler = NotificationHandler::new(sender);
+    let processhandler = ProcessHandler::new(controller, notification_receiver, timebase_sender, &client);
+    let timebasehandler = TimebaseHandler::new(timebase_receiver);
+    let notificationhandler = NotificationHandler::new(notification_sender);
 
     // Activate client
     let _async_client = client

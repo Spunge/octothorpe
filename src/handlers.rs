@@ -11,6 +11,8 @@ pub struct TimebaseHandler {
     beats_per_bar: isize,
     beat_type: isize,
     is_up_to_date: bool,
+
+    receiver: Receiver<f64>,
 }
 
 impl TimebaseHandler {
@@ -29,12 +31,13 @@ impl TimebaseHandler {
         Self::bars_to_beats(bars) * Self::TICKS_PER_BEAT
     }
 
-    pub fn new() -> Self {
+    pub fn new(receiver: Receiver<f64>) -> Self {
         TimebaseHandler {
             beats_per_minute: 156.0,
             is_up_to_date: false,
             beats_per_bar: 4,
             beat_type: 4,
+            receiver,
         }
     }
 }
@@ -96,7 +99,7 @@ impl MidiOut {
 
 pub struct ProcessHandler {
     controller: Controller,
-    receiver: Receiver<TimedMessage>,
+    notification_receiver: Receiver<TimedMessage>,
 
     ticks_elapsed: u32,
     was_repositioned: bool,
@@ -115,7 +118,12 @@ pub struct ProcessHandler {
 }
 
 impl ProcessHandler {
-    pub fn new(controller: Controller, receiver: Receiver<TimedMessage>, client: &jack::Client) -> Self {
+    pub fn new(
+        controller: Controller,
+        notification_receiver: Receiver<TimedMessage>,
+        timebase_sender: Sender<f64>,
+        client: &jack::Client
+    ) -> Self {
         // Create ports
         let apc_in = client.register_port("apc_in", jack::MidiIn::default()).unwrap();
         let apc_out = client.register_port("apc_out", jack::MidiOut::default()).unwrap();
@@ -126,7 +134,7 @@ impl ProcessHandler {
 
         ProcessHandler { 
             controller, 
-            receiver,
+            notification_receiver,
             ticks_elapsed: 0,
             was_repositioned: false,
             apc_in,
@@ -146,14 +154,16 @@ impl jack::ProcessHandler for ProcessHandler {
         let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
         // Update next ticks to keep track of absoulute ticks elapsed for note off events
         self.ticks_elapsed += cycle.ticks;
-        // TODO - cycle.absolute_start hack is dirty
+        // cycle.absolute_start indicates this is first cycle program runs for
         self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
         let mut apc_messages = vec![];
         let mut control_messages = vec![];
 
+        // TODO - Clean up this mess
+
         // Write midi from notification handler
-        while let Ok(message) = self.receiver.try_recv() {
+        while let Ok(message) = self.notification_receiver.try_recv() {
             apc_messages.push(message);
         }
 
@@ -164,7 +174,6 @@ impl jack::ProcessHandler for ProcessHandler {
         // Process incoming control change messages from APC (knob turns etc.), output adjusted cc
         // messages on seperate CC messages channel so cc messages are not picked up by synths etc.
         control_messages.extend(self.controller.process_apc_control_change_messages(self.apc_in.iter(process_scope)));
-
 
         // Get dynamic grids (indicators and whatnot) & midi messages
         // These are both returned by one function as playing notes will also be used for
