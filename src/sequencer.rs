@@ -38,13 +38,12 @@ impl KeyPress {
 }
 
 pub struct Sequencer {
-    pub instrument_group: u8,
-
     sequence_note_offs: Vec<(u32, Message)>,
     indicator_note_offs: Vec<(u32, Message)>,
     keys_pressed: Vec<KeyPress>,
 
     instruments: [Instrument; 16],
+    pub instrument_group: u8,
     instrument: u8,
 
     pub keyboard_target: u8,
@@ -97,9 +96,8 @@ impl Sequencer {
 
         Sequencer {
             instruments,
-            instrument: 0,
-
             instrument_group: 0,
+            instrument: 0,
 
             keyboard_target: 0,
             drumpad_target: 0,
@@ -141,8 +139,12 @@ impl Sequencer {
         }
     }
 
+    fn instrument_index(&self) -> usize {
+        (self.instrument_group * 8 + self.instrument) as usize
+    }
+
     fn instrument(&mut self) -> &mut Instrument {
-        &mut self.instruments[(self.instrument_group * 8 + self.instrument) as usize]
+        &mut self.instruments[self.instrument_index()]
     }
 
     fn sequence(&mut self) -> &mut Sequence {
@@ -214,10 +216,12 @@ impl Sequencer {
     }
 
     fn sequence_key_pressed(&mut self, message: jack::RawMidi) {
+        let instrument_delta = self.instrument_group * 8;
+
         match message.bytes[1] {
-            0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90),
+            0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90 + instrument_delta),
             0x35 ..= 0x39 => {
-                let instrument = message.bytes[0] - 0x90 + self.instrument_group * 8;
+                let instrument = message.bytes[0] - 0x90 + instrument_delta;
                 self.sequence().toggle_phrase(instrument, message.bytes[1] - 0x35);
             },
             0x52 ..= 0x56 => self.sequence().toggle_row(message.bytes[1] - 0x52),
@@ -290,7 +294,10 @@ impl Sequencer {
         let (out_channel, out_knob) = match self.overview {
             OverView::Instrument => {
                 let instrument_knob = self.instrument().set_knob_value(knob, value);
-                (self.instrument / 2 + self.instrument_group * 4, instrument_knob + (self.instrument % 2) * 64)
+                let instrument = self.instrument_index() as u8;
+                let offset = (instrument % 2) * 64;
+                // 2 instruments per channel
+                (instrument / 2, instrument_knob + offset)
             },
             OverView::Sequence => {
                 let sequence_knob = self.sequence().set_knob_value(knob, value);
@@ -362,7 +369,7 @@ impl Sequencer {
                 .and_then(|_| {
                     // Check if changed virtual knob is visible at the moment
                     if let OverView::Instrument = self.overview {
-                        if self.instrument + self.instrument_group * 8 == knob_collection && self.instrument().knob_group == knob_group {
+                        if self.instrument_index() as u8 == knob_collection && self.instrument().knob_group == knob_group {
                             Some(apc_knob)
                         } else {
                             None
@@ -912,14 +919,13 @@ impl Sequencer {
             .or_else(|| if force_redraw { Some(0) } else { None })
             .and_then(|delta_ticks| {
                 let switch_on_tick = cycle.start + delta_ticks;
-                let instrument = (self.instrument + self.instrument_group * 8) as usize;
 
                 // Make playing playable blink
                 let playing_indexes: Vec<usize> = match self.detailview {
                     DetailView::Pattern => {
                         playing_patterns.iter()
                             .filter(|playing_pattern| {
-                                playing_pattern.instrument == instrument
+                                playing_pattern.instrument == self.instrument_index()
                                     && playing_pattern.end > cycle.end
                             })
                             .map(|playing_pattern| playing_pattern.pattern)
@@ -928,7 +934,7 @@ impl Sequencer {
                     DetailView::Phrase => {
                         playing_phrases.iter()
                             .filter(|playing_phrase| {
-                                playing_phrase.instrument == instrument
+                                playing_phrase.instrument == self.instrument_index()
                                     && playing_phrase.end > cycle.end
                             })
                             .map(|playing_phrase| playing_phrase.phrase)
@@ -1013,7 +1019,7 @@ impl Sequencer {
                             DetailView::Pattern => {
                                 playing_patterns.into_iter()
                                     .filter(|playing_pattern| {
-                                        playing_pattern.instrument == self.instrument as usize 
+                                        playing_pattern.instrument == self.instrument_index()
                                             && playing_pattern.pattern == self.instruments[playing_pattern.instrument].pattern
                                     })
                                     .map(|playing_pattern| (playing_pattern.start, playing_pattern.end))
@@ -1022,7 +1028,7 @@ impl Sequencer {
                             DetailView::Phrase => {
                                 playing_phrases.into_iter()
                                     .filter(|playing_phrase| {
-                                        playing_phrase.instrument == self.instrument as usize 
+                                        playing_phrase.instrument == self.instrument_index()
                                             && playing_phrase.phrase == self.instruments[playing_phrase.instrument].phrase
                                     })
                                     .map(|playing_phrase| (playing_phrase.start, playing_phrase.end))
