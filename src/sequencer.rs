@@ -82,7 +82,7 @@ pub struct Sequencer {
 }
 
 impl Sequencer {
-    pub fn new() -> Self {
+    pub fn new(client: &jack::Client) -> Self {
         // Build instruments for each midi channel
         let instruments = [
             Instrument::new(0), Instrument::new(1), Instrument::new(2), Instrument::new(3),
@@ -260,7 +260,7 @@ impl Sequencer {
         self.should_render = true;
     }
 
-    pub fn key_double_pressed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
+    pub fn key_double_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             // Playable grid
             0x52 ..= 0x56 => {
@@ -271,23 +271,19 @@ impl Sequencer {
             },
             _ => (),
         };
-
-        None
     }
 
     // Key released is 0x80 + channel instead of 0x90 + channel
-    pub fn key_released(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
+    pub fn key_released(&mut self, message: jack::RawMidi) {
         self.keys_pressed.retain(|key_pressed| {
             key_pressed.channel != message.bytes[0] + 16
                 || key_pressed.note != message.bytes[1]
                 || key_pressed.velocity != message.bytes[2]
         });
-
-        None
     }
 
     // One of the control knobs on the APC was turned
-    pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> Vec<TimedMessage> {
+    pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) {
         // Get the channel & knob that APC knob should send out of, first 8 channels are for
         // instruments, next 2 are used for sequences (sequence channels will be used for bus
         // effects)
@@ -308,7 +304,8 @@ impl Sequencer {
         };
 
         //println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
-        vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
+        // TODO - Output this to corresponding port
+        //vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
     }
 
     // Cue knob
@@ -324,14 +321,22 @@ impl Sequencer {
         self.should_render = true;
     }
 
-    pub fn fader_adjusted(&mut self, time: u32, fader: u8, value: u8) -> Vec<TimedMessage> {
+    /*
+     * TODO - Output these over OSC directly to non-mixer
+     */
+    pub fn fader_adjusted(&mut self, time: u32, fader: u8, value: u8) {
         // Output on channel 16
         let out_knob = fader + self.instrument_group * 8;
-        vec![TimedMessage::new(time, Message::Note([0xB0 + 15, out_knob, value]))]
+        // TODO - Output this to corresponding port
+        //vec![TimedMessage::new(time, Message::Note([0xB0 + 15, out_knob, value]))]
     }
 
-    pub fn master_adjusted(&mut self, time: u32, value: u8) -> Vec<TimedMessage> {
-        vec![TimedMessage::new(time, Message::Note([0xB0 + 15, 127, value]))]
+    /*
+     * TODO - Output these over OSC directly to non-mixer
+     */
+    pub fn master_adjusted(&mut self, time: u32, value: u8) {
+        // TODO - Output this to corresponding port
+        //vec![TimedMessage::new(time, Message::Note([0xB0 + 15, 127, value]))]
     }
 
     pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
