@@ -260,27 +260,15 @@ impl Sequencer {
         self.should_render = true;
     }
 
-    pub fn key_double_pressed(&mut self, message: jack::RawMidi) {
-        match message.bytes[1] {
-            // Playable grid
-            0x52 ..= 0x56 => {
-                match self.overview {
-                    OverView::Instrument => self.record_playable(message.bytes[1] - 0x52),
-                    _ => (),
-                }
-            },
-            _ => (),
-        };
+    pub fn is_showing_instrument(&self) -> bool {
+        match self.overview { OverView::Instrument => true, _ => false }
     }
 
-    // Key released is 0x80 + channel instead of 0x90 + channel
-    pub fn key_released(&mut self, message: jack::RawMidi) {
-        self.keys_pressed.retain(|key_pressed| {
-            key_pressed.channel != message.bytes[0] + 16
-                || key_pressed.note != message.bytes[1]
-                || key_pressed.velocity != message.bytes[2]
-        });
+    pub fn is_showing_sequence(&self) -> bool {
+        match self.overview { OverView::Sequence => true, _ => false }
     }
+
+    pub fn is_showing_//TODO detailview
 
     // One of the control knobs on the APC was turned
     pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) {
