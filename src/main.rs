@@ -15,7 +15,6 @@ pub mod playable;
 
 use std::io;
 use std::sync::mpsc::channel;
-use controller::Controller;
 use handlers::*;
 
 fn main() {
@@ -26,10 +25,8 @@ fn main() {
     let (notification_sender, notification_receiver) = channel();
     let (timebase_sender, timebase_receiver) = channel();
 
-    // TODO - Pass client to cotroller
-    let controller = Controller::new(/*&client*/);
 
-    let processhandler = ProcessHandler::new(controller, notification_receiver, timebase_sender, &client);
+    let processhandler = ProcessHandler::new(notification_receiver, timebase_sender, &client);
     let timebasehandler = TimebaseHandler::new(timebase_receiver);
     let notificationhandler = NotificationHandler::new(notification_sender);
 

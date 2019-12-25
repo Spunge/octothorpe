@@ -6,11 +6,11 @@ use super::handlers::TimebaseHandler;
 
 pub struct Controller {
     pub sequencer: Sequencer,
-    key_presses: Vec<KeyPress>,
+    pressed_keys: Vec<PressedKey>,
 }
 
 #[derive(Debug)]
-struct KeyPress {
+struct PressedKey {
     time: u32,
     channel: u8,
     key: u8,
@@ -22,7 +22,7 @@ impl Controller {
     pub fn new() -> Self {
         Controller {
             sequencer: Sequencer::new(),
-            key_presses: vec![],
+            pressed_keys: vec![],
         }
     }
 
@@ -63,21 +63,21 @@ impl Controller {
                     },
                     0xF0 => self.process_sysex_message(message),
                     0x90..=0x9F => {
-                        let keypress = KeyPress { 
+                        let pressed_key = PressedKey { 
                             time: cycle.absolute_start + message.time, 
                             channel: message.bytes[0],
                             key: message.bytes[1],
                         };
 
                         // Remove keypresses that are not within double press range
-                        self.key_presses.retain(|previous| {
-                            keypress.time - previous.time < Controller::DOUBLE_PRESS_TICKS
+                        self.pressed_keys.retain(|previous| {
+                            pressed_key.time - previous.time < Controller::DOUBLE_PRESS_TICKS
                         });
 
                         // Check for old keypresses matching currently pressed key
-                        let double_presses: Vec<bool> = self.key_presses.iter()
+                        let double_presses: Vec<bool> = self.pressed_keys.iter()
                             .filter_map(|previous| {
-                                if previous.channel == keypress.channel && previous.key == keypress.key {
+                                if previous.channel == pressed_key.channel && previous.key == pressed_key.key {
                                     Some(true)
                                 } else {
                                     None
@@ -90,15 +90,15 @@ impl Controller {
                         // Always single press 
                         self.key_pressed(message, client);
 
-                        // Double keypress when its there
+                        // Double pressed_key when its there
                         if double_presses.len() > 0 {
                             if let Some(messages) = self.sequencer.key_double_pressed(message) {
                                 output.extend(messages);
                             }
                         }
 
-                        // Save keypress
-                        self.key_presses.push(keypress);
+                        // Save pressed_key
+                        self.pressed_keys.push(pressed_key);
 
                         Some(output)
                     },
@@ -120,7 +120,16 @@ impl Controller {
                 //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
                 // Only process channel note messages
                 match message.bytes[0] {
-                    0xB0 ..= 0xB8 => self.sequencer.control_changed(message),
+                    0xB0 ..= 0xB8 => {
+                        match message.bytes[1] {
+                            // APC knobs are ordered weird, reorder them from to 0..16
+                            0x10..=0x17 => Some(self.sequencer.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
+                            0x30..=0x37 => Some(self.sequencer.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
+                            0x7 => Some(self.sequencer.fader_adjusted(message.time, message.bytes[0] - 0xB0, message.bytes[2])),
+                            0xE => Some(self.sequencer.master_adjusted(message.time, message.bytes[2])),
+                            _ => None,
+                        }
+                    },
                     _ => None,
                 }
             })
@@ -128,8 +137,7 @@ impl Controller {
             .collect()
     }
 
-    // Process messages from APC controller knobs being turned
-    // This is a seperate function as we want to send responses to these messages to a diferent port
+    // Process incoming control change messages from plugins of which parameters were changed
     pub fn process_plugin_control_change_messages<'a, I>(&mut self, input: I) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,

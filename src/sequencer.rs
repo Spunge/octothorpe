@@ -287,7 +287,7 @@ impl Sequencer {
     }
 
     // One of the control knobs on the APC was turned
-    fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> Vec<TimedMessage> {
+    pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) -> Vec<TimedMessage> {
         // Get the channel & knob that APC knob should send out of, first 8 channels are for
         // instruments, next 2 are used for sequences (sequence channels will be used for bus
         // effects)
@@ -324,25 +324,14 @@ impl Sequencer {
         self.should_render = true;
     }
 
-    fn fader_adjusted(&mut self, time: u32, fader: u8, value: u8) -> Vec<TimedMessage> {
+    pub fn fader_adjusted(&mut self, time: u32, fader: u8, value: u8) -> Vec<TimedMessage> {
         // Output on channel 16
         let out_knob = fader + self.instrument_group * 8;
         vec![TimedMessage::new(time, Message::Note([0xB0 + 15, out_knob, value]))]
     }
 
-    fn master_adjusted(&mut self, time: u32, value: u8) -> Vec<TimedMessage> {
+    pub fn master_adjusted(&mut self, time: u32, value: u8) -> Vec<TimedMessage> {
         vec![TimedMessage::new(time, Message::Note([0xB0 + 15, 127, value]))]
-    }
-
-    pub fn control_changed(&mut self, message: jack::RawMidi) -> Option<Vec<TimedMessage>> {
-        // APC knobs are ordered weird, reorder them from to 0..16
-        match message.bytes[1] {
-            0x10..=0x17 => Some(self.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
-            0x30..=0x37 => Some(self.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
-            0x7 => Some(self.fader_adjusted(message.time, message.bytes[0] - 0xB0, message.bytes[2])),
-            0xE => Some(self.master_adjusted(message.time, message.bytes[2])),
-            _ => None,
-        }
     }
 
     pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
