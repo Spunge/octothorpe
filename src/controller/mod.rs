@@ -67,6 +67,112 @@ impl Buttons {
     }
 }
 
+enum ControllerEvent {
+    InquiryResponse { device_id: u8 },
+    ButtonPressed { button_type: ButtonType },
+    ButtonReleased { button_type: ButtonType },
+    KnobTurned { value: u8, knob_type: KnobType },
+    FaderMoved { time: u32, value: u8, fader_type: FaderType },
+    Unknown,
+}
+
+enum ButtonType {
+    Grid { x: u8, y: u8 },
+    Playable { index: u8 },
+    Indicator { index: u8 },
+    Instrument { index: u8 },
+    Activator { index: u8 },
+    Solo { index: u8 },
+    Arm { index: u8 },
+    Sequence { index: u8 },
+    Shift,
+    Quantization,
+    Play,
+    Stop,
+    Arrow { direction: Direction },
+    Unknown,
+}
+
+impl ButtonType {
+    fn new(channel: u8, note: u8) -> Self {
+        match note {
+            0x5B => ButtonType::Play,
+            0x5C => ButtonType::Stop,
+            0x33 => ButtonType::Instrument{ index: channel },
+            0x3F => ButtonType::Quantization,
+            0x57 ..= 0x5A => ButtonType::Sequence { index: note - 0x57 },
+            // Playable grid
+            0x52 ..= 0x56 => ButtonType::Playable { index: note - 0x52 },
+            // Grid should add notes & add phrases
+            0x35 ..= 0x39 => ButtonType::Grid { x: channel, y: note - 0x35 },
+            0x5E => ButtonType::Arrow { direction: Direction::Up },
+            0x5F => ButtonType::Arrow { direction: Direction::Down },
+            0x60 => ButtonType::Arrow { direction: Direction::Right },
+            0x61 => ButtonType::Arrow { direction: Direction::Left },
+            0x30 => ButtonType::Arm { index: channel },
+            0x31 => ButtonType::Solo { index: channel },
+            0x32 => ButtonType::Activator { index: channel },
+            _ => ButtonType::Unknown,
+        }
+    }
+}
+
+enum FaderType {
+    Track { index: u8 },
+    Master,
+}
+
+enum KnobType {
+    Effect { time: u32, index: u8},
+    Cue,
+}
+
+enum Direction {
+    Up,
+    Down,
+    Right,
+    Left,
+}
+
+impl ControllerEvent {
+    fn new(time: u32, bytes: &[u8]) -> Self {
+        match bytes[0] {
+            0xF0 => {
+                // Is this inquiry response
+                if bytes[3] == 0x06 && bytes[4] == 0x02  
+                    && bytes[5] == 0x47 && bytes[6] == 0x73 
+                {
+                    Self::InquiryResponse { device_id: bytes[13] }
+                } else {
+                    Self::Unknown
+                }
+            },
+            0x90 ..= 0x9F => Self::ButtonPressed { button_type: ButtonType::new(bytes[0] - 0x90, bytes[1]) },
+            0x80 ..= 0x8F => Self::ButtonReleased { button_type: ButtonType::new(bytes[0] - 0x80, bytes[1]) },
+            0xB0 ..= 0xB8 => {
+                match bytes[1] {
+                    0x30 ..= 0x37 | 0x10 ..= 0x17 => {
+                        // APC effect knobs are ordered weird, reorder them from to 0..16
+                        let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
+                        let index = bytes[1] - modifier;
+
+                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect { time, index } }
+                    },
+                    0x7 => Self::FaderMoved { 
+                        time, 
+                        value: bytes[2],
+                        fader_type: FaderType::Track { index: bytes[0] - 0xB0 } 
+                    },
+                    0xE => Self::FaderMoved { time, value: bytes[2], fader_type: FaderType::Master },
+                    0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
+                    _ => Self::Unknown,
+                }
+            },
+            _ => Self::Unknown,
+        }
+    }
+}
+
 pub struct Controller {
     buttons: Buttons,
 
@@ -99,6 +205,8 @@ impl Controller {
      */
     pub fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope, absolute_start: u32, sequencer: &mut Sequencer) {
         for message in self.input.iter(process_scope) {
+            let controller_event = ControllerEvent::new(message.time, message.bytes);
+
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
             match message.bytes[0] {
@@ -138,15 +246,16 @@ impl Controller {
                         },
                         _ => {
                             // Always single press ?
-                            sequencer.key_pressed(message);
+                            //sequencer.key_pressed(message);
                             /*
                              * Next up is double press & single presss logic
                              * TODO - Add grid multi key range support here
                              */
 
                             // Double pressed_button when its there
-                            if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_instrument() {
-                                sequencer.record_playable(message.bytes[1] - 0x52);
+                            if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_pattern() {
+                                let pattern_index = (message.bytes[1] - 0x52) as usize;
+                                sequencer.instrument().patterns[pattern_index].switch_recording_state()
                             }
                         }
                     }

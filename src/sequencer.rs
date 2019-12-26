@@ -143,7 +143,7 @@ impl Sequencer {
         (self.instrument_group * 8 + self.instrument) as usize
     }
 
-    fn instrument(&mut self) -> &mut Instrument {
+    pub fn instrument(&mut self) -> &mut Instrument {
         &mut self.instruments[self.instrument_index()]
     }
 
@@ -236,6 +236,7 @@ impl Sequencer {
         }
     }
 
+    /*
     pub fn key_pressed(&mut self, message: jack::RawMidi) {
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
 
@@ -259,6 +260,7 @@ impl Sequencer {
 
         self.should_render = true;
     }
+    */
 
     pub fn is_showing_instrument(&self) -> bool {
         match self.overview { OverView::Instrument => true, _ => false }
@@ -268,7 +270,15 @@ impl Sequencer {
         match self.overview { OverView::Sequence => true, _ => false }
     }
 
-    pub fn is_showing_//TODO detailview
+    pub fn is_showing_pattern(&self) -> bool {
+        self.is_showing_instrument() 
+            && match self.detailview { DetailView::Pattern => true, _ => false }
+    }
+
+    pub fn is_showing_phrase(&self) -> bool {
+        self.is_showing_instrument() 
+            && match self.detailview { DetailView::Phrase => true, _ => false }
+    }
 
     // One of the control knobs on the APC was turned
     pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) {
@@ -464,16 +474,6 @@ impl Sequencer {
 
     fn switch_quantizing(&mut self) {
         self.is_quantizing = ! self.is_quantizing;
-    }
-
-    // Set a playable to recording mode
-    fn record_playable(&mut self, playable: u8) {
-        match self.detailview {
-            DetailView::Pattern => {
-                self.instrument().patterns[playable as usize].switch_recording_state()
-            },
-            _ => (),
-        }
     }
 
     fn copy_playable(&mut self, from: u8, to: u8) {
