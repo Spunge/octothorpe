@@ -53,8 +53,8 @@ pub enum KnobType {
 
 pub enum Event {
     InquiryResponse(u8),
-    ButtonPressed(ButtonType),
-    ButtonReleased(ButtonType),
+    ButtonPressed { time: u32, button_type: ButtonType },
+    ButtonReleased { time: u32, button_type: ButtonType },
     KnobTurned { value: u8, knob_type: KnobType },
     FaderMoved { time: u32, value: u8, fader_type: FaderType },
     Unknown,
@@ -96,8 +96,8 @@ impl Event {
                     Self::Unknown
                 }
             },
-            0x90 ..= 0x9F => Self::ButtonPressed(ButtonType::new(bytes[0] - 0x90, bytes[1])),
-            0x80 ..= 0x8F => Self::ButtonReleased(ButtonType::new(bytes[0] - 0x80, bytes[1])),
+            0x90 ..= 0x9F => Self::ButtonPressed { time, button_type: ButtonType::new(bytes[0] - 0x90, bytes[1]) },
+            0x80 ..= 0x8F => Self::ButtonReleased { time, button_type: ButtonType::new(bytes[0] - 0x80, bytes[1]) },
             0xB0 ..= 0xB8 => {
                 match bytes[1] {
                     0x30 ..= 0x37 | 0x10 ..= 0x17 => {

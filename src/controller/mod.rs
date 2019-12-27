@@ -55,11 +55,20 @@ impl Controller {
                 Event::KnobTurned { value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => sequencer.cue_knob_turned(value),
-                        _ => (),
+                        KnobType::Effect { time, index } => sequencer.knob_turned(time, index, value),
                     };
                 },
-                Event::ButtonPressed(button_type) => {
-                    // TODO - double press
+                Event::FaderMoved { time, value, fader_type } => {
+                    // TODO - Pass these to "mixer"
+                    match fader_type {
+                        FaderType::Track(index) => sequencer.fader_adjusted(time, index, value),
+                        FaderType::Master => sequencer.master_adjusted(time, value),
+                    };
+                },
+                Event::ButtonPressed { time, button_type } => {
+                    // Make sure to register press in memory to see if we double pressed
+                    let is_double_pressed = self.memory.press(cycle.time_at_frame(time), message.bytes[0], message.bytes[1]);
+
                     match button_type {
                         ButtonType::Play => client.transport_start(),
                         ButtonType::Stop => {
@@ -73,9 +82,6 @@ impl Controller {
                         _ => {
                             // Always single press ?
                             //sequencer.key_pressed(message);
-                           
-                            // Get time in usecs keypress occurred
-                            let is_double_pressed = self.memory.press(cycle.time_at_frame(message.time), message.bytes[0], message.bytes[1]);
 
                             /*
                              * Next up is double press & single presss logic
@@ -84,27 +90,16 @@ impl Controller {
 
                             // Double pressed_button when its there
                             if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_pattern() {
+                                println!("yeah");
                                 let pattern_index = (message.bytes[1] - 0x52) as usize;
                                 sequencer.instrument().patterns[pattern_index].switch_recording_state()
                             }
                         },
                     }
                 },
-                Event::ButtonReleased(button_type) => {
-                    self.memory.release(cycle.time_at_frame(message.time), message.bytes[0], message.bytes[1]);
+                Event::ButtonReleased { time, button_type } => {
+                    self.memory.release(cycle.time_at_frame(time), message.bytes[0], message.bytes[1]);
                 },
-                /*
-                0xB0 ..= 0xB8 => {
-                    match message.bytes[1] {
-                        // APC knobs are ordered weird, reorder them from to 0..16
-                        0x10 ..= 0x17 => sequencer.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2]),
-                        0x30 ..= 0x37 => sequencer.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2]),
-                        0x7 => sequencer.fader_adjusted(message.time, message.bytes[0] - 0xB0, message.bytes[2]),
-                        0xE => sequencer.master_adjusted(message.time, message.bytes[2]),
-                        _ => (),
-                    }
-                },
-                */
                 _ => (),
             }
         }
