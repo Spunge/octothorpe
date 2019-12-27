@@ -67,7 +67,7 @@ impl Controller {
                 },
                 Event::ButtonPressed { time, button_type } => {
                     // Make sure to register press in memory to see if we double pressed
-                    let is_double_pressed = self.memory.press(cycle.time_at_frame(time), message.bytes[0], message.bytes[1]);
+                    let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
 
                     match button_type {
                         ButtonType::Play => client.transport_start(),
@@ -90,7 +90,6 @@ impl Controller {
 
                             // Double pressed_button when its there
                             if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_pattern() {
-                                println!("yeah");
                                 let pattern_index = (message.bytes[1] - 0x52) as usize;
                                 sequencer.instrument().patterns[pattern_index].switch_recording_state()
                             }
@@ -98,7 +97,7 @@ impl Controller {
                     }
                 },
                 Event::ButtonReleased { time, button_type } => {
-                    self.memory.release(cycle.time_at_frame(time), message.bytes[0], message.bytes[1]);
+                    self.memory.release(cycle.time_at_frame(time), button_type);
                 },
                 _ => (),
             }

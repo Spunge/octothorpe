@@ -5,14 +5,12 @@ use super::super::handlers::TimebaseHandler;
 struct ButtonPress {
     start: u64,
     end: Option<u64>,
-    //button_type: ButtonType,
-    channel: u8,
-    note: u8,
+    button_type: ButtonType,
 }
 
 impl ButtonPress {
-    pub fn new(start: u64, channel: u8, note: u8) -> Self {
-        Self { start, end: None, channel, note }
+    pub fn new(start: u64, button_type: ButtonType) -> Self {
+        Self { start, end: None, button_type, }
     }
 }
 
@@ -20,7 +18,7 @@ pub struct Memory {
     presses: Vec<ButtonPress>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ButtonType {
     Grid { x: u8, y: u8 },
     Playable(u8),
@@ -118,6 +116,9 @@ impl Event {
     }
 }
 
+/*
+ * This will keep track of button presses so we can support double press & range press
+ */
 impl Memory {
     const DOUBLE_PRESS_USECS: u64 = 300000;
 
@@ -126,7 +127,7 @@ impl Memory {
     }
 
     // We pressed a button!
-    pub fn press(&mut self, start: u64, channel: u8, note: u8) -> bool {
+    pub fn press(&mut self, start: u64, button_type: ButtonType) -> bool {
         // Remove all keypresses that are not within double press range, while checking if this
         // key is double pressed wihtin short perioud
         let mut is_double_pressed = false;
@@ -135,8 +136,7 @@ impl Memory {
             let falls_within_double_press_ticks = 
                 previous.end.is_none() || start - previous.end.unwrap() < Memory::DOUBLE_PRESS_USECS;
 
-            let is_same_button = 
-                previous.channel == channel && previous.note == note;
+            let is_same_button = previous.button_type == button_type;
 
             // Ugly side effects, but i thought this to be cleaner as 2 iters looking for the same
             // thing
@@ -147,17 +147,14 @@ impl Memory {
 
         // Save pressed_button to compare next pressed keys with, do this after comparing to not
         // compare with current press
-        self.presses.push(ButtonPress::new(start, channel, note));
+        self.presses.push(ButtonPress::new(start, button_type));
 
         is_double_pressed
     }
 
-    pub fn release(&mut self, end: u64, channel: u8, note: u8) {
+    pub fn release(&mut self, end: u64, button_type: ButtonType) {
         let mut pressed_button = self.presses.iter_mut().rev()
-            .find(|pressed_button| {
-                // press = 0x90, release = 0x80
-                pressed_button.channel - 16 == channel && pressed_button.note == note
-            })
+            .find(|pressed_button| pressed_button.button_type == button_type)
             // We can safely unwrap as you can't press the same button twice
             .unwrap();
 
