@@ -18,13 +18,22 @@ pub struct PlayingPhrase {
 
 #[derive(Clone)]
 pub struct Phrase {
+    length: u32,
     pub playable: Playable,
     pub played_patterns: Vec<PlayedPattern>,
 }
 
 impl Phrase {
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), played_patterns, }
+        Phrase { 
+            length: 0,
+            playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), 
+            played_patterns, 
+        }
+    }
+
+    pub fn set_length(&mut self, length: u8) {
+        self.length = length as u32;
     }
 
     pub fn new(index: usize) -> Self {

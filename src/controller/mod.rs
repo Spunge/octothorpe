@@ -26,7 +26,8 @@ pub struct APC40 {
     output: MidiOut,
 
     is_identified: bool,
-    offset: u8,
+    instrument_offset: u8,
+    knob_offset: u8,
 }
 
 impl Controller for APC40 {
@@ -42,7 +43,9 @@ impl Controller for APC40 {
 
             is_identified: false,
             // Offset the faders & sequence knobs by this value
-            offset: 8,
+            instrument_offset: 8,
+            // Offset knobs by this value to support multiple groups
+            knob_offset: 0,
         }
     }
 
@@ -69,21 +72,60 @@ impl Controller for APC40 {
                 Event::KnobTurned { value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => sequencer.cue_knob_turned(value),
-                        KnobType::Effect { time, index } => sequencer.knob_turned(time, index, value),
+                        KnobType::Effect { time, index } => sequencer.knob_turned(time, index + self.knob_offset, value),
                     };
                 },
                 Event::FaderMoved { time, value, fader_type } => {
                     // TODO - Pass these to "mixer"
                     match fader_type {
-                        FaderType::Track(index) => mixer.fader_adjusted(time, index + self.offset, value),
+                        FaderType::Track(index) => mixer.fader_adjusted(time, index + self.instrument_offset, value),
                         FaderType::Master => mixer.master_adjusted(time, value),
                     };
                 },
                 Event::ButtonPressed { time, button_type } => {
-                    // First get modifier (other currently pressed key), before registering current press in memory
-                    let modifier = self.memory.modifier();
                     // Register press in memory to see if we double pressed
                     let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
+                    // Get modifier (other currently pressed key)
+                    let modifier = self.memory.modifier();
+
+                    match surface.view {
+                        View::Instrument => {
+                            let instrument = sequencer.get_instrument(surface.instrument_shown());
+                            let phrase = instrument.get_phrase(surface.phrase_shown());
+
+                            match button_type {
+                                ButtonType::Grid(x, y) => {
+                                },
+                                ButtonType::Playable(index) => {
+                                    if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                        instrument.clone_phrase(modifier_index, index);
+                                    } else {
+                                        surface.show_phrase(index);
+                                    }
+                                },
+                                ButtonType::Activator(index) => {
+                                    phrase.set_length(index);
+                                },
+                                _ => (),
+                            }
+                        },
+                        View::Sequence => {
+                            let sequence = sequencer.get_sequence(surface.sequence_shown());
+
+                            match button_type {
+                                ButtonType::Grid(x, y) => {
+                                    sequence.toggle_phrase(x + self.instrument_offset, y);
+                                },
+                                ButtonType::Playable(index) => {
+                                    sequence.toggle_row(index);
+                                },
+                                ButtonType::Activator(index) => {
+                                    sequence.toggle_active(index + self.instrument_offset);
+                                },
+                                _ => (),
+                            }
+                        }
+                    }
 
                     match button_type {
                         ButtonType::Play => cycle.client.transport_start(),
@@ -102,57 +144,13 @@ impl Controller for APC40 {
                                 surface.toggle_sequence(index);
                             }
                         },
-                        ButtonType::Grid { x, y } => {
-                            match surface.view {
-                                View::Instrument => {
-                                
-                                },
-                                View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_phrase(x + self.offset, y);
-                                }
-                            }
-                        },
-                        ButtonType::Playable(index) => {
-                            match surface.view {
-                                View::Instrument => {
-                                    let instrument = sequencer.get_instrument(surface.instrument_shown());
-
-                                    if is_double_pressed {
-                                        instrument.get_pattern(index).switch_recording_state()
-                                    } else {
-                                        if let Some(ButtonType::Playable(modifier_index)) = modifier {
-                                            instrument.clone_pattern(modifier_index, index);
-                                        } else {
-                                            surface.show_pattern(index);
-                                        }
-                                    }
-                                },
-                                View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_row(index);
-                                }
-                            }
-                        },
                         ButtonType::Instrument(index) => {
-                            surface.toggle_instrument(index + self.offset);
+                            surface.toggle_instrument(index + self.instrument_offset);
                         },
                         ButtonType::Quantization => {
                             sequencer.switch_quantizing();
                         },
-                        ButtonType::Activator(index) => {
-                            match surface.view {
-                                View::Instrument => {
-                                     // TODO - Select knob group
-                                    //0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
-                                },
-                                View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_active(index + self.offset);
-                                }
-                            }
-                        }
-                        _ => {
-                            // Always single press ?
-                            //sequencer.key_pressed(message);
-                        },
+                        _ => (),
                     }
                 },
                 Event::ButtonReleased { time, button_type } => {
@@ -401,57 +399,66 @@ impl Controller for APC20 {
                     };
                 },
                 Event::ButtonPressed { time, button_type } => {
-                    // First get modifier (other currently pressed key), before registering current press in memory
-                    let modifier = self.memory.modifier();
                     // Register press in memory to see if we double pressed
                     let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
+                    // Get modifier (other currently pressed key)
+                    let modifier = self.memory.modifier();
 
-                    match button_type {
-                        ButtonType::Grid { x, y } => {
-                            match surface.view {
-                                View::Instrument => {
-                                
+                    match surface.view {
+                        View::Instrument => {
+                            let instrument = sequencer.get_instrument(surface.instrument_shown());
+                            let pattern = instrument.get_pattern(surface.phrase_shown());
+                        
+                            match button_type {
+                                ButtonType::Grid(x, y) => {
+                                    let from = if let Some(ButtonType::Grid(modifier_x, modifier_y)) = modifier {
+                                        if modifier_y == y { modifier_x } else { x }
+                                    } else { x };
+
+                                    println!("from {:?} to {:?}", from, x);
+
+                                    //let from = self.memory.pressed_buttons(button_type)
+                                        //.filter(|button_type| { if let ButtonType::grid { x, y }button_type.y == y })
+                                        //.min_by_key(|button_type| button_type.x)
+                                        //.unwrap();
+
+                                    //println!("{:?}", from);
+                                    //self.instrument().pattern().toggle_led_range(from..to, message.bytes[1] - 0x35, 127, 127),
                                 },
-                                View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_phrase(x, y);
-                                }
-                            }
-                        },
-                        ButtonType::Playable(index) => {
-                            match surface.view {
-                                View::Instrument => {
-                                    let instrument = sequencer.get_instrument(surface.instrument_shown());
-
-                                    if let Some(ButtonType::Playable(modifier_index)) = modifier {
-                                        instrument.clone_phrase(modifier_index, index);
+                                ButtonType::Playable(index) => {
+                                    if is_double_pressed {
+                                        instrument.get_pattern(index).switch_recording_state()
                                     } else {
-                                        surface.show_phrase(index);
+                                        if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                            println!("copying from {:?} to {:?}", modifier_index, index);
+                                            instrument.clone_pattern(modifier_index, index);
+                                        } else {
+                                            surface.show_pattern(index);
+                                        }
                                     }
                                 },
-                                View::Sequence => {
-                                    // TODO - Only switch rows on APC20
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_row(index);
-                                }
+                                ButtonType::Activator(index) => {
+                                    // TODO - Pattern length
+                                },
+                                _ => (),
                             }
                         },
-                        ButtonType::Instrument(index) => {
-                            surface.toggle_instrument(index);
-                        },
-                        ButtonType::Activator(index) => {
-                            match surface.view {
-                                View::Instrument => {
-                                     // TODO - Select knob group
-                                    //0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
-                                },
-                                View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_active(index);
-                                }
+                        View::Sequence => {
+                            let sequence = sequencer.get_sequence(surface.sequence_shown());
+                        
+                            match button_type {
+                                ButtonType::Grid(x, y) => sequence.toggle_phrase(x, y),
+                                // TODO - Only switch rows on APC20
+                                ButtonType::Playable(index) => sequence.toggle_row(index),
+                                ButtonType::Activator(index) => sequence.toggle_active(index),
+                                _ => (),
                             }
                         }
-                        _ => {
-                            // Always single press ?
-                            //sequencer.key_pressed(message);
-                        },
+                    }
+
+                    match button_type {
+                        ButtonType::Instrument(index) => surface.toggle_instrument(index),
+                        _ => (),
                     }
                 },
                 Event::ButtonReleased { time, button_type } => {

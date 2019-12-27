@@ -147,12 +147,12 @@ impl Sequencer {
         &mut self.instruments[self.instrument_index()]
     }
 
-    pub fn get_instrument(&mut self, index: usize) -> &mut Instrument {
-        &mut self.instruments[index]
+    pub fn get_instrument(&mut self, index: u8) -> &mut Instrument {
+        &mut self.instruments[index as usize]
     }
 
-    pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
-        &mut self.sequences[index]
+    pub fn get_sequence(&mut self, index: u8) -> &mut Sequence {
+        &mut self.sequences[index as usize]
     }
 
     fn sequence(&mut self) -> &mut Sequence {
@@ -167,26 +167,6 @@ impl Sequencer {
 
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
-            0x3E | 0x51 => self.switch_detailview(),
-            // Playable grid
-            0x52 ..= 0x56 => {
-                // Get start & end in grid of pressed keys
-                let from = self.keys_pressed.iter()
-                    .find(|keypress| [0x52, 0x53, 0x54, 0x55, 0x56].contains(&keypress.note))
-                    .unwrap()
-                    .note;
-
-                let to = self.keys_pressed.iter().rev()
-                    .find(|keypress| [0x52, 0x53, 0x54, 0x55, 0x56].contains(&keypress.note))
-                    .unwrap()
-                    .note;
-
-                if from != to {
-                    self.copy_playable(from - 0x52, to - 0x52);
-                }
-
-                self.switch_playable(to - 0x52);
-            },
             // Grid should add notes & add phrases
             0x35 ..= 0x39 => {
                 // Get start & end in grid of pressed keys

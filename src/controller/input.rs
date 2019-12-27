@@ -1,4 +1,6 @@
 
+use std::mem;
+
 #[derive(Debug)]
 struct ButtonPress {
     start: u64,
@@ -18,7 +20,7 @@ pub struct Memory {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ButtonType {
-    Grid { x: u8, y: u8 },
+    Grid(u8, u8),
     Playable(u8),
     Indicator(u8),
     Instrument(u8),
@@ -68,11 +70,12 @@ impl ButtonType {
             // Playable grid
             0x52 ..= 0x56 => ButtonType::Playable(note - 0x52),
             // Grid should add notes & add phrases
-            0x35 ..= 0x39 => ButtonType::Grid { x: channel, y: note - 0x35 },
+            0x35 ..= 0x39 => ButtonType::Grid(channel, note - 0x35),
             0x5E => ButtonType::Up,
             0x5F => ButtonType::Down,
             0x60 => ButtonType::Right,
             0x61 => ButtonType::Left,
+            0x62 => ButtonType::Shift,
             0x30 => ButtonType::Arm(channel),
             0x31 => ButtonType::Solo(channel),
             0x32 => ButtonType::Activator(channel),
@@ -160,7 +163,7 @@ impl Memory {
     }
 
     pub fn modifier(&self) -> Option<ButtonType> {
-        self.presses.iter().rev()
+        self.presses.iter()
             .find(|pressed_button| pressed_button.end.is_none())
             .and_then(|pressed_button| Some(pressed_button.button_type))
     }
