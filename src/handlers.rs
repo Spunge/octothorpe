@@ -60,15 +60,15 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 (*pos).ticks_per_beat = Self::TICKS_PER_BEAT as f64;
                 (*pos).beat_type = self.beat_type as f32;
                 (*pos).beats_per_minute = self.beats_per_minute;
-                
+
                 self.is_up_to_date = true;
             }
 
             let second = (*pos).frame as f64 / (*pos).frame_rate as f64;
             let abs_tick = second / 60.0 * self.beats_per_minute * Self::TICKS_PER_BEAT as f64;
-            //let abs_tick = Cycle::get_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
+            // Plus 1 as humans tend not to count from 0
             (*pos).bar = (abs_beat / (*pos).beats_per_bar as f64) as i32 + 1;
             (*pos).beat = (abs_beat % (*pos).beats_per_bar as f64) as i32 + 1;
             (*pos).bar_start_tick = (abs_beat as i32 * (*pos).ticks_per_beat as i32) as f64;
@@ -173,7 +173,7 @@ impl ProcessHandler {
 }
 
 impl jack::ProcessHandler for ProcessHandler {
-    fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
+    fn process(&mut self, client: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
         // Get something representing this process cycle
         //let (state, pos) = client.transport_query();
         //let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
@@ -182,7 +182,9 @@ impl jack::ProcessHandler for ProcessHandler {
         // cycle.absolute_start indicates this is first cycle program runs for
         //self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
-        self.controller.process(client, process_scope, &mut self.sequencer);
+        let cycle = ProcessCycle { scope };
+
+        self.controller.process(client, cycle, &mut self.sequencer);
 
         //let mut apc_messages = vec![];
         //let mut control_messages = vec![];

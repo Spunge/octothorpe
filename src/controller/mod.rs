@@ -1,13 +1,14 @@
 
-use super::message::{TimedMessage, Message};
-use super::cycle::Cycle;
-use super::sequencer::Sequencer;
-use super::handlers::{TimebaseHandler, MidiOut};
-
 mod input;
 
+use super::message::{TimedMessage, Message};
+use super::cycle::ProcessCycle;
+use super::sequencer::Sequencer;
+use super::handlers::{TimebaseHandler, MidiOut};
+use input::*;
+
 pub struct Controller {
-    memory: input::Memory,
+    memory: Memory,
 
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
@@ -22,7 +23,7 @@ impl Controller {
         let output = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
         
         Controller {
-            memory: input::Memory::new(),
+            memory: Memory::new(),
 
             input,
             output: MidiOut::new(output),
@@ -34,14 +35,14 @@ impl Controller {
     /*
      * Process input & output from controller jackports
      */
-    pub fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope, sequencer: &mut Sequencer) {
-        for message in self.input.iter(process_scope) {
-            let event = input::Event::new(message.time, message.bytes);
+    pub fn process(&mut self, client: &jack::Client, cycle: ProcessCycle, sequencer: &mut Sequencer) {
+        for message in self.input.iter(cycle.scope) {
+            let event = Event::new(message.time, message.bytes);
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
             match event {
-                input::Event::InquiryResponse(device_id) => {
+                Event::InquiryResponse(device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
@@ -51,17 +52,17 @@ impl Controller {
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
-                input::Event::KnobTurned { value, knob_type } => {
+                Event::KnobTurned { value, knob_type } => {
                     match knob_type {
-                        input::KnobType::Cue => sequencer.cue_knob_turned(value),
+                        KnobType::Cue => sequencer.cue_knob_turned(value),
                         _ => (),
                     };
                 },
-                input::Event::ButtonPressed(button_type) => {
+                Event::ButtonPressed(button_type) => {
                     // TODO - double press
                     match button_type {
-                        input::ButtonType::Play => client.transport_start(),
-                        input::ButtonType::Stop => {
+                        ButtonType::Play => client.transport_start(),
+                        ButtonType::Stop => {
                             // Reset to 0 when we press stop button but we're already stopped
                             let (state, _) = client.transport_query();
                             match state {
@@ -74,15 +75,7 @@ impl Controller {
                             //sequencer.key_pressed(message);
                            
                             // Get time in usecs keypress occurred
-                            // TODO - When can this error?
-                            let cycle_times = process_scope.cycle_times().unwrap();
-                            println!("{:?}", cycle_times.current_usecs);
-                            let frames = process_scope.n_frames();
-                            let usecs_per_frame = (cycle_times.next_usecs - cycle_times.current_usecs) as f32 / frames as f32;
-                            let usecs_since_period_start = message.time as f32 * usecs_per_frame;
-                            let time = cycle_times.current_usecs + usecs_since_period_start as u64;
-                            //let time = process_scope.cycle_times().unwrap().current_usecs + client.frames_to_time(message.time);
-                            let is_double_pressed = self.memory.press(time, message.bytes[0], message.bytes[1]);
+                            let is_double_pressed = self.memory.press(cycle.time_at_frame(message.time), message.bytes[0], message.bytes[1]);
 
                             /*
                              * Next up is double press & single presss logic
@@ -91,20 +84,14 @@ impl Controller {
 
                             // Double pressed_button when its there
                             if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_pattern() {
-                                println!("double");
                                 let pattern_index = (message.bytes[1] - 0x52) as usize;
                                 sequencer.instrument().patterns[pattern_index].switch_recording_state()
                             }
                         },
                     }
                 },
-                input::Event::ButtonReleased(button_type) => {
-                    let cycle_times = process_scope.cycle_times().unwrap();
-                    let frames = process_scope.n_frames();
-                    let usecs_per_frame = cycle_times.period_usecs / frames as f32;
-                    let usecs_since_period_start = message.time as f32 * usecs_per_frame;
-                    let time = cycle_times.current_usecs + usecs_since_period_start as u64;
-                    self.memory.release(time, message.bytes[0], message.bytes[1]);
+                Event::ButtonReleased(button_type) => {
+                    self.memory.release(cycle.time_at_frame(message.time), message.bytes[0], message.bytes[1]);
                 },
                 /*
                 0xB0 ..= 0xB8 => {
@@ -127,7 +114,7 @@ impl Controller {
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
         }
 
-        self.output.write_midi(process_scope);
+        self.output.write_midi(cycle.scope);
     }
 
     /*

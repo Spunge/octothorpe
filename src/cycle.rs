@@ -1,10 +1,17 @@
 
 
 pub struct ProcessCycle<'a> {
-    scope: &'a jack::ProcessScope,
+    pub scope: &'a jack::ProcessScope,
 }
 
 impl<'a> ProcessCycle<'a> {
+    pub fn time_at_frame(&self, frame: u32) -> u64 {
+        // TODO - When can this error?
+        let cycle_times = self.scope.cycle_times().unwrap();
+        let usecs_per_frame = (cycle_times.next_usecs - cycle_times.current_usecs) as f32 / self.scope.n_frames() as f32;
+        let usecs_since_period_start = frame as f32 * usecs_per_frame;
+        cycle_times.current_usecs + usecs_since_period_start as u64
+    }
 }
 
 #[derive(Clone, Debug)]
