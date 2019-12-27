@@ -4,7 +4,7 @@ mod input;
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
 use super::sequencer::Sequencer;
-use super::handlers::{TimebaseHandler, MidiOut};
+use super::port::MidiOut;
 use input::*;
 
 pub struct Controller {

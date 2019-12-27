@@ -4,7 +4,7 @@ use std::ops::Range;
 use super::note::Note;
 use super::playable::Playable;
 use super::cycle::Cycle;
-use super::handlers::TimebaseHandler;
+use super::TimebaseHandler;
 
 #[derive(Debug, Clone)]
 pub struct PlayedPattern {

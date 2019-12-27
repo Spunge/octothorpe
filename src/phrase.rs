@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
-use super::handlers::TimebaseHandler;
+use super::TimebaseHandler;
 
 #[derive(Debug)]
 pub struct PlayingPhrase {
