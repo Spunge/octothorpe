@@ -4,177 +4,10 @@ use super::cycle::Cycle;
 use super::sequencer::Sequencer;
 use super::handlers::{TimebaseHandler, MidiOut};
 
-#[derive(Debug)]
-struct PressedButton {
-    start: u32,
-    end: Option<u32>,
-    channel: u8,
-    note: u8,
-}
-
-impl PressedButton {
-    pub fn new(start: u32, channel: u8, note: u8) -> Self {
-        Self { start, end: None, channel, note }
-    }
-}
-
-struct Buttons {
-    pressed: Vec<PressedButton>,
-}
-
-impl Buttons {
-    pub fn new() -> Self {
-        Self { pressed: vec![] }
-    }
-
-    // We pressed a button!
-    pub fn press(&mut self, start: u32, channel: u8, note: u8) -> bool {
-        // Remove all keypresses that are not within double press range, while checking if this
-        // key is double pressed wihtin short perioud
-        let mut is_double_pressed = false;
-
-        self.pressed.retain(|previous| {
-            let falls_within_double_press_ticks = 
-                previous.end.is_none() || start - previous.end.unwrap() < Controller::DOUBLE_PRESS_TICKS;
-
-            let is_same_button = 
-                previous.channel == channel && previous.note == note;
-
-            // Ugly side effects, but i thought this to be cleaner as 2 iters looking for the same
-            // thing
-            is_double_pressed = falls_within_double_press_ticks && is_same_button;
-
-            falls_within_double_press_ticks
-        });
-
-        // Save pressed_button to compare next pressed keys with, do this after comparing to not
-        // compare with current press
-        self.pressed.push(PressedButton::new(start, channel, note));
-
-        is_double_pressed
-    }
-
-    pub fn release(&mut self, end: u32, channel: u8, note: u8) {
-        let mut pressed_button = self.pressed.iter_mut().rev()
-            .find(|pressed_button| {
-                // press = 0x90, release = 0x80
-                pressed_button.channel - 16 == channel && pressed_button.note == note
-            })
-            // We can safely unwrap as you can't press the same button twice
-            .unwrap();
-
-        pressed_button.end = Some(end);
-    }
-}
-
-enum ControllerEvent {
-    InquiryResponse { device_id: u8 },
-    ButtonPressed { button_type: ButtonType },
-    ButtonReleased { button_type: ButtonType },
-    KnobTurned { value: u8, knob_type: KnobType },
-    FaderMoved { time: u32, value: u8, fader_type: FaderType },
-    Unknown,
-}
-
-enum ButtonType {
-    Grid { x: u8, y: u8 },
-    Playable { index: u8 },
-    Indicator { index: u8 },
-    Instrument { index: u8 },
-    Activator { index: u8 },
-    Solo { index: u8 },
-    Arm { index: u8 },
-    Sequence { index: u8 },
-    Shift,
-    Quantization,
-    Play,
-    Stop,
-    Arrow { direction: Direction },
-    Unknown,
-}
-
-impl ButtonType {
-    fn new(channel: u8, note: u8) -> Self {
-        match note {
-            0x5B => ButtonType::Play,
-            0x5C => ButtonType::Stop,
-            0x33 => ButtonType::Instrument{ index: channel },
-            0x3F => ButtonType::Quantization,
-            0x57 ..= 0x5A => ButtonType::Sequence { index: note - 0x57 },
-            // Playable grid
-            0x52 ..= 0x56 => ButtonType::Playable { index: note - 0x52 },
-            // Grid should add notes & add phrases
-            0x35 ..= 0x39 => ButtonType::Grid { x: channel, y: note - 0x35 },
-            0x5E => ButtonType::Arrow { direction: Direction::Up },
-            0x5F => ButtonType::Arrow { direction: Direction::Down },
-            0x60 => ButtonType::Arrow { direction: Direction::Right },
-            0x61 => ButtonType::Arrow { direction: Direction::Left },
-            0x30 => ButtonType::Arm { index: channel },
-            0x31 => ButtonType::Solo { index: channel },
-            0x32 => ButtonType::Activator { index: channel },
-            _ => ButtonType::Unknown,
-        }
-    }
-}
-
-enum FaderType {
-    Track { index: u8 },
-    Master,
-}
-
-enum KnobType {
-    Effect { time: u32, index: u8},
-    Cue,
-}
-
-enum Direction {
-    Up,
-    Down,
-    Right,
-    Left,
-}
-
-impl ControllerEvent {
-    fn new(time: u32, bytes: &[u8]) -> Self {
-        match bytes[0] {
-            0xF0 => {
-                // Is this inquiry response
-                if bytes[3] == 0x06 && bytes[4] == 0x02  
-                    && bytes[5] == 0x47 && bytes[6] == 0x73 
-                {
-                    Self::InquiryResponse { device_id: bytes[13] }
-                } else {
-                    Self::Unknown
-                }
-            },
-            0x90 ..= 0x9F => Self::ButtonPressed { button_type: ButtonType::new(bytes[0] - 0x90, bytes[1]) },
-            0x80 ..= 0x8F => Self::ButtonReleased { button_type: ButtonType::new(bytes[0] - 0x80, bytes[1]) },
-            0xB0 ..= 0xB8 => {
-                match bytes[1] {
-                    0x30 ..= 0x37 | 0x10 ..= 0x17 => {
-                        // APC effect knobs are ordered weird, reorder them from to 0..16
-                        let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
-                        let index = bytes[1] - modifier;
-
-                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect { time, index } }
-                    },
-                    0x7 => Self::FaderMoved { 
-                        time, 
-                        value: bytes[2],
-                        fader_type: FaderType::Track { index: bytes[0] - 0xB0 } 
-                    },
-                    0xE => Self::FaderMoved { time, value: bytes[2], fader_type: FaderType::Master },
-                    0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
-                    _ => Self::Unknown,
-                }
-            },
-            _ => Self::Unknown,
-        }
-    }
-}
+mod input;
 
 pub struct Controller {
-    buttons: Buttons,
+    memory: input::Memory,
 
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
@@ -184,14 +17,12 @@ pub struct Controller {
 }
 
 impl Controller {
-    const DOUBLE_PRESS_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT / 2;
-
     pub fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
         let output = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
         
         Controller {
-            buttons: Buttons::new(),
+            memory: input::Memory::new(),
 
             input,
             output: MidiOut::new(output),
@@ -203,50 +34,56 @@ impl Controller {
     /*
      * Process input & output from controller jackports
      */
-    pub fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope, absolute_start: u32, sequencer: &mut Sequencer) {
+    pub fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope, sequencer: &mut Sequencer) {
         for message in self.input.iter(process_scope) {
-            let controller_event = ControllerEvent::new(message.time, message.bytes);
+            let event = input::Event::new(message.time, message.bytes);
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
-            match message.bytes[0] {
-                0xF0 => {
-                    // Is this inquiry response
-                    if message.bytes[3] == 0x06 && message.bytes[4] == 0x02  
-                        && message.bytes[5] == 0x47 && message.bytes[6] == 0x73 
-                    {
-                        // Introduce ourselves to controller
-                        // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
-                        // 0x42 is ableton alternate mode (all leds controlled from host)
-                        let message = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
-                        // Make sure we stop inquiring
-                        self.is_identified = true;
+            match event {
+                input::Event::InquiryResponse(device_id) => {
+                    // Introduce ourselves to controller
+                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
+                    // 0x42 is ableton alternate mode (all leds controlled from host)
+                    let message = Message::Introduction([0xF0, 0x47, device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                    // Make sure we stop inquiring
+                    self.is_identified = true;
 
-                        self.output.output_message(TimedMessage::new(0, message));
-                    }
+                    self.output.output_message(TimedMessage::new(0, message));
                 },
-                0xB0 => {
-                    if message.bytes[1] == 0x2F {
-                        sequencer.cue_knob_turned(message.bytes[2]);
-                    }
+                input::Event::KnobTurned { value, knob_type } => {
+                    match knob_type {
+                        input::KnobType::Cue => sequencer.cue_knob_turned(value),
+                        _ => (),
+                    };
                 },
-                0x90 ..= 0x9F => {
-                    // Rememberrr
-                    let press_tick = absolute_start + message.time;
-                    let is_double_pressed = self.buttons.press(press_tick, message.bytes[0], message.bytes[1]);
-
-                    match message.bytes[1] {
-                        0x5B => { client.transport_start() },
-                        0x5C => {
+                input::Event::ButtonPressed(button_type) => {
+                    // TODO - double press
+                    match button_type {
+                        input::ButtonType::Play => client.transport_start(),
+                        input::ButtonType::Stop => {
+                            // Reset to 0 when we press stop button but we're already stopped
                             let (state, _) = client.transport_query();
                             match state {
                                 1 => client.transport_stop(),
                                 _ => client.transport_reposition(jack::Position::default()),
                             };
-                        },
+                        }
                         _ => {
                             // Always single press ?
                             //sequencer.key_pressed(message);
+                           
+                            // Get time in usecs keypress occurred
+                            // TODO - When can this error?
+                            let cycle_times = process_scope.cycle_times().unwrap();
+                            println!("{:?}", cycle_times.current_usecs);
+                            let frames = process_scope.n_frames();
+                            let usecs_per_frame = (cycle_times.next_usecs - cycle_times.current_usecs) as f32 / frames as f32;
+                            let usecs_since_period_start = message.time as f32 * usecs_per_frame;
+                            let time = cycle_times.current_usecs + usecs_since_period_start as u64;
+                            //let time = process_scope.cycle_times().unwrap().current_usecs + client.frames_to_time(message.time);
+                            let is_double_pressed = self.memory.press(time, message.bytes[0], message.bytes[1]);
+
                             /*
                              * Next up is double press & single presss logic
                              * TODO - Add grid multi key range support here
@@ -254,17 +91,22 @@ impl Controller {
 
                             // Double pressed_button when its there
                             if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_pattern() {
+                                println!("double");
                                 let pattern_index = (message.bytes[1] - 0x52) as usize;
                                 sequencer.instrument().patterns[pattern_index].switch_recording_state()
                             }
-                        }
+                        },
                     }
-
                 },
-                0x80 ..= 0x8F => {
-                    let release_tick = absolute_start + message.time;
-                    self.buttons.release(release_tick, message.bytes[0], message.bytes[1]);
+                input::Event::ButtonReleased(button_type) => {
+                    let cycle_times = process_scope.cycle_times().unwrap();
+                    let frames = process_scope.n_frames();
+                    let usecs_per_frame = cycle_times.period_usecs / frames as f32;
+                    let usecs_since_period_start = message.time as f32 * usecs_per_frame;
+                    let time = cycle_times.current_usecs + usecs_since_period_start as u64;
+                    self.memory.release(time, message.bytes[0], message.bytes[1]);
                 },
+                /*
                 0xB0 ..= 0xB8 => {
                     match message.bytes[1] {
                         // APC knobs are ordered weird, reorder them from to 0..16
@@ -275,6 +117,7 @@ impl Controller {
                         _ => (),
                     }
                 },
+                */
                 _ => (),
             }
         }

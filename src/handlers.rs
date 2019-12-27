@@ -5,7 +5,7 @@ use std::sync::mpsc::{Sender, Receiver};
 use super::sequencer::Sequencer;
 use super::controller::Controller;
 use super::message::{TimedMessage, Message};
-use super::cycle::Cycle;
+use super::cycle::{ProcessCycle, Cycle};
 
 pub struct TimebaseHandler {
     beats_per_minute: f64,
@@ -64,7 +64,9 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 self.is_up_to_date = true;
             }
 
-            let abs_tick = Cycle::get_tick(*pos, (*pos).frame);
+            let second = (*pos).frame as f64 / (*pos).frame_rate as f64;
+            let abs_tick = second / 60.0 * self.beats_per_minute * Self::TICKS_PER_BEAT as f64;
+            //let abs_tick = Cycle::get_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
             (*pos).bar = (abs_beat / (*pos).beats_per_bar as f64) as i32 + 1;
@@ -173,15 +175,14 @@ impl ProcessHandler {
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, process_scope: &jack::ProcessScope) -> jack::Control {
         // Get something representing this process cycle
-        let (state, pos) = client.transport_query();
-        let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
+        //let (state, pos) = client.transport_query();
+        //let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
         // Update next ticks to keep track of absoulute ticks elapsed for note off events
-        self.ticks_elapsed += cycle.ticks;
+        //self.ticks_elapsed += cycle.ticks;
         // cycle.absolute_start indicates this is first cycle program runs for
-        self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
+        //self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
-
-        self.controller.process(client, process_scope, cycle.absolute_start, &mut self.sequencer);
+        self.controller.process(client, process_scope, &mut self.sequencer);
 
         //let mut apc_messages = vec![];
         //let mut control_messages = vec![];

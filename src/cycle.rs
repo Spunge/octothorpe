@@ -1,4 +1,12 @@
 
+
+pub struct ProcessCycle<'a> {
+    scope: &'a jack::ProcessScope,
+}
+
+impl<'a> ProcessCycle<'a> {
+}
+
 #[derive(Clone, Debug)]
 pub struct Cycle {
     pub start: u32,
@@ -51,10 +59,6 @@ impl Cycle {
         second / 60.0 * pos.beats_per_minute * pos.ticks_per_beat
     }
 
-    pub fn frames_to_ticks(&self, frames: u32) -> u32 {
-        (frames as f64 / self.frames as f64 * self.ticks as f64) as u32
-    }
-
     pub fn ticks_to_frames(&self, ticks: u32) -> u32 {
         (ticks as f64 / self.ticks as f64 * self.frames as f64) as u32
     }
@@ -94,4 +98,3 @@ impl Cycle {
         }
     }
 }
-
