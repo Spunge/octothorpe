@@ -85,8 +85,8 @@ impl Event {
     pub fn new(time: u32, bytes: &[u8]) -> Self {
         match bytes[0] {
             0xF0 => {
-                // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = model nr
-                if bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && bytes[6] == 0x73 {
+                // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
+                if bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && (bytes[6] == 0x73 || bytes[6] == 0x7b) {
                     Self::InquiryResponse(bytes[13])
                 } else {
                     Self::Unknown

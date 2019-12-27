@@ -2,6 +2,7 @@
 
 pub struct ProcessCycle<'a> {
     pub scope: &'a jack::ProcessScope,
+    pub client: &'a jack::Client,
 }
 
 impl<'a> ProcessCycle<'a> {

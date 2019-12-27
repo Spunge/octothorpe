@@ -6,9 +6,19 @@ use super::cycle::ProcessCycle;
 use super::sequencer::Sequencer;
 use super::surface::*;
 use super::port::MidiOut;
+use super::mixer::*;
 use input::*;
 
-pub struct Controller {
+pub trait Controller {
+    fn new(client: &jack::Client) -> Self;
+
+    fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
+    fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
+}
+
+// TODO - THis is not dry, seems like only way to clear this up at the moment is to create a nested "apc" struct,
+// i don't really want to type "apc" after every access of self, so meh...
+pub struct APC40 {
     memory: Memory,
 
     // Ports that connect to APC
@@ -19,12 +29,12 @@ pub struct Controller {
     offset: u8,
 }
 
-impl Controller {
-    pub fn new(client: &jack::Client) -> Self {
+impl Controller for APC40 {
+    fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
         let output = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
         
-        Controller {
+        Self {
             memory: Memory::new(),
 
             input,
@@ -36,12 +46,10 @@ impl Controller {
         }
     }
 
-    pub fn offset(&self) -> u8 { self.offset }
-
     /*
      * Process input from controller jackport
      */
-    pub fn process_input(&mut self, client: &jack::Client, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+    fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
             let event = Event::new(message.time, message.bytes);
 
@@ -67,8 +75,8 @@ impl Controller {
                 Event::FaderMoved { time, value, fader_type } => {
                     // TODO - Pass these to "mixer"
                     match fader_type {
-                        FaderType::Track(index) => sequencer.fader_adjusted(time, index, value),
-                        FaderType::Master => sequencer.master_adjusted(time, value),
+                        FaderType::Track(index) => mixer.fader_adjusted(time, index + self.offset, value),
+                        FaderType::Master => mixer.master_adjusted(time, value),
                     };
                 },
                 Event::ButtonPressed { time, button_type } => {
@@ -78,13 +86,13 @@ impl Controller {
                     let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
 
                     match button_type {
-                        ButtonType::Play => client.transport_start(),
+                        ButtonType::Play => cycle.client.transport_start(),
                         ButtonType::Stop => {
                             // Reset to 0 when we press stop button but we're already stopped
-                            let (state, _) = client.transport_query();
+                            let (state, _) = cycle.client.transport_query();
                             match state {
-                                1 => client.transport_stop(),
-                                _ => client.transport_reposition(jack::Position::default()),
+                                1 => cycle.client.transport_stop(),
+                                _ => cycle.client.transport_reposition(jack::Position::default()),
                             };
                         },
                         ButtonType::Sequence(index) => {
@@ -100,7 +108,7 @@ impl Controller {
                                 
                                 },
                                 View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_phrase(x + self.offset(), y);
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_phrase(x + self.offset, y);
                                 }
                             }
                         },
@@ -125,7 +133,7 @@ impl Controller {
                             }
                         },
                         ButtonType::Instrument(index) => {
-                            surface.toggle_instrument(index + self.offset());
+                            surface.toggle_instrument(index + self.offset);
                         },
                         ButtonType::Quantization => {
                             sequencer.switch_quantizing();
@@ -137,7 +145,7 @@ impl Controller {
                                     //0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
                                 },
                                 View::Sequence => {
-                                    sequencer.get_sequence(surface.sequence_shown()).toggle_active(index + self.offset());
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_active(index + self.offset);
                                 }
                             }
                         }
@@ -158,7 +166,7 @@ impl Controller {
     /*
      * Output to jack
      */
-    pub fn output(&mut self, client: &jack::Client, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+    fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
         if ! self.is_identified {
             self.output.clear_output_buffer();
@@ -339,3 +347,131 @@ impl Controller {
     */
 }
 
+
+pub struct APC20 {
+    memory: Memory,
+
+    // Ports that connect to APC
+    input: jack::Port<jack::MidiIn>,
+    output: MidiOut,
+
+    is_identified: bool,
+}
+
+impl Controller for APC20 {
+    fn new(client: &jack::Client) -> Self {
+        let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
+        let output = client.register_port("APC20 out", jack::MidiOut::default()).unwrap();
+        
+        Self {
+            memory: Memory::new(),
+
+            input,
+            output: MidiOut::new(output),
+
+            is_identified: false,
+        }
+    }
+
+    /*
+     * Process input from controller jackport
+     */
+    fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+        for message in self.input.iter(cycle.scope) {
+            let event = Event::new(message.time, message.bytes);
+
+            //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
+            // Only process channel note messages
+            match event {
+                Event::InquiryResponse(device_id) => {
+                    // Introduce ourselves to controller
+                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
+                    // 0x42 is ableton alternate mode (all leds controlled from host)
+                    let message = Message::Introduction([0xF0, 0x47, device_id, 0x7b, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                    // Make sure we stop inquiring
+                    self.is_identified = true;
+
+                    self.output.output_message(TimedMessage::new(0, message));
+                },
+                Event::FaderMoved { time, value, fader_type } => {
+                    // TODO - Pass these to "mixer"
+                    match fader_type {
+                        FaderType::Track(index) => mixer.fader_adjusted(time, index, value),
+                        _ => (),
+                    };
+                },
+                Event::ButtonPressed { time, button_type } => {
+                    // First get modifier (other currently pressed key), before registering current press in memory
+                    let modifier = self.memory.modifier();
+                    // Register press in memory to see if we double pressed
+                    let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
+
+                    match button_type {
+                        ButtonType::Grid { x, y } => {
+                            match surface.view {
+                                View::Instrument => {
+                                
+                                },
+                                View::Sequence => {
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_phrase(x, y);
+                                }
+                            }
+                        },
+                        ButtonType::Playable(index) => {
+                            match surface.view {
+                                View::Instrument => {
+                                    let instrument = sequencer.get_instrument(surface.instrument_shown());
+
+                                    if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                        instrument.clone_phrase(modifier_index, index);
+                                    } else {
+                                        surface.show_phrase(index);
+                                    }
+                                },
+                                View::Sequence => {
+                                    // TODO - Only switch rows on APC20
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_row(index);
+                                }
+                            }
+                        },
+                        ButtonType::Instrument(index) => {
+                            surface.toggle_instrument(index);
+                        },
+                        ButtonType::Activator(index) => {
+                            match surface.view {
+                                View::Instrument => {
+                                     // TODO - Select knob group
+                                    //0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
+                                },
+                                View::Sequence => {
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_active(index);
+                                }
+                            }
+                        }
+                        _ => {
+                            // Always single press ?
+                            //sequencer.key_pressed(message);
+                        },
+                    }
+                },
+                Event::ButtonReleased { time, button_type } => {
+                    self.memory.release(cycle.time_at_frame(time), button_type);
+                },
+                _ => (),
+            }
+        }
+    }
+
+    /*
+     * Output to jack
+     */
+    fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+        // Identify when no controller found yet
+        if ! self.is_identified {
+            self.output.clear_output_buffer();
+            self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
+        }
+
+        self.output.write_midi(cycle.scope);
+    }
+}

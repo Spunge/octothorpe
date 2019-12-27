@@ -1,10 +1,13 @@
 
-use super::controller::Controller;
+use super::*;
 
 pub struct APC20 {
-    // Ports that connect to APCs
-    input_port: jack::Port<jack::MidiIn>,
-    output_port: MidiOut,
+    memory: Memory,
 
-    pressed_keys: Vec<PressedKey>,
+    // Ports that connect to APC
+    input: jack::Port<jack::MidiIn>,
+    output: MidiOut,
+
+    is_identified: bool,
+    offset: u8,
 }

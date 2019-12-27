@@ -14,12 +14,14 @@ pub mod sequence;
 pub mod playable;
 pub mod surface;
 pub mod port;
+pub mod mixer;
 
 use std::io;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
 use sequencer::Sequencer;
-use controller::Controller;
+use controller::*;
+use mixer::*;
 use surface::Surface;
 use message::{TimedMessage, Message};
 use cycle::{ProcessCycle, Cycle};
@@ -96,8 +98,12 @@ impl jack::TimebaseHandler for TimebaseHandler {
 
 
 pub struct ProcessHandler {
+    // Controllers
+    apc40: APC40,
+    apc20: APC20,
+
+    mixer: Mixer,
     sequencer: Sequencer,
-    controller: Controller,
     surface: Surface,
 
     //ticks_elapsed: u32,
@@ -130,7 +136,10 @@ impl ProcessHandler {
         // TODO controller should be trait for apc20 & 40
 
         ProcessHandler { 
-            controller: Controller::new(client),
+            apc20: APC20::new(client),
+            apc40: APC40::new(client),
+
+            mixer: Mixer::new(),
             sequencer: Sequencer::new(client), 
             surface: Surface::new(),
             //ticks_elapsed: 0,
@@ -153,10 +162,13 @@ impl jack::ProcessHandler for ProcessHandler {
         // cycle.absolute_start indicates this is first cycle program runs for
         //self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
-        let cycle = ProcessCycle { scope };
+        let cycle = ProcessCycle { scope, client };
 
-        self.controller.process_input(client, &cycle, &mut self.sequencer, &mut self.surface);
-        self.controller.output(client, &cycle, &mut self.sequencer, &mut self.surface);
+        self.apc20.process_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        self.apc40.process_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+
+        self.apc20.output(&cycle, &mut self.sequencer, &mut self.surface);
+        self.apc40.output(&cycle, &mut self.sequencer, &mut self.surface);
 
         //let mut apc_messages = vec![];
         //let mut control_messages = vec![];

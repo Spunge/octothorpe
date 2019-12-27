@@ -262,24 +262,6 @@ impl Sequencer {
         self.should_render = true;
     }
 
-    /*
-     * TODO - Output these over OSC directly to non-mixer
-     */
-    pub fn fader_adjusted(&mut self, time: u32, fader: u8, value: u8) {
-        // Output on channel 16
-        let out_knob = fader + self.instrument_group * 8;
-        // TODO - Output this to corresponding port
-        //vec![TimedMessage::new(time, Message::Note([0xB0 + 15, out_knob, value]))]
-    }
-
-    /*
-     * TODO - Output these over OSC directly to non-mixer
-     */
-    pub fn master_adjusted(&mut self, time: u32, value: u8) {
-        // TODO - Output this to corresponding port
-        //vec![TimedMessage::new(time, Message::Note([0xB0 + 15, 127, value]))]
-    }
-
     pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
         //println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
 
