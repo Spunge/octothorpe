@@ -32,6 +32,12 @@ pub struct Surface {
 
     patterns_shown: [usize; 16],
     phrases_shown: [usize; 16],
+
+    pattern_zoom_level: u8,
+    pattern_zoom_offsets: [u32; 16],
+    phrase_zoom_level: u8,
+    phrase_zoom_offsets: [u32; 16],
+
 }
 
 impl Surface {
@@ -43,8 +49,14 @@ impl Surface {
             instrument_shown: 0,
             sequence_shown: 0,
 
+            // What is shown for each instrument?
             patterns_shown: [0; 16],
             phrases_shown: [0; 16],
+
+            pattern_zoom_level: 0,
+            pattern_zoom_offsets: [0; 16],
+            phrase_zoom_level: 0,
+            phrase_zoom_offsets: [0; 16],
         }
     }
 

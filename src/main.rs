@@ -155,7 +155,8 @@ impl jack::ProcessHandler for ProcessHandler {
 
         let cycle = ProcessCycle { scope };
 
-        self.controller.process(client, cycle, &mut self.sequencer, &mut self.surface);
+        self.controller.process_input(client, &cycle, &mut self.sequencer, &mut self.surface);
+        self.controller.output(client, &cycle, &mut self.sequencer, &mut self.surface);
 
         //let mut apc_messages = vec![];
         //let mut control_messages = vec![];

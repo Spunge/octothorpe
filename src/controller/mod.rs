@@ -39,9 +39,9 @@ impl Controller {
     pub fn offset(&self) -> u8 { self.offset }
 
     /*
-     * Process input & output from controller jackports
+     * Process input from controller jackport
      */
-    pub fn process(&mut self, client: &jack::Client, cycle: ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+    pub fn process_input(&mut self, client: &jack::Client, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         for message in self.input.iter(cycle.scope) {
             let event = Event::new(message.time, message.bytes);
 
@@ -153,9 +153,15 @@ impl Controller {
                 _ => (),
             }
         }
+    }
 
+    /*
+     * Output to jack
+     */
+    pub fn output(&mut self, client: &jack::Client, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
         if ! self.is_identified {
+            self.output.clear_output_buffer();
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
         }
 

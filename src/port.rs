@@ -25,6 +25,10 @@ impl MidiOut {
         self.messages.push(message);
     }
 
+    pub fn clear_output_buffer(&mut self) {
+        self.messages = vec![];
+    }
+
     /*
      * Output to jack
      */
