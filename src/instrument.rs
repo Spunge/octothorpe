@@ -53,6 +53,22 @@ impl Instrument {
         &mut self.phrases[self.phrase]
     }
 
+    pub fn get_pattern(&mut self, index: u8) -> &mut Pattern {
+        &mut self.patterns[index as usize]
+    }
+
+    pub fn get_phrase(&mut self, index: u8) -> &mut Phrase {
+        &mut self.phrases[index as usize]
+    }
+
+    pub fn clone_pattern(&mut self, from: u8, to: u8) {
+        self.patterns[to as usize] = self.patterns[from as usize].clone();
+    }
+
+    pub fn clone_phrase(&mut self, from: u8, to: u8) {
+        self.phrases[to as usize] = self.phrases[from as usize].clone();
+    }
+
     pub fn switch_knob_group(&mut self, group: u8) {
         self.knob_group = group;
     }

@@ -4,6 +4,7 @@ mod input;
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
 use super::sequencer::Sequencer;
+use super::surface::*;
 use super::port::MidiOut;
 use input::*;
 
@@ -15,6 +16,7 @@ pub struct Controller {
     output: MidiOut,
 
     is_identified: bool,
+    offset: u8,
 }
 
 impl Controller {
@@ -29,13 +31,17 @@ impl Controller {
             output: MidiOut::new(output),
 
             is_identified: false,
+            // Offset the faders & sequence knobs by this value
+            offset: 8,
         }
     }
+
+    pub fn offset(&self) -> u8 { self.offset }
 
     /*
      * Process input & output from controller jackports
      */
-    pub fn process(&mut self, client: &jack::Client, cycle: ProcessCycle, sequencer: &mut Sequencer) {
+    pub fn process(&mut self, client: &jack::Client, cycle: ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         for message in self.input.iter(cycle.scope) {
             let event = Event::new(message.time, message.bytes);
 
@@ -66,7 +72,9 @@ impl Controller {
                     };
                 },
                 Event::ButtonPressed { time, button_type } => {
-                    // Make sure to register press in memory to see if we double pressed
+                    // First get modifier (other currently pressed key), before registering current press in memory
+                    let modifier = self.memory.modifier();
+                    // Register press in memory to see if we double pressed
                     let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
 
                     match button_type {
@@ -78,21 +86,64 @@ impl Controller {
                                 1 => client.transport_stop(),
                                 _ => client.transport_reposition(jack::Position::default()),
                             };
+                        },
+                        ButtonType::Sequence(index) => {
+                            if let Some(ButtonType::Shift) = modifier {
+                                sequencer.queue_sequence(index);
+                            } else {
+                                surface.toggle_sequence(index);
+                            }
+                        },
+                        ButtonType::Grid { x, y } => {
+                            match surface.view {
+                                View::Instrument => {
+                                
+                                },
+                                View::Sequence => {
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_phrase(x + self.offset(), y);
+                                }
+                            }
+                        },
+                        ButtonType::Playable(index) => {
+                            match surface.view {
+                                View::Instrument => {
+                                    let instrument = sequencer.get_instrument(surface.instrument_shown());
+
+                                    if is_double_pressed {
+                                        instrument.get_pattern(index).switch_recording_state()
+                                    } else {
+                                        if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                            instrument.clone_pattern(modifier_index, index);
+                                        } else {
+                                            surface.show_pattern(index);
+                                        }
+                                    }
+                                },
+                                View::Sequence => {
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_row(index);
+                                }
+                            }
+                        },
+                        ButtonType::Instrument(index) => {
+                            surface.toggle_instrument(index + self.offset());
+                        },
+                        ButtonType::Quantization => {
+                            sequencer.switch_quantizing();
+                        },
+                        ButtonType::Activator(index) => {
+                            match surface.view {
+                                View::Instrument => {
+                                     // TODO - Select knob group
+                                    //0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
+                                },
+                                View::Sequence => {
+                                    sequencer.get_sequence(surface.sequence_shown()).toggle_active(index + self.offset());
+                                }
+                            }
                         }
                         _ => {
                             // Always single press ?
                             //sequencer.key_pressed(message);
-
-                            /*
-                             * Next up is double press & single presss logic
-                             * TODO - Add grid multi key range support here
-                             */
-
-                            // Double pressed_button when its there
-                            if is_double_pressed && (0x52 ..= 0x56).contains(&message.bytes[1]) && sequencer.is_showing_pattern() {
-                                let pattern_index = (message.bytes[1] - 0x52) as usize;
-                                sequencer.instrument().patterns[pattern_index].switch_recording_state()
-                            }
                         },
                     }
                 },

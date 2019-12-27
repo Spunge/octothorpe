@@ -98,7 +98,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
 pub struct ProcessHandler {
     sequencer: Sequencer,
     controller: Controller,
-    notification_receiver: Receiver<TimedMessage>,
+    surface: Surface,
 
     //ticks_elapsed: u32,
     //was_repositioned: bool,
@@ -114,7 +114,6 @@ pub struct ProcessHandler {
 
 impl ProcessHandler {
     pub fn new(
-        notification_receiver: Receiver<TimedMessage>,
         timebase_sender: Sender<f64>,
         client: &jack::Client
     ) -> Self {
@@ -128,14 +127,12 @@ impl ProcessHandler {
         //let sequence_in = client.register_port("sequence in", jack::MidiIn::default()).unwrap();
         //let sequence_out = client.register_port("sequence out", jack::MidiOut::default()).unwrap();
 
-        let controller = Controller::new(client);
-        let sequencer = Sequencer::new(client);
-        let surface = Surface::new();
+        // TODO controller should be trait for apc20 & 40
 
         ProcessHandler { 
-            controller, 
-            sequencer, 
-            notification_receiver,
+            controller: Controller::new(client),
+            sequencer: Sequencer::new(client), 
+            surface: Surface::new(),
             //ticks_elapsed: 0,
             //was_repositioned: false,
             //control_in,
@@ -158,17 +155,12 @@ impl jack::ProcessHandler for ProcessHandler {
 
         let cycle = ProcessCycle { scope };
 
-        self.controller.process(client, cycle, &mut self.sequencer);
+        self.controller.process(client, cycle, &mut self.sequencer, &mut self.surface);
 
         //let mut apc_messages = vec![];
         //let mut control_messages = vec![];
 
         // TODO - Clean up this mess
-
-        // Write midi from notification handler
-        //while let Ok(message) = self.notification_receiver.try_recv() {
-            //apc_messages.push(message);
-        //}
 
         // Process incoming midi notes from APC (these correspond to button presses)
         //apc_messages.extend(self.controller.process_apc_note_messages(self.apc_40_in.iter(process_scope), &cycle, client));
@@ -207,10 +199,9 @@ fn main() {
     let (client, _status) =
         jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
-    let (notification_sender, notification_receiver) = channel();
     let (timebase_sender, timebase_receiver) = channel();
 
-    let processhandler = ProcessHandler::new(notification_receiver, timebase_sender, &client);
+    let processhandler = ProcessHandler::new(timebase_sender, &client);
     let timebasehandler = TimebaseHandler::new(timebase_receiver);
 
     // Activate client

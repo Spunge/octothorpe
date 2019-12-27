@@ -158,6 +158,12 @@ impl Memory {
 
         pressed_button.end = Some(end);
     }
+
+    pub fn modifier(&self) -> Option<ButtonType> {
+        self.presses.iter().rev()
+            .find(|pressed_button| pressed_button.end.is_none())
+            .and_then(|pressed_button| Some(pressed_button.button_type))
+    }
 }
 
 

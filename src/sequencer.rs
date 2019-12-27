@@ -42,7 +42,7 @@ pub struct Sequencer {
     indicator_note_offs: Vec<(u32, Message)>,
     keys_pressed: Vec<KeyPress>,
 
-    instruments: [Instrument; 16],
+    pub instruments: [Instrument; 16],
     pub instrument_group: u8,
     instrument: u8,
 
@@ -50,7 +50,7 @@ pub struct Sequencer {
     pub drumpad_target: u8,
     is_quantizing: bool,
 
-    sequences: [Sequence; 4],
+    pub sequences: [Sequence; 4],
     sequence: u8,
 
     // What is playing?
@@ -147,6 +147,14 @@ impl Sequencer {
         &mut self.instruments[self.instrument_index()]
     }
 
+    pub fn get_instrument(&mut self, index: usize) -> &mut Instrument {
+        &mut self.instruments[index]
+    }
+
+    pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
+        &mut self.sequences[index]
+    }
+
     fn sequence(&mut self) -> &mut Sequence {
         &mut self.sequences[self.sequence as usize]
     }
@@ -213,71 +221,6 @@ impl Sequencer {
             0x60 => self.playable().change_offset(1),
             _ => (),
         }
-    }
-
-    fn sequence_key_pressed(&mut self, message: jack::RawMidi) {
-        let instrument_delta = self.instrument_group * 8;
-
-        match message.bytes[1] {
-            0x32 => self.sequence().toggle_active(message.bytes[0] - 0x90 + instrument_delta),
-            0x35 ..= 0x39 => {
-                let instrument = message.bytes[0] - 0x90 + instrument_delta;
-                self.sequence().toggle_phrase(instrument, message.bytes[1] - 0x35);
-            },
-            0x52 ..= 0x56 => self.sequence().toggle_row(message.bytes[1] - 0x52),
-            _ => (),
-        }
-    }
-
-    pub fn shared_key_pressed(&mut self, message: jack::RawMidi) {
-        match self.overview {
-            OverView::Instrument => self.instrument_key_pressed(message),
-            OverView::Sequence => self.sequence_key_pressed(message),
-        }
-    }
-
-    /*
-    pub fn key_pressed(&mut self, message: jack::RawMidi) {
-        //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-
-        // Remember remember
-        self.keys_pressed.push(KeyPress::new(message));
-
-        match message.bytes[1] {
-            // TODO - On switching instrument_group && instrument etc, draw indicator with cycle
-            0x50 => self.switch_instrument_group(),
-            0x3A ..= 0x3D => self.switch_knob_group(message.bytes[1] - 0x3A),
-            0x33 => self.switch_instrument(message.bytes[0] - 0x90),
-            0x3F => self.switch_quantizing(),
-            0x57 ..= 0x5A => self.switch_sequence(message.bytes[1] - 0x57),
-            0x3E | 0x30 | 0x31 | 0x32 | 0x60 | 0x61 | 0x51 | 0x5E | 0x5F => self.shared_key_pressed(message),
-            // Playable select
-            0x52 ..= 0x56 => self.shared_key_pressed(message),
-            // Main grid
-            0x35 ..= 0x39 => self.shared_key_pressed(message),
-            _ => (),
-        };
-
-        self.should_render = true;
-    }
-    */
-
-    pub fn is_showing_instrument(&self) -> bool {
-        match self.overview { OverView::Instrument => true, _ => false }
-    }
-
-    pub fn is_showing_sequence(&self) -> bool {
-        match self.overview { OverView::Sequence => true, _ => false }
-    }
-
-    pub fn is_showing_pattern(&self) -> bool {
-        self.is_showing_instrument() 
-            && match self.detailview { DetailView::Pattern => true, _ => false }
-    }
-
-    pub fn is_showing_phrase(&self) -> bool {
-        self.is_showing_instrument() 
-            && match self.detailview { DetailView::Phrase => true, _ => false }
     }
 
     // One of the control knobs on the APC was turned
@@ -437,6 +380,10 @@ impl Sequencer {
         }
     }
 
+    pub fn queue_sequence(&mut self, sequence: u8) {
+        self.sequence_queued = Some(sequence as usize);
+    }
+
     fn switch_sequence(&mut self, sequence: u8) {
         // Queue sequence
         if self.is_shift_pressed() {
@@ -456,6 +403,7 @@ impl Sequencer {
         }
     }
 
+    /*
     fn switch_instrument(&mut self, instrument: u8) {
         // If we click selected instrument, return to sequence for peeking
         if self.instrument == instrument {
@@ -471,8 +419,9 @@ impl Sequencer {
             }
         }
     }
+    */
 
-    fn switch_quantizing(&mut self) {
+    pub fn switch_quantizing(&mut self) {
         self.is_quantizing = ! self.is_quantizing;
     }
 
