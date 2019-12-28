@@ -59,14 +59,8 @@ impl Pattern {
         self.note_events = vec![];
     }
 
-    pub fn add_note_on(&mut self, tick: u32, note: u8, velocity: u8) {
-        // TODO - Smart stuff, cut off notes etc
-        self.note_events.push(NoteEvent::on(tick, note, velocity));
-    }
-
-    pub fn add_note_off(&mut self, tick: u32, note: u8, velocity: u8) {
-        self.note_events.push(NoteEvent::off(tick, note, velocity));
-    }
+    // TODO - Smart stuff, cut off notes etc
+    pub fn add_note_event(&mut self, event: NoteEvent) { self.note_events.push(event) }
 
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
         let coords = self.notes.iter()
@@ -94,10 +88,6 @@ impl Pattern {
     // Start recording notes from input into pattern
     pub fn switch_recording_state(&mut self) {
         self.is_recording = ! self.is_recording;
-    }
-
-    pub fn add_note_event(&mut self, note_event: NoteEvent) {
-    
     }
 
     pub fn change_length(&mut self, length_modifier: u32) {

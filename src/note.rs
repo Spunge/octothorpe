@@ -46,10 +46,10 @@ pub enum NoteEventType {
 // note, velocity
 #[derive(Debug, Clone)]
 pub struct NoteEvent {
-    event_type: NoteEventType,
-    tick: u32,
-    note: u8,
-    velocity: u8,
+    pub event_type: NoteEventType,
+    pub tick: u32,
+    pub note: u8,
+    pub velocity: u8,
 }
 
 impl NoteEvent {

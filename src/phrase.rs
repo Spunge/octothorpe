@@ -5,15 +5,27 @@ use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
 use super::TimebaseHandler;
 
-enum PatternEventType {
+#[derive(Debug, Clone)]
+pub enum PatternEventType {
     Start,
     Stop,
 }
 
-struct PatternEvent {
-    event_type: PatternEventType,
-    tick: u32,
-    pattern: usize,
+#[derive(Debug, Clone)]
+pub struct PatternEvent {
+    pub event_type: PatternEventType,
+    pub tick: u32,
+    pub pattern: usize,
+}
+
+impl PatternEvent {
+    pub fn start(tick: u32, pattern: usize) -> Self {
+        Self { tick, pattern, event_type: PatternEventType::Start }
+    }
+
+    pub fn stop(tick: u32, pattern: usize) -> Self {
+        Self { tick, pattern, event_type: PatternEventType::Stop }
+    }
 }
 
 #[derive(Debug)]
@@ -30,6 +42,9 @@ pub struct PlayingPhrase {
 #[derive(Clone)]
 pub struct Phrase {
     length: u32,
+    pattern_events: Vec<PatternEvent>,
+
+    // OOOOOoooldd
     pub playable: Playable,
     pub played_patterns: Vec<PlayedPattern>,
 }
@@ -38,18 +53,12 @@ impl Phrase {
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
         Phrase { 
             length: Self::default_length(),
+            pattern_events: vec![],
+
             playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), 
             played_patterns, 
         }
     }
-
-    pub fn default_length() -> u32 {
-        TimebaseHandler::TICKS_PER_BEAT * 4 * 4
-    }
-    pub fn set_length(&mut self, length: u32) {
-        self.length = length;
-    }
-    pub fn length(&self) -> u32 { self.length }
 
     pub fn new(index: usize) -> Self {
         Phrase::create(vec![
@@ -57,15 +66,17 @@ impl Phrase {
         ])
     }
 
-    pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
-        let coords = self.played_patterns.iter()
-            .map(|pattern| {
-                (pattern.start, pattern.end, pattern.index as i32)
-            })
-            .collect();
+    pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 4 }
+    pub fn set_length(&mut self, length: u32) { self.length = length; }
+    pub fn length(&self) -> u32 { self.length } 
 
-        self.playable.led_states(coords)
+    // TODO - smart cut 
+    pub fn add_pattern_event(&mut self, event: PatternEvent) { 
+        println!("{:?}", event);
+        self.pattern_events.push(event); 
     }
+
+    pub fn pattern_events(&self) -> &Vec<PatternEvent> { &self.pattern_events }
 
     // TODO - when shortening length, notes that are longer as playable length
     // should be cut shorter aswell

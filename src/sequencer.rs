@@ -55,29 +55,6 @@ pub struct Sequencer {
     // What is playing?
     sequence_playing: usize,
     sequence_queued: Option<usize>,
-
-    // What are we showing?
-    overview: OverView,
-    detailview: DetailView,
-
-    pub should_render: bool,
-    state_current: [u8; 96],
-    state_next: [u8; 96],
-    // Buttons
-    index_instrument_group: Range<usize>,
-    index_detailview: Range<usize>,
-    index_quantizing: Range<usize>,
-    // Static
-    index_knob_groups: Range<usize>,
-    index_instruments: Range<usize>,
-    index_main: Range<usize>,
-    index_green: Range<usize>,
-    index_blue: Range<usize>,
-    index_red: Range<usize>,
-
-    index_indicator: Range<usize>,
-    index_playables: Range<usize>,
-    index_sequences: Range<usize>,
 }
 
 impl Sequencer {
@@ -111,30 +88,6 @@ impl Sequencer {
 
             sequence_playing: 0,
             sequence_queued: Some(0),
-
-            // What are we currently showing?
-            detailview: DetailView::Pattern,
-            overview: OverView::Instrument,
-
-            // Static button states
-            should_render: false,
-            state_current: [0; 96],
-            state_next: [0; 96],
-            // Indexes of where in the state array grid state is located
-            index_main: 0..40,
-            index_green: 40..48,
-            index_instruments: 48..56,
-            index_red: 56..64,
-            index_blue: 64..72,
-            // Static buttons
-            index_instrument_group: 72..73,
-            index_detailview: 73..74,
-            index_quantizing: 74..75,
-            index_knob_groups: 75..79,
-            // Dynamic button states
-            index_indicator: 79..87,
-            index_playables: 87..92,
-            index_sequences: 92..96,
         }
     }
 
@@ -163,6 +116,7 @@ impl Sequencer {
         // Get the channel & knob that APC knob should send out of, first 8 channels are for
         // instruments, next 2 are used for sequences (sequence channels will be used for bus
         // effects)
+        /*
         let (out_channel, out_knob) = match self.overview {
             OverView::Instrument => {
                 let instrument_knob = self.instrument().set_knob_value(knob, value);
@@ -178,6 +132,7 @@ impl Sequencer {
                 (self.sequence / 2 + self.instruments.len() as u8 / 2, sequence_knob + (self.sequence % 2) * 64)
             },
         };
+        */
 
         //println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
         // TODO - Output this to corresponding port
@@ -201,6 +156,7 @@ impl Sequencer {
         let apc_knob = knob % 16;
 
         // Pass change to correct knob group container
+        /*
         let changed_knob = if knob_collection < 16 {
             self.instruments[knob_collection as usize].knob_value_changed(knob, message.bytes[2])
                 // Knob was changed, see if instrument & knob_group are currently shown, if it is,
@@ -241,6 +197,8 @@ impl Sequencer {
                 knob = if knob < 8 { 0x30 + knob } else { 0x10 + knob - 8 };
                 Some(TimedMessage::new(message.time, Message::Note([0xB0, knob, message.bytes[2]])))
             })
+        */
+        None
     }
 
     pub fn recording_key_played(&mut self, instrument: u8, raw_channel: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
@@ -580,7 +538,7 @@ impl Sequencer {
         let mut control_out_messages = Sequencer::note_off_messages(cycle, &mut self.indicator_note_offs);
 
         // Only output sequencer notes when playing, but output indicators on reposition aswell
-        if cycle.is_rolling || cycle.was_repositioned || self.should_render {
+        if cycle.is_rolling || cycle.was_repositioned {
             // Get playing sequences
             if let Some(playing_phrases) = self.playing_phrases(cycle) {
                 // Output those
@@ -588,7 +546,7 @@ impl Sequencer {
                 let playing_patterns = self.playing_patterns(cycle, &playing_phrases);
 
                 // We should always redraw on reposition or button press
-                let force_redraw = cycle.was_repositioned || self.should_render;
+                let force_redraw = cycle.was_repositioned;
 
                 //if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
                     //control_out_messages.extend(note_events);
@@ -606,6 +564,7 @@ impl Sequencer {
                 }
 
                 // Draw dynamic indicators
+                /*
                 match self.overview {
                     OverView::Instrument => {
                         //if let Some(note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
@@ -622,6 +581,7 @@ impl Sequencer {
                         }
                     }
                 }
+                */
 
                 // Always trigger draw of sequence indicator as it will always be active
                 //if let Some(note_events) = self.sequence_indicator_note_events(cycle, force_redraw) {

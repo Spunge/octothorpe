@@ -4,12 +4,14 @@ mod lights;
 
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
-use super::phrase::Phrase;
+use super::phrase::*;
 use super::sequencer::Sequencer;
 use super::surface::*;
 use super::port::MidiOut;
 use super::mixer::*;
 use super::TimebaseHandler;
+// TODO - Move events into 1 file?
+use super::note::NoteEvent;
 use input::*;
 use lights::*;
 
@@ -17,12 +19,22 @@ use lights::*;
 const IDENTIFY_CYCLES: u8 = 3;
 
 pub trait Controller {
-    fn ticks_in_grid() -> u32;
+    fn ticks_in_grid(&self) -> u32;
     fn zoom_level(&self) -> u8;
+    fn offset(&self, index: usize) -> u32;
+    fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
 
-    fn ticks_per_button(&self) -> u32 {
-        // Grid will show 4 beats by default, there are 8 buttons in the grid
-        Self::ticks_in_grid() / 8 / self.zoom_level() as u32
+    fn grid_buttons_to_ticks(&self, end_x: u8, y: u8, modifier: Option<ButtonType>) -> (u32, u32) {
+        let start_x = if let Some(ButtonType::Grid(start_x, modifier_y)) = modifier {
+            if modifier_y == y { start_x } else { end_x }
+        } else { end_x };
+
+        let ticks_per_button = self.ticks_per_button();
+
+        let start_tick = start_x as u32 * ticks_per_button;
+        let end_tick = (end_x + 1) as u32 * ticks_per_button;
+
+        (start_tick, end_tick)
     }
 
     fn new(client: &jack::Client) -> Self;
@@ -60,12 +72,13 @@ pub struct APC40 {
 }
 
 impl APC40 {
-    fn pattern_shown(&self, surface: &Surface) -> u8 { self.patterns_shown[surface.instrument_shown()] }
+    fn pattern_shown(&self, index: usize) -> u8 { self.patterns_shown[index] }
 }
 
 impl Controller for APC40 {
-    fn ticks_in_grid() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 8 }
+    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 8 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
@@ -126,13 +139,11 @@ impl Controller for APC40 {
                             let delta_ticks = self.cue_knob.process_turn(value) as i32 * self.ticks_per_button() as i32;
         
                             // TODO - Move this offset stuff to struct as we will need it for
-                            // phrases aswell
-                            let offset = &mut self.offsets[surface.instrument_shown()];
 
                             // Update offset of shown instrument when it's above
-                            let new_offset = *offset as i32 + delta_ticks;
+                            let new_offset = self.offset(surface.instrument_shown()) as i32 + delta_ticks;
                             if new_offset >= 0 {
-                                *offset = new_offset as u32;
+                                self.offsets[surface.instrument_shown()] = new_offset as u32;
                             }
                         },
                         KnobType::Effect { time, index } => sequencer.knob_turned(time, index + self.knob_offset, value),
@@ -155,27 +166,16 @@ impl Controller for APC40 {
                             let instrument = sequencer.get_instrument(surface.instrument_shown());
                         
                             match button_type {
-                                ButtonType::Grid(end_button, y) => {
-                                    let start_button = if let Some(ButtonType::Grid(start, modifier_y)) = modifier {
-                                        if modifier_y == y { start } else { end_button }
-                                    } else { end_button };
-
-                                    let ticks_per_button = self.ticks_per_button();
-                                    let offset = self.offsets[surface.instrument_shown()];
-
-                                    let start_tick = start_button as u32 * ticks_per_button + offset;
-                                    let end_tick = (end_button + 1) as u32 * ticks_per_button + offset;
-
+                                ButtonType::Grid(x, y) => {
                                     // We subtract y from 4 as we want lower notes to be lower on
                                     // the grid, the grid counts from the top
+                                    let (start_tick, end_tick) = self.grid_buttons_to_ticks(x, y, modifier);
                                     let note = self.base_notes[surface.instrument_shown()] + (4 - y);
+                                    let offset = self.offset(surface.instrument_shown());
 
-                                    println!("from {:?} to {:?} play {:?}", start_tick, end_tick, note);
-
-                                    let pattern = instrument.get_pattern(self.pattern_shown(surface));
-                                    pattern.add_note_on(start_tick, note, 127);
-                                    pattern.add_note_off(end_tick, note, 127);
-
+                                    let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
+                                    pattern.add_note_event(NoteEvent::on(start_tick + offset, note, 127));
+                                    pattern.add_note_event(NoteEvent::off(end_tick + offset, note, 127));
                                 },
                                 ButtonType::Side(index) => {
                                     if is_double_pressed {
@@ -289,11 +289,11 @@ impl Controller for APC40 {
             self.identified_cycles = self.identified_cycles + 1;
         } else {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
-            let pattern = instrument.get_pattern(self.pattern_shown(surface));
+            let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
             // TODO Draw main grid
 
-            self.side.draw(self.pattern_shown(surface) as usize, 1);
+            self.side.draw(self.pattern_shown(surface.instrument_shown()) as usize, 1);
             if surface.instrument_shown() >= self.instrument_offset as usize {
                 self.instrument.draw(surface.instrument_shown() - self.instrument_offset as usize, 1);
             }
@@ -381,12 +381,13 @@ pub struct APC20 {
 }
 
 impl APC20 {
-    fn phrase_shown(&self, surface: &Surface) -> u8 { self.phrases_shown[surface.instrument_shown()] }
+    fn phrase_shown(&self, index: usize) -> u8 { self.phrases_shown[index] }
 }
 
 impl Controller for APC20 {
-    fn ticks_in_grid() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 8 }
+    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 8 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
@@ -449,20 +450,16 @@ impl Controller for APC20 {
                     match surface.view {
                         View::Instrument => {
                             let instrument = sequencer.get_instrument(surface.instrument_shown());
-                            let phrase = instrument.get_phrase(self.phrase_shown(surface));
+                            let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
 
                             match button_type {
-                                ButtonType::Grid(end_button, y) => {
-                                    let start_button = if let Some(ButtonType::Grid(start, modifier_y)) = modifier {
-                                        if modifier_y == y { start } else { end_button }
-                                    } else { end_button };
+                                ButtonType::Grid(x, y) => {
+                                    let (start_tick, end_tick) = self.grid_buttons_to_ticks(x, y, modifier);
+                                    let offset = self.offset(surface.instrument_shown());
 
-                                    println!("{:?}, {:?}", start_button, end_button);
-
-                                    // TODO - Calculate ticks, toggle playing pattern
-                                    // TODO Default 4 bars
-                                    // TODO Default zoom should be 4 so we can zoom in & out
-                                    //phrase.toggle_pattern(start_button..end_button, y),
+                                    let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
+                                    phrase.add_pattern_event(PatternEvent::start(start_tick + offset, y as usize));
+                                    phrase.add_pattern_event(PatternEvent::start(end_tick + offset, y as usize));
                                 },
                                 ButtonType::Side(index) => {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
@@ -521,11 +518,16 @@ impl Controller for APC20 {
             self.identified_cycles = self.identified_cycles + 1;
         } else {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
-            let phrase = instrument.get_phrase(self.phrase_shown(surface));
+            let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
+            let offset = self.offset(surface.instrument_shown());
+            let ticks_in_grid = self.ticks_in_grid();
 
+            // Get pattern events in view
+            phrase.pattern_events().iter()
+                .filter(|event| event.tick >= offset || event.tick <= offset + ticks_in_grid);
             // TODO Draw main grid
 
-            self.side.draw(self.phrase_shown(surface) as usize, 1);
+            self.side.draw(self.phrase_shown(surface.instrument_shown()) as usize, 1);
             self.instrument.draw(surface.instrument_shown(), 1);
 
             //for index in 0 .. self.indicator
