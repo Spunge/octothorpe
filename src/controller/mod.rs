@@ -7,6 +7,7 @@ use super::sequencer::Sequencer;
 use super::surface::*;
 use super::port::MidiOut;
 use super::mixer::*;
+use super::TimebaseHandler;
 use input::*;
 
 pub trait Controller {
@@ -28,6 +29,20 @@ pub struct APC40 {
     is_identified: bool,
     instrument_offset: u8,
     knob_offset: u8,
+
+    patterns_shown: [u8; 16],
+    zoom_level: u8,
+    offsets: [u32; 16],
+    base_notes: [u8; 16],
+
+    cue_knob: CueKnob,
+}
+
+impl APC40 {
+    fn ticks_per_button(&self) -> u32 {
+        // Grid will show 4 beats by default, there are 8 buttons in the grid
+        TimebaseHandler::TICKS_PER_BEAT * 4 / 8 / self.zoom_level as u32
+    }
 }
 
 impl Controller for APC40 {
@@ -46,6 +61,13 @@ impl Controller for APC40 {
             instrument_offset: 8,
             // Offset knobs by this value to support multiple groups
             knob_offset: 0,
+
+            patterns_shown: [0; 16],
+            zoom_level: 1,
+            offsets: [0; 16],
+            base_notes: [58; 16],
+
+            cue_knob: CueKnob::new(),
         }
     }
 
@@ -71,12 +93,23 @@ impl Controller for APC40 {
                 },
                 Event::KnobTurned { value, knob_type } => {
                     match knob_type {
-                        KnobType::Cue => sequencer.cue_knob_turned(value),
+                        KnobType::Cue => {
+                            let delta_ticks = self.cue_knob.process_turn(value) as i32 * self.ticks_per_button() as i32;
+        
+                            // TODO - Move this offset stuff to struct as we will need it for
+                            // phrases aswell
+                            let offset = &mut self.offsets[surface.instrument_shown()];
+
+                            // Update offset of shown instrument when it's above
+                            let new_offset = *offset as i32 + delta_ticks;
+                            if new_offset >= 0 {
+                                *offset = new_offset as u32;
+                            }
+                        },
                         KnobType::Effect { time, index } => sequencer.knob_turned(time, index + self.knob_offset, value),
                     };
                 },
                 Event::FaderMoved { time, value, fader_type } => {
-                    // TODO - Pass these to "mixer"
                     match fader_type {
                         FaderType::Track(index) => mixer.fader_adjusted(time, index + self.instrument_offset, value),
                         FaderType::Master => mixer.master_adjusted(time, value),
@@ -91,20 +124,58 @@ impl Controller for APC40 {
                     match surface.view {
                         View::Instrument => {
                             let instrument = sequencer.get_instrument(surface.instrument_shown());
-                            let phrase = instrument.get_phrase(surface.phrase_shown());
-
+                        
                             match button_type {
-                                ButtonType::Grid(x, y) => {
+                                ButtonType::Grid(end_button, y) => {
+                                    let start_button = if let Some(ButtonType::Grid(start, modifier_y)) = modifier {
+                                        if modifier_y == y { start } else { end_button }
+                                    } else { end_button };
+
+                                    let ticks_per_button = self.ticks_per_button();
+                                    let offset = self.offsets[surface.instrument_shown()];
+
+                                    let start_tick = start_button as u32 * ticks_per_button + offset;
+                                    let end_tick = (end_button + 1) as u32 * ticks_per_button + offset;
+
+                                    // We subtract y from 4 as we want lower notes to be lower on
+                                    // the grid, the grid counts from the top
+                                    let note = self.base_notes[surface.instrument_shown()] + (4 - y);
+
+                                    println!("from {:?} to {:?} play {:?}", start_tick, end_tick, note);
+
+                                    let pattern = instrument.get_pattern(self.patterns_shown[surface.instrument_shown()]);
+
                                 },
                                 ButtonType::Playable(index) => {
-                                    if let Some(ButtonType::Playable(modifier_index)) = modifier {
-                                        instrument.clone_phrase(modifier_index, index);
+                                    if is_double_pressed {
+                                        instrument.get_pattern(index).switch_recording_state()
                                     } else {
-                                        surface.show_phrase(index);
+                                        if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                            println!("copying from {:?} to {:?}", modifier_index, index);
+                                            instrument.clone_pattern(modifier_index, index);
+                                        } else {
+                                            self.patterns_shown[surface.instrument_shown()] = index; 
+                                        }
                                     }
                                 },
-                                ButtonType::Activator(index) => {
-                                    phrase.set_length(index);
+                                ButtonType::Solo(index) => {
+                                    // We divide by zoom level, so don't start at 0
+                                    let zoom_level = index + 1;
+                                    if zoom_level != 7 {
+                                        self.zoom_level = zoom_level;
+                                    }
+                                },
+                                ButtonType::Up => {
+                                    let base_note = &mut self.base_notes[surface.instrument_shown()];
+                                    let new_base_note = *base_note + 4;
+
+                                    if new_base_note <= 118 { *base_note = new_base_note }
+                                },
+                                ButtonType::Down => {
+                                    let base_note = &mut self.base_notes[surface.instrument_shown()];
+                                    let new_base_note = *base_note - 4;
+
+                                    if new_base_note >= 22 { *base_note = new_base_note }
                                 },
                                 _ => (),
                             }
@@ -354,6 +425,10 @@ pub struct APC20 {
     output: MidiOut,
 
     is_identified: bool,
+
+    phrases_shown: [u8; 16],
+    zoom_level: u8,
+    offsets: [u32; 16],
 }
 
 impl Controller for APC20 {
@@ -368,6 +443,10 @@ impl Controller for APC20 {
             output: MidiOut::new(output),
 
             is_identified: false,
+
+            phrases_shown: [0; 16],
+            zoom_level: 0,
+            offsets: [0; 16],
         }
     }
 
@@ -407,39 +486,19 @@ impl Controller for APC20 {
                     match surface.view {
                         View::Instrument => {
                             let instrument = sequencer.get_instrument(surface.instrument_shown());
-                            let pattern = instrument.get_pattern(surface.phrase_shown());
-                        
+                            let phrase = instrument.get_phrase(self.phrases_shown[surface.instrument_shown()]);
+
                             match button_type {
                                 ButtonType::Grid(x, y) => {
-                                    let from = if let Some(ButtonType::Grid(modifier_x, modifier_y)) = modifier {
-                                        if modifier_y == y { modifier_x } else { x }
-                                    } else { x };
-
-                                    println!("from {:?} to {:?}", from, x);
-
-                                    //let from = self.memory.pressed_buttons(button_type)
-                                        //.filter(|button_type| { if let ButtonType::grid { x, y }button_type.y == y })
-                                        //.min_by_key(|button_type| button_type.x)
-                                        //.unwrap();
-
-                                    //println!("{:?}", from);
-                                    //self.instrument().pattern().toggle_led_range(from..to, message.bytes[1] - 0x35, 127, 127),
                                 },
                                 ButtonType::Playable(index) => {
-                                    if is_double_pressed {
-                                        instrument.get_pattern(index).switch_recording_state()
+                                    if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                        instrument.clone_phrase(modifier_index, index);
                                     } else {
-                                        if let Some(ButtonType::Playable(modifier_index)) = modifier {
-                                            println!("copying from {:?} to {:?}", modifier_index, index);
-                                            instrument.clone_pattern(modifier_index, index);
-                                        } else {
-                                            surface.show_pattern(index);
-                                        }
+                                        self.phrases_shown[surface.instrument_shown()] = index;
                                     }
                                 },
-                                ButtonType::Activator(index) => {
-                                    // TODO - Pattern length
-                                },
+                                ButtonType::Activator(index) => phrase.set_length(index),
                                 _ => (),
                             }
                         },

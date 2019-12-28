@@ -18,6 +18,10 @@ pub struct Memory {
     presses: Vec<ButtonPress>,
 }
 
+pub struct CueKnob {
+    delta: i8,
+}
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ButtonType {
     Grid(u8, u8),
@@ -169,4 +173,28 @@ impl Memory {
     }
 }
 
+/*
+ * Struct that will decrease cueknob rotation speed a bit
+ */
+impl CueKnob {
+    const CUE_KNOB_DELTA_PER_BUTTON: i8 = 10;
+
+    pub fn new() -> Self { CueKnob { delta: 0 } }
+
+    pub fn process_turn(&mut self, value: u8) -> i8 {
+        // Transform 0->up / 128->down to -delta / +delta
+        let delta = (value as i8).rotate_left(1) / 2;
+
+        self.delta = self.delta + delta;
+
+        let steps = self.delta / Self::CUE_KNOB_DELTA_PER_BUTTON;
+        let remainder = self.delta % Self::CUE_KNOB_DELTA_PER_BUTTON;
+
+        if steps != 0 {
+            self.delta = remainder;
+        }
+
+        steps
+    }
+}
 

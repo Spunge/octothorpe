@@ -36,3 +36,28 @@ impl Note {
         ])
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum NoteType {
+    On,
+    Off,
+}
+
+// note, velocity
+#[derive(Debug, Clone)]
+pub struct NoteEvent {
+    note_type: NoteType,
+    tick: u32,
+    note: u8,
+    velocity: u8,
+}
+
+impl NoteEvent {
+    fn on(tick: u32, note: u8, velocity: u8) -> Self {
+        Self { tick, note, velocity, note_type: NoteType::On }
+    }
+
+    fn off(tick: u32, note: u8, velocity: u8) -> Self {
+        Self { tick, note, velocity, note_type: NoteType::Off }
+    }
+}

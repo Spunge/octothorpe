@@ -1,7 +1,7 @@
 
 use std::ops::Range;
 
-use super::note::Note;
+use super::note::*;
 use super::playable::Playable;
 use super::cycle::Cycle;
 use super::TimebaseHandler;
@@ -25,6 +25,8 @@ pub struct PlayingPattern {
 
 #[derive(Clone)]
 pub struct Pattern {
+    note_events: Vec<NoteEvent>,
+
     pub playable: Playable,
     channel: u8,
     pub notes: Vec<Note>,
@@ -37,6 +39,8 @@ impl Pattern {
 
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
+            note_events: vec![],
+
             playable: Playable::new(TimebaseHandler::bars_to_ticks(1), TimebaseHandler::bars_to_ticks(1), 1, 5),
             channel,
             notes,
@@ -77,6 +81,10 @@ impl Pattern {
     // Start recording notes from input into pattern
     pub fn switch_recording_state(&mut self) {
         self.is_recording = ! self.is_recording;
+    }
+
+    pub fn add_note_event(&mut self, note_event: NoteEvent) {
+    
     }
 
     pub fn change_length(&mut self, length_modifier: u32) {

@@ -147,12 +147,12 @@ impl Sequencer {
         &mut self.instruments[self.instrument_index()]
     }
 
-    pub fn get_instrument(&mut self, index: u8) -> &mut Instrument {
-        &mut self.instruments[index as usize]
+    pub fn get_instrument(&mut self, index: usize) -> &mut Instrument {
+        &mut self.instruments[index]
     }
 
-    pub fn get_sequence(&mut self, index: u8) -> &mut Sequence {
-        &mut self.sequences[index as usize]
+    pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
+        &mut self.sequences[index]
     }
 
     fn sequence(&mut self) -> &mut Sequence {
@@ -227,19 +227,6 @@ impl Sequencer {
         //println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
         // TODO - Output this to corresponding port
         //vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
-    }
-
-    // Cue knob
-    pub fn cue_knob_turned(&mut self, value: u8) {
-        if let OverView::Instrument = self.overview {
-            if let DetailView::Pattern = self.detailview {
-                let delta = if value >= 64 { value as i32 - 128 } else { value as i32 };
-
-                self.instrument().pattern().change_base_note(delta);
-            }
-        }
-
-        self.should_render = true;
     }
 
     pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {

@@ -5,58 +5,20 @@ pub enum View {
     Sequence,
 }
 
-pub enum Visualization {
-    PatternGrid,
-    PatternIndicator,
-    PatternLength,
-    PatternZoom,
-    PatternSelect(u32),
-    PhraseGrid,
-    PhraseIndicator,
-    PhraseLength,
-    PhraseZoom,
-    PhraseSelect(u32),
-    QuantizationLevel,
-    QuantizationState,
-    SequenceGrid,
-    SequenceSelect(u32),
-    InstrumentSelect,
-}
-
 pub struct Surface {
     pub view: View,
-    redraw: Vec<Visualization>,
 
     instrument_shown: u8,
     sequence_shown: u8,
-
-    patterns_shown: [u8; 16],
-    pattern_zoom_level: u8,
-    pattern_zoom_offsets: [u32; 16],
-
-    phrases_shown: [u8; 16],
-    phrase_zoom_level: u8,
-    phrase_zoom_offsets: [u32; 16],
-
 }
 
 impl Surface {
     pub fn new() -> Self {
         Surface { 
             view: View::Instrument, 
-            redraw: vec![],
 
             instrument_shown: 0,
             sequence_shown: 0,
-
-            // What is shown for each instrument?
-            patterns_shown: [0; 16],
-            pattern_zoom_level: 0,
-            pattern_zoom_offsets: [0; 16],
-
-            phrases_shown: [0; 16],
-            phrase_zoom_level: 0,
-            phrase_zoom_offsets: [0; 16],
         }
     }
 
@@ -71,20 +33,14 @@ impl Surface {
     }
 
     pub fn show_instrument(&mut self, index: u8) { self.instrument_shown = index; }
-    pub fn instrument_shown(&self) -> u8 { self.instrument_shown }
+    pub fn instrument_shown(&self) -> usize { self.instrument_shown as usize }
 
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
-    pub fn sequence_shown(&self) -> u8 { self.sequence_shown }
-
-    pub fn show_phrase(&mut self, index: u8) { self.phrases_shown[self.instrument_shown() as usize] = index; }
-    pub fn phrase_shown(&self) -> u8 { self.phrases_shown[self.instrument_shown() as usize] }
-
-    pub fn show_pattern(&mut self, index: u8) { self.patterns_shown[self.instrument_shown() as usize] = index; }
-    pub fn pattern_shown(&self) -> u8 { self.patterns_shown[self.instrument_shown() as usize] }
+    pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }
 
     pub fn toggle_instrument(&mut self, index: u8) {
         // If we click selected instrument, return to sequence for peeking
-        if self.instrument_shown() == index {
+        if self.instrument_shown() == index as usize {
             self.switch_view();
         } else {
             // Otherwise select instrument && switch
@@ -99,7 +55,7 @@ impl Surface {
 
     pub fn toggle_sequence(&mut self, index: u8) {
         // When we press currently selected overview, return to instrument view, so we can peek
-        if self.sequence_shown() == index {
+        if self.sequence_shown() == index as usize {
             self.switch_view();
         } else {
             // If we select a new sequence, show that
