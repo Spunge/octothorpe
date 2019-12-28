@@ -48,7 +48,9 @@ impl Grid {
     pub fn height(&self) -> usize { 5 }
 
     pub fn draw(&mut self, x: usize, y: usize, value: u8) {
-        self.next_state[y * 8 + x] = value;
+        if x < self.width() && y < self.height() {
+            self.next_state[y * 8 + x] = value;
+        }
     }
 }
 
@@ -60,7 +62,9 @@ impl Side {
     pub fn height(&self) -> usize { 5 }
 
     pub fn draw(&mut self, index: usize, value: u8) {
-        self.next_state[index] = value;
+        if index < self.height() {
+            self.next_state[index] = value;
+        }
     }
 
     pub fn output(&mut self) -> Vec<(u8, u8)> {
@@ -91,7 +95,9 @@ impl WideRow {
     pub fn width(&self) -> usize { 8 }
 
     pub fn draw(&mut self, index: usize, value: u8) {
-        self.next_state[index] = value;
+        if index < self.width() {
+            self.next_state[index] = value;
+        }
     }
 
     pub fn output(&mut self) -> Vec<(u8, u8)> {
@@ -121,7 +127,9 @@ impl NarrowRow {
     pub fn width(&self) -> usize { 4 }
 
     pub fn draw(&mut self, index: usize, value: u8) {
-        self.next_state[index] = value;
+        if index < self.width() {
+            self.next_state[index] = value;
+        }
     }
 }
 

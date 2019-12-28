@@ -38,7 +38,7 @@ impl Note {
 }
 
 #[derive(Debug, Clone)]
-pub enum NoteType {
+pub enum NoteEventType {
     On,
     Off,
 }
@@ -46,7 +46,7 @@ pub enum NoteType {
 // note, velocity
 #[derive(Debug, Clone)]
 pub struct NoteEvent {
-    note_type: NoteType,
+    event_type: NoteEventType,
     tick: u32,
     note: u8,
     velocity: u8,
@@ -54,10 +54,10 @@ pub struct NoteEvent {
 
 impl NoteEvent {
     pub fn on(tick: u32, note: u8, velocity: u8) -> Self {
-        Self { tick, note, velocity, note_type: NoteType::On }
+        Self { tick, note, velocity, event_type: NoteEventType::On }
     }
 
     pub fn off(tick: u32, note: u8, velocity: u8) -> Self {
-        Self { tick, note, velocity, note_type: NoteType::Off }
+        Self { tick, note, velocity, event_type: NoteEventType::Off }
     }
 }

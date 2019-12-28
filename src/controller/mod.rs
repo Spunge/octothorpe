@@ -1,6 +1,6 @@
 
 mod input;
-mod output;
+mod lights;
 
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
@@ -11,7 +11,10 @@ use super::port::MidiOut;
 use super::mixer::*;
 use super::TimebaseHandler;
 use input::*;
-use output::*;
+use lights::*;
+
+// Wait some cycles for sloooow apc's
+const IDENTIFY_CYCLES: u8 = 3;
 
 pub trait Controller {
     fn ticks_in_grid() -> u32;
@@ -37,7 +40,7 @@ pub struct APC40 {
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
 
-    is_identified: bool,
+    identified_cycles: u8,
     instrument_offset: u8,
     knob_offset: u8,
 
@@ -50,9 +53,14 @@ pub struct APC40 {
 
     grid: Grid,
     side: Side,
+    instrument: WideRow,
     activator: WideRow,
     solo: WideRow,
     arm: WideRow,
+}
+
+impl APC40 {
+    fn pattern_shown(&self, surface: &Surface) -> u8 { self.patterns_shown[surface.instrument_shown()] }
 }
 
 impl Controller for APC40 {
@@ -69,7 +77,7 @@ impl Controller for APC40 {
             input,
             output: MidiOut::new(output),
 
-            is_identified: false,
+            identified_cycles: 0,
             // Offset the faders & sequence knobs by this value
             instrument_offset: 8,
             // Offset knobs by this value to support multiple groups
@@ -84,6 +92,7 @@ impl Controller for APC40 {
 
             grid: Grid::new(),
             side: Side::new(),
+            instrument: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
             arm: WideRow::new(0x30),
@@ -107,7 +116,7 @@ impl Controller for APC40 {
                     let message = Message::Introduction([0xF0, 0x47, device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
                     // Make sure we stop inquiring
                     // TODO - Make sure every grid is re-initialized after identifying
-                    self.is_identified = true;
+                    self.identified_cycles = 1;
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
@@ -163,7 +172,7 @@ impl Controller for APC40 {
 
                                     println!("from {:?} to {:?} play {:?}", start_tick, end_tick, note);
 
-                                    let pattern = instrument.get_pattern(self.patterns_shown[surface.instrument_shown()]);
+                                    let pattern = instrument.get_pattern(self.pattern_shown(surface));
                                     pattern.add_note_on(start_tick, note, 127);
                                     pattern.add_note_off(end_tick, note, 127);
 
@@ -255,6 +264,7 @@ impl Controller for APC40 {
                             surface.toggle_instrument(index + self.instrument_offset);
                         },
                         ButtonType::Quantization => {
+                            // TODO - Move quantizing & quantize_level to "keyboard"
                             sequencer.switch_quantizing();
                         },
                         _ => (),
@@ -273,9 +283,33 @@ impl Controller for APC40 {
      */
     fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
-        if ! self.is_identified {
-            self.output.clear_output_buffer();
+        if self.identified_cycles == 0 {
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
+        } else if self.identified_cycles < IDENTIFY_CYCLES {
+            self.identified_cycles = self.identified_cycles + 1;
+        } else {
+            let instrument = sequencer.get_instrument(surface.instrument_shown());
+            let pattern = instrument.get_pattern(self.pattern_shown(surface));
+
+            // TODO Draw main grid
+
+            self.side.draw(self.pattern_shown(surface) as usize, 1);
+            if surface.instrument_shown() >= self.instrument_offset as usize {
+                self.instrument.draw(surface.instrument_shown() - self.instrument_offset as usize, 1);
+            }
+
+            //for index in 0 .. self.indicator
+            for index in 0 .. self.zoom_level as usize { self.solo.draw(index, 1); }
+
+            let mut output = vec![];
+            output.append(&mut self.side.output());
+            output.append(&mut self.instrument.output());
+            output.append(&mut self.solo.output());
+
+            for (channel, note) in output {
+                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, 127])));
+            }
+
         }
 
         self.output.write_midi(cycle.scope);
@@ -298,6 +332,7 @@ impl Controller for APC40 {
             .collect()
     }
 
+    // TODO - Move this to "keyboard"
     pub fn process_instrument_messages<'a, I>(&mut self, cycle: &Cycle, input: I) -> Vec<TimedMessage>
         where
             I: Iterator<Item = jack::RawMidi<'a>>,
@@ -330,7 +365,7 @@ pub struct APC20 {
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
 
-    is_identified: bool,
+    identified_cycles: u8,
 
     phrases_shown: [u8; 16],
     zoom_level: u8,
@@ -339,6 +374,7 @@ pub struct APC20 {
     // Lights
     grid: Grid,
     side: Side,
+    instrument: WideRow,
     activator: WideRow,
     solo: WideRow,
     arm: WideRow,
@@ -362,7 +398,7 @@ impl Controller for APC20 {
             input,
             output: MidiOut::new(output),
 
-            is_identified: false,
+            identified_cycles: 0,
 
             phrases_shown: [0; 16],
             zoom_level: 2,
@@ -370,6 +406,7 @@ impl Controller for APC20 {
 
             grid: Grid::new(),
             side: Side::new(),
+            instrument: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
             arm: WideRow::new(0x30),
@@ -392,7 +429,7 @@ impl Controller for APC20 {
                     // 0x42 is ableton alternate mode (all leds controlled from host)
                     let message = Message::Introduction([0xF0, 0x47, device_id, 0x7b, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
                     // Make sure we stop inquiring
-                    self.is_identified = true;
+                    self.identified_cycles = 1;
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
@@ -478,28 +515,28 @@ impl Controller for APC20 {
      */
     fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
-        if ! self.is_identified {
+        if self.identified_cycles == 0 {
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
+        } else if self.identified_cycles < IDENTIFY_CYCLES {
+            self.identified_cycles = self.identified_cycles + 1;
         } else {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let phrase = instrument.get_phrase(self.phrase_shown(surface));
 
             // TODO Draw main grid
 
-            for index in 0 .. self.side.height() {
-                self.side.draw(index, if self.phrase_shown(surface) == index as u8 { 1 } else { 0 })
-            }
+            self.side.draw(self.phrase_shown(surface) as usize, 1);
+            self.instrument.draw(surface.instrument_shown(), 1);
+
             //for index in 0 .. self.indicator
-            for index in 0 .. self.activator.width() {
-                let phrase_grid_lengths = phrase.length() / Phrase::default_length();
-                self.activator.draw(index, if index < phrase_grid_lengths as usize { 1 } else { 0 })
+            for index in 0 .. (phrase.length() / Phrase::default_length()) as usize {
+                self.activator.draw(index, 1);
             }
-            for index in 0 .. self.solo.width() {
-                self.solo.draw(index, if index < self.zoom_level as usize { 1 } else { 0 });
-            }
+            for index in 0 .. self.zoom_level as usize { self.solo.draw(index, 1); }
 
             let mut output = vec![];
             output.append(&mut self.side.output());
+            output.append(&mut self.instrument.output());
             output.append(&mut self.activator.output());
             output.append(&mut self.solo.output());
 
@@ -508,6 +545,8 @@ impl Controller for APC20 {
             }
         }
 
+        // TODO - We probably don't have to cache messages in vec anymore, as they only originate
+        // from this function
         self.output.write_midi(cycle.scope);
     }
 }

@@ -5,6 +5,17 @@ use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
 use super::TimebaseHandler;
 
+enum PatternEventType {
+    Start,
+    Stop,
+}
+
+struct PatternEvent {
+    event_type: PatternEventType,
+    tick: u32,
+    pattern: usize,
+}
+
 #[derive(Debug)]
 pub struct PlayingPhrase {
     // Index in sequencers instruments array
@@ -24,10 +35,6 @@ pub struct Phrase {
 }
 
 impl Phrase {
-    pub fn default_length() -> u32 {
-        TimebaseHandler::TICKS_PER_BEAT * 4 * 4
-    }
-
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
         Phrase { 
             length: Self::default_length(),
@@ -36,6 +43,9 @@ impl Phrase {
         }
     }
 
+    pub fn default_length() -> u32 {
+        TimebaseHandler::TICKS_PER_BEAT * 4 * 4
+    }
     pub fn set_length(&mut self, length: u32) {
         self.length = length;
     }

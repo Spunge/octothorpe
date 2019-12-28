@@ -7,7 +7,6 @@ use super::TimebaseHandler;
 use super::phrase::PlayingPhrase;
 use super::pattern::PlayingPattern;
 use super::sequence::Sequence;
-use super::playable::Playable;
 use super::note::Note;
 
 pub enum OverView {
@@ -159,23 +158,6 @@ impl Sequencer {
         &mut self.sequences[self.sequence as usize]
     }
 
-    fn instrument_key_pressed(&mut self, message: jack::RawMidi) {
-        match message.bytes[1] {
-            // Grid should add notes & add phrases
-            0x30 => self.instrument().change_quantize_level((message.bytes[0] - 0x90 + 1) as u8),
-            0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
-            0x32 => {
-                match self.detailview {
-                    DetailView::Pattern => self.instrument().pattern().change_length((message.bytes[0] - 0x90 + 1) as u32),
-                    DetailView::Phrase => self.instrument().phrase().change_length((message.bytes[0] - 0x90 + 1) as u32),
-                }
-            },
-            0x61 => self.playable().change_offset(-1),
-            0x60 => self.playable().change_offset(1),
-            _ => (),
-        }
-    }
-
     // One of the control knobs on the APC was turned
     pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) {
         // Get the channel & knob that APC knob should send out of, first 8 channels are for
@@ -291,261 +273,12 @@ impl Sequencer {
         TimedMessage::new(message.time, Message::Note([instrument_channel, message.bytes[1], message.bytes[2]])) 
     }
 
-    fn switch_instrument_group(&mut self) {
-        self.instrument_group = if self.instrument_group == 1 { 0 } else { 1 };
-    }
-
-    fn switch_knob_group(&mut self, group: u8) {
-        match self.overview {
-            OverView::Instrument => self.instrument().switch_knob_group(group),
-            OverView::Sequence => self.sequence().switch_knob_group(group),
-        }
-    }
-
     pub fn queue_sequence(&mut self, sequence: u8) {
         self.sequence_queued = Some(sequence as usize);
     }
 
     pub fn switch_quantizing(&mut self) {
         self.is_quantizing = ! self.is_quantizing;
-    }
-
-    fn playable(&mut self) -> &mut Playable {
-        match self.detailview {
-            DetailView::Pattern => &mut self.instrument().pattern().playable,
-            DetailView::Phrase => &mut self.instrument().phrase().playable,
-        }
-    }
-
-    pub fn reset(&mut self) {
-        // Use non-existant state to always redraw
-        self.state_current = [9; 96];
-        self.state_next = [0; 96];
-        self.should_render = true;
-    }
-
-    pub fn output_vertical_grid(&mut self, range: Range<usize>, y: u8) -> Vec<Message> {
-        let mut output = vec![];
-
-        for index in range.start..range.end {
-            if self.state_current[index] != self.state_next[index] {
-                let x: u8 = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
-
-                output.push(Message::Note([x, y + (index - range.start) as u8, self.state_next[index]]));
-            }
-        }
-
-        self.switch_state(range.clone());
-
-        output
-    }
-
-    // Output a message for each changed state in the grid
-    pub fn output_horizontal_grid(&mut self, range: Range<usize>, y: u8) -> Vec<Message> {
-        let mut output = vec![];
-
-        for index in range.start..range.end {
-            if self.state_current[index] != self.state_next[index] {
-                let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
-
-                output.push(Message::Note([x + (index - range.start) as u8 % 8, y + (index - range.start) as u8 / 8, self.state_next[index]]));
-            }
-        }
-
-        self.switch_state(range.clone());
-
-        output
-    }
-
-    pub fn output_button(&self, index: usize, y: u8) -> Option<Message> {
-        if self.state_current[index] != self.state_next[index] {
-            let x = if self.state_next[index] == 0 { 0x80 } else { 0x90 };
-            Some(Message::Note([x, y, self.state_next[index]]))
-        } else {
-            None
-        }
-    }
-
-    fn draw_main_grid(&mut self) {
-        // Why do i have to do this?
-        let instrument_group = self.instrument_group;
-
-        let states = match self.overview {
-            OverView::Instrument => match self.detailview {
-                DetailView::Pattern => self.instrument().pattern().led_states(),
-                DetailView::Phrase => self.instrument().phrase().led_states(),
-            }
-            OverView::Sequence => self.sequence().led_states(instrument_group),
-        };
-
-        // Get states that are within grid
-        let valid_states = states.into_iter().filter(|(x, y, _)| {
-            x < &8 && x >= &0 && y < &5 && y >= &0
-        });
-
-        for (x, y, state) in valid_states {
-            self.state_next[y as usize * 8 + x as usize] = state;
-        }
-    }
-
-    fn draw_red_grid(&mut self) {
-        let quantize_level = match self.overview {
-            OverView::Instrument => self.instrument().quantize_level as usize,
-            _ => 0,
-        };
-
-        for index in self.index_red.clone() {
-            let led = index - self.index_red.start;
-
-            self.state_next[index] = if led < quantize_level { 1 } else { 0 };
-        }
-    }
-
-    fn draw_green_grid(&mut self) {
-        for index in self.index_green.clone() {
-            let led = index - self.index_green.start;
-
-            self.state_next[index] = match self.overview {
-                // In instrument, green grid shows length of playable
-                OverView::Instrument => {
-                    let length = (self.playable().length / self.playable().minimum_length) as usize;
-                    if led < length { 1 } else { 0 }
-                },
-                // In Sequence, green grid shows active instruments
-                OverView::Sequence => {
-                    let instrument = self.instrument_group as usize * 8 + led;
-                    if self.sequence().active[instrument] { 1 } else { 0 }
-                }
-            }
-        }
-    }
-
-    fn draw_blue_grid(&mut self) {
-        let length = match self.overview {
-            OverView::Instrument => 8 / self.playable().zoom as usize,
-            _ => 0,
-        };
-        let start = self.playable().offset as usize * length;
-        let end = start + length;
-
-        for index in self.index_blue.clone() {
-            let led = index - self.index_blue.start;
-
-            self.state_next[index] = if led >= start && led < end { 1 } else { 0 };
-        }
-    }
-
-    fn draw_instruments_grid(&mut self) {
-        for index in self.index_instruments.clone() {
-            let led = index - self.index_instruments.start;
-
-            // Force clear as sequence indicator uses the same grid and does not clear it
-            self.state_current[index] = 9;
-            self.state_next[index] = match self.overview {
-                OverView::Instrument => if led as u8 == self.instrument { 1 } else { 0 },
-                _ => 0,
-            };
-        }
-    }
-
-    fn draw_knob_groups_grid(&mut self) {
-        for index in self.index_knob_groups.clone() {
-            let led = index - self.index_knob_groups.start;
-
-            let active_group = match self.overview {
-                OverView::Instrument => self.instrument().knob_group,
-                OverView::Sequence => self.sequence().knob_group,
-            };
-
-            self.state_next[index] = if led as u8 == active_group { 1 } else { 0 };
-        }
-    }
-
-    fn draw_group_button(&mut self) {
-        self.state_next[self.index_instrument_group.start] = self.instrument_group;
-    }
-
-    fn draw_quantize_button(&mut self) {
-        self.state_next[self.index_quantizing.start] = if self.is_quantizing { 1 } else { 0 };
-    }
-
-    fn draw_detailview_button(&mut self) {
-        self.state_next[self.index_detailview.start] = match self.overview {
-            OverView::Instrument => match self.detailview { DetailView::Pattern => 1, _ => 0 },
-            _ => 0,
-        };
-    }
-
-    pub fn switch_state(&mut self, range: Range<usize>) {
-        for i in range.start..range.end {
-            self.state_current[i] = self.state_next[i];
-            self.state_next[i] = 0;
-        }
-    }
-
-    pub fn force_clear_state(&mut self, range: Range<usize>) {
-        for i in range.start..range.end {
-            self.state_current[i] = 9;
-        }
-    }
-
-    // Should render main grid is passed when there's notes played on sequence_in this frame
-    pub fn output_static(&mut self, should_render_main_grid: bool) -> Vec<TimedMessage> {
-        // Output vector
-        let mut output = vec![];
-
-        // Also render main grid when notes where input
-        if self.should_render || should_render_main_grid {
-            self.draw_main_grid();
-            output.extend(self.output_horizontal_grid(self.index_main.clone(), 0x35));
-        }
-
-        // Draw if we have to
-        if self.should_render {
-            self.draw_red_grid();
-            self.draw_green_grid();
-            self.draw_blue_grid();
-            self.draw_instruments_grid();
-            self.draw_knob_groups_grid();
-            self.draw_group_button();
-            self.draw_quantize_button();
-            self.draw_detailview_button();
-
-            output.extend(self.output_horizontal_grid(self.index_red.clone(), 0x30));
-            output.extend(self.output_horizontal_grid(self.index_green.clone(), 0x32));
-            output.extend(self.output_horizontal_grid(self.index_blue.clone(), 0x31));
-            output.extend(self.output_horizontal_grid(self.index_instruments.clone(), 0x33));
-            output.extend(self.output_vertical_grid(self.index_knob_groups.clone(), 0x3A));
-            output.extend(self.output_horizontal_grid(self.index_instrument_group.clone(), 0x50));
-            output.extend(self.output_horizontal_grid(self.index_quantizing.clone(), 0x3F));
-            output.extend(self.output_horizontal_grid(self.index_detailview.clone(), 0x3E));
-
-            // Clear dynamic grids when switching to sequence
-            if let OverView::Sequence = self.overview {
-                self.force_clear_state(self.index_indicator.clone());
-                //output.extend(self.output_horizontal_grid(self.index_indicator.clone(), 0x34));
-                self.force_clear_state(self.index_playables.clone());
-                output.extend(self.output_vertical_grid(self.index_playables.clone(), 0x52));
-            }
-
-            // Output knob values for currently selected inst/seq
-            let knob_values = match self.overview {
-                OverView::Instrument => self.instrument().get_knob_values(),
-                OverView::Sequence => self.sequence().get_knob_values(),
-            };
-
-            for (index, value) in knob_values.iter().enumerate() {
-                // Get APC knob id from instrumen knob id
-                let knob_id = if index < 8 { 0x30 } else { 0x10 - 8 } + index;
-                //output.extend(Message::)
-                // 0xB0 = apc control channel
-                output.push(Message::Note([0xB0, knob_id as u8, *value]));
-            }
-
-            self.should_render = false;
-        }
-
-        output.into_iter().map(|message| TimedMessage::new(0, message)).collect()
     }
 
     // Get playing phrases that fall in this cycle
@@ -651,6 +384,7 @@ impl Sequencer {
     }
 
     // Show playing, queued and selected sequence
+    /*
     fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {
         let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
 
@@ -677,8 +411,10 @@ impl Sequencer {
                 Some(messages)
             })
     }
+    */
         
     // Show playing & selected pattern or phrase
+    /*
     fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
@@ -750,7 +486,9 @@ impl Sequencer {
                 Some(messages)
             })
     }
+    */
 
+        /*
     fn main_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>) 
         -> Option<Vec<TimedMessage>> 
     {
@@ -833,6 +571,7 @@ impl Sequencer {
                 Some(messages)
             })
     }
+*/
 
     // Send midi to process handler
     pub fn output_midi(&mut self, cycle: &Cycle) -> (Vec<TimedMessage>, Vec<TimedMessage>) {
@@ -851,9 +590,9 @@ impl Sequencer {
                 // We should always redraw on reposition or button press
                 let force_redraw = cycle.was_repositioned || self.should_render;
 
-                if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                    control_out_messages.extend(note_events);
-                }
+                //if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                    //control_out_messages.extend(note_events);
+                //}
 
                 // Get playing notes for sequencer
                 let playing_notes = self.playing_notes(cycle, &playing_patterns);
@@ -869,9 +608,9 @@ impl Sequencer {
                 // Draw dynamic indicators
                 match self.overview {
                     OverView::Instrument => {
-                        if let Some(note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                            control_out_messages.extend(note_events);
-                        }
+                        //if let Some(note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
+                            //control_out_messages.extend(note_events);
+                        //}
                     },
                     OverView::Sequence => {
                         if cycle.is_rolling {
@@ -885,9 +624,9 @@ impl Sequencer {
                 }
 
                 // Always trigger draw of sequence indicator as it will always be active
-                if let Some(note_events) = self.sequence_indicator_note_events(cycle, force_redraw) {
-                    control_out_messages.extend(note_events);
-                }
+                //if let Some(note_events) = self.sequence_indicator_note_events(cycle, force_redraw) {
+                    //control_out_messages.extend(note_events);
+                //}
 
                 // Also push note offs (TODO - Why after all this stuff?)
                 if cycle.is_rolling {
