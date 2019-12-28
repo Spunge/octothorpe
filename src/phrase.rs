@@ -1,22 +1,56 @@
 
 use std::ops::Range;
+use std::cmp::Ordering;
 
 use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
 use super::TimebaseHandler;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PatternEventType {
     Start,
     Stop,
 }
+impl Ord for PatternEventType {
+    fn cmp(&self, other: &PatternEventType) -> Ordering {
+        if let (PatternEventType::Stop, PatternEventType::Start) = (self, other) {
+            Ordering::Less
+        } else if let (PatternEventType::Start, PatternEventType::Stop) = (self, other) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+impl PartialOrd for PatternEventType {
+    fn partial_cmp(&self, other: &PatternEventType) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PatternEvent {
     pub event_type: PatternEventType,
     pub tick: u32,
     pub pattern: usize,
 }
+
+// Order pattern events by ticks
+impl Ord for PatternEvent {
+    fn cmp(&self, other: &PatternEvent) -> Ordering {
+        self.tick.cmp(&other.tick).then(self.event_type.cmp(&other.event_type))
+    }
+}
+impl PartialOrd for PatternEvent {
+    fn partial_cmp(&self, other: &PatternEvent) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+//impl PartialEq for PatternEvent {
+    //fn eq(&self, other: &PatternEvent) -> bool {
+        //self.tick == other.tick && self.event_type == other.event_type && 
+    //}
+//}
 
 impl PatternEvent {
     pub fn start(tick: u32, pattern: usize) -> Self {
@@ -72,11 +106,43 @@ impl Phrase {
 
     // TODO - smart cut 
     pub fn add_pattern_event(&mut self, event: PatternEvent) { 
-        println!("{:?}", event);
-        self.pattern_events.push(event); 
+        // We only want to insert when event does not already exist
+        let existing = self.pattern_events.iter()
+            .find(|e| **e == event);
+
+        if let None = existing {
+            match event.event_type {
+                // When previous event is a stop, remove it as this stop is after it
+                PatternEventType::Stop => { 
+                    // Get previous note down
+                    let previous = self.pattern_events.iter_mut()
+                        .enumerate()
+                        .filter(|(_, e)| e.tick < event.tick && e.event_type == event.event_type && e.pattern == event.pattern)
+                        .last();
+
+                    if let Some((index, previous)) = previous {
+                        self.pattern_events.remove(index); 
+                    }
+                },
+                // When previous event is a start, this stop will stop that pattern, add
+                // new start for next stop
+                PatternEventType::Start => {
+                    //self.add_pattern_event(PatternEvent::start(event.tick, event.pattern))
+                },
+            }
+            if let PatternEvent { event_type: PatternEventType::Stop, tick, .. } = event {
+
+            }
+
+            self.pattern_events.push(event); 
+        }
     }
 
     pub fn pattern_events(&self) -> &Vec<PatternEvent> { &self.pattern_events }
+
+    pub fn clear_pattern_events(&mut self) {
+        self.pattern_events = vec![];
+    }
 
     // TODO - when shortening length, notes that are longer as playable length
     // should be cut shorter aswell

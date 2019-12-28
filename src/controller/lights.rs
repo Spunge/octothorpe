@@ -37,7 +37,6 @@ pub struct Single {
     note: u8,
 }
 
-
 impl Grid {
     pub fn new() -> Self {
         // 9 does not exist, this way we force redraw of *all* leds first run
@@ -47,10 +46,39 @@ impl Grid {
     pub fn width(&self) -> usize { 8 }
     pub fn height(&self) -> usize { 5 }
 
+    fn index(x: usize, y: usize) -> usize {
+        y * 8 + x
+    }
+
     pub fn draw(&mut self, x: usize, y: usize, value: u8) {
         if x < self.width() && y < self.height() {
-            self.next_state[y * 8 + x] = value;
+            self.next_state[Self::index(x, y)] = value;
         }
+    }
+
+    pub fn output(&mut self) -> Vec<(u8, u8, u8)> {
+        let mut output = vec![];
+
+        // Meeeeeh, rust array comparison works up to 32 elements...
+        // https://doc.rust-lang.org/std/primitive.array.html#impl-PartialEq%3C%5BB%3B%20N%5D%3E
+        if self.next_state[1..20] != self.state[1..20] || self.next_state[20..] != self.state[20..]  {
+            for x in 0 .. self.width() {
+                for y in 0 .. self.height() {
+                    let index = Self::index(x, y);
+
+                    if self.next_state[index] != self.state[index] {
+                        let channel = x as u8 + if self.next_state[index] > 0 { 0x90 } else { 0x80 };
+                        let note = 0x35 + y as u8;
+
+                        output.push((channel, note, self.next_state[index]));
+                    }
+                }
+            }
+        }
+
+        self.state = self.next_state;
+        self.next_state = [0; 40];
+        output
     }
 }
 
@@ -67,7 +95,7 @@ impl Side {
         }
     }
 
-    pub fn output(&mut self) -> Vec<(u8, u8)> {
+    pub fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
         if self.next_state != self.state {
@@ -76,7 +104,7 @@ impl Side {
                     let channel = if self.next_state[index] == 1 { 0x90 } else { 0x80 };
                     let note = 0x52 + index as u8;
 
-                    output.push((channel, note));
+                    output.push((channel, note, self.next_state[index]));
                 }
             }
         }
@@ -100,7 +128,7 @@ impl WideRow {
         }
     }
 
-    pub fn output(&mut self) -> Vec<(u8, u8)> {
+    pub fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
         if self.next_state != self.state {
@@ -108,7 +136,7 @@ impl WideRow {
                 if self.next_state[index] != self.state[index] {
                     let channel = if self.next_state[index] == 1 { 0x90 } else { 0x80 };
 
-                    output.push((channel + index as u8, self.note));
+                    output.push((channel + index as u8, self.note, self.next_state[index]));
                 }
             }
         }

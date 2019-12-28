@@ -1,5 +1,5 @@
 
-mod input;
+pub mod input;
 mod lights;
 
 use super::message::{TimedMessage, Message};
@@ -19,6 +19,8 @@ use lights::*;
 const IDENTIFY_CYCLES: u8 = 3;
 
 pub trait Controller {
+    const CONTROLLER_ID: u8;
+
     fn ticks_in_grid(&self) -> u32;
     fn zoom_level(&self) -> u8;
     fn offset(&self, index: usize) -> u32;
@@ -46,8 +48,6 @@ pub trait Controller {
 // TODO - THis is not dry, seems like only way to clear this up at the moment is to create a nested "apc" struct,
 // i don't really want to type "apc" after every access of self, so meh...
 pub struct APC40 {
-    memory: Memory,
-
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
@@ -76,6 +76,8 @@ impl APC40 {
 }
 
 impl Controller for APC40 {
+    const CONTROLLER_ID: u8 = 0;
+
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 8 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
@@ -85,8 +87,6 @@ impl Controller for APC40 {
         let output = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
         
         Self {
-            memory: Memory::new(),
-
             input,
             output: MidiOut::new(output),
 
@@ -157,9 +157,10 @@ impl Controller for APC40 {
                 },
                 Event::ButtonPressed { time, button_type } => {
                     // Register press in memory to see if we double pressed
-                    let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
+                    let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                     // Get modifier (other currently pressed key)
-                    let modifier = self.memory.modifier(button_type);
+                    let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
+                    let global_modifier = surface.memory.global_modifier(button_type);
 
                     match surface.view {
                         View::Instrument => {
@@ -179,11 +180,12 @@ impl Controller for APC40 {
                                 },
                                 ButtonType::Side(index) => {
                                     if is_double_pressed {
+                                        println!("rec");
                                         instrument.get_pattern(index).switch_recording_state()
                                     } else {
                                         if let Some(ButtonType::Side(modifier_index)) = modifier {
                                             instrument.clone_pattern(modifier_index, index);
-                                        } else if let Some(ButtonType::Shift) = modifier {
+                                        } else if let Some(ButtonType::Shift) = global_modifier {
                                             instrument.get_pattern(index).clear_note_events();
                                         } else {
                                             self.patterns_shown[surface.instrument_shown()] = index; 
@@ -271,7 +273,7 @@ impl Controller for APC40 {
                     }
                 },
                 Event::ButtonReleased { time, button_type } => {
-                    self.memory.release(cycle.time_at_frame(time), button_type);
+                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                 },
                 _ => (),
             }
@@ -306,7 +308,7 @@ impl Controller for APC40 {
             output.append(&mut self.instrument.output());
             output.append(&mut self.solo.output());
 
-            for (channel, note) in output {
+            for (channel, note, velocity) in output {
                 self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, 127])));
             }
 
@@ -359,8 +361,6 @@ impl Controller for APC40 {
 
 
 pub struct APC20 {
-    memory: Memory,
-
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
@@ -385,6 +385,8 @@ impl APC20 {
 }
 
 impl Controller for APC20 {
+    const CONTROLLER_ID: u8 = 1;
+
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 8 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
@@ -394,8 +396,6 @@ impl Controller for APC20 {
         let output = client.register_port("APC20 out", jack::MidiOut::default()).unwrap();
         
         Self {
-            memory: Memory::new(),
-
             input,
             output: MidiOut::new(output),
 
@@ -443,9 +443,10 @@ impl Controller for APC20 {
                 },
                 Event::ButtonPressed { time, button_type } => {
                     // Register press in memory to see if we double pressed
-                    let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
+                    let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                     // Get modifier (other currently pressed key)
-                    let modifier = self.memory.modifier(button_type);
+                    let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
+                    let global_modifier = surface.memory.global_modifier(button_type);
 
                     match surface.view {
                         View::Instrument => {
@@ -459,11 +460,15 @@ impl Controller for APC20 {
 
                                     let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
                                     phrase.add_pattern_event(PatternEvent::start(start_tick + offset, y as usize));
-                                    phrase.add_pattern_event(PatternEvent::start(end_tick + offset, y as usize));
+                                    phrase.add_pattern_event(PatternEvent::stop(end_tick + offset, y as usize));
+
+                                    println!("{:?}", phrase.pattern_events());
                                 },
                                 ButtonType::Side(index) => {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         instrument.clone_phrase(modifier_index, index);
+                                    } else if let Some(ButtonType::Shift) = global_modifier {
+                                        instrument.get_phrase(index).clear_pattern_events();
                                     } else {
                                         self.phrases_shown[surface.instrument_shown()] = index;
                                     }
@@ -500,7 +505,7 @@ impl Controller for APC20 {
                     }
                 },
                 Event::ButtonReleased { time, button_type } => {
-                    self.memory.release(cycle.time_at_frame(time), button_type);
+                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                 },
                 _ => (),
             }
@@ -521,11 +526,20 @@ impl Controller for APC20 {
             let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
             let offset = self.offset(surface.instrument_shown());
             let ticks_in_grid = self.ticks_in_grid();
+            let ticks_per_button = self.ticks_per_button();
 
-            // Get pattern events in view
-            phrase.pattern_events().iter()
-                .filter(|event| event.tick >= offset || event.tick <= offset + ticks_in_grid);
-            // TODO Draw main grid
+            for y in 0 .. self.grid.height() {
+                // Get pattern events in view
+                //let starts = phrase.pattern_events().iter().filter(|event| event.event_type )
+                //for (start, stop) in 
+                //for event in phrase.pattern_events().iter().filter(|event| event.pattern == y) {
+                    //let button = (event.tick as i32 - offset as i32) / ticks_per_button as i32;
+
+                    //println!("{:?}", button);
+
+                    //self.grid.draw(x, y, 1)
+                //}
+            }
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()) as usize, 1);
             self.instrument.draw(surface.instrument_shown(), 1);
@@ -537,13 +551,14 @@ impl Controller for APC20 {
             for index in 0 .. self.zoom_level as usize { self.solo.draw(index, 1); }
 
             let mut output = vec![];
+            output.append(&mut self.grid.output());
             output.append(&mut self.side.output());
             output.append(&mut self.instrument.output());
             output.append(&mut self.activator.output());
             output.append(&mut self.solo.output());
 
-            for (channel, note) in output {
-                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, 127])));
+            for (channel, note, velocity) in output {
+                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, velocity])));
             }
         }
 
