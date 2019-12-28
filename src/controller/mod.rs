@@ -87,6 +87,7 @@ impl Controller for APC40 {
                     // 0x42 is ableton alternate mode (all leds controlled from host)
                     let message = Message::Introduction([0xF0, 0x47, device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
                     // Make sure we stop inquiring
+                    // TODO - Make sure every grid is re-initialized after identifying
                     self.is_identified = true;
 
                     self.output.output_message(TimedMessage::new(0, message));
@@ -177,6 +178,19 @@ impl Controller for APC40 {
 
                                     if new_base_note >= 22 { *base_note = new_base_note }
                                 },
+                                ButtonType::Right => {
+                                    let ticks_per_button = self.ticks_per_button();
+                                    let offset = &mut self.offsets[surface.instrument_shown()];
+                                    // There's 8 buttons, shift view one gridwidth to the right
+                                    *offset = *offset + ticks_per_button * 8;
+                                },
+                                ButtonType::Left => {
+                                    let ticks_per_button = self.ticks_per_button();
+                                    let offset = &mut self.offsets[surface.instrument_shown()];
+                                    let new_offset = *offset as i32 - (ticks_per_button * 8) as i32;
+
+                                    *offset = if new_offset >= 0 { new_offset as u32 } else { 0 };
+                                },
                                 _ => (),
                             }
                         },
@@ -244,136 +258,6 @@ impl Controller for APC40 {
 
         self.output.write_midi(cycle.scope);
     }
-
-    /*
-    // Process messages from APC controller keys being pushed
-    pub fn process_sysex_input<'a, I>(&mut self, input: I, cycle: &Cycle, client: &jack::Client) -> Vec<TimedMessage>
-        where
-            I: Iterator<Item = jack::RawMidi<'a>>,
-    {
-        input
-            .filter_map(|message| {
-                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-                // 0x06 = inquiry e, 0x02 = inquiry response
-                // 0x47 = akai manufacturer, 0x73 = model nr
-                if message.bytes[0] == 0xF0 &&
-                    message.bytes[3] == 0x06 && message.bytes[4] == 0x02  
-                    && message.bytes[5] == 0x47 && message.bytes[6] == 0x73 
-                {
-                    // Introduce ourselves to controller
-                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
-                    // 0x42 is ableton alternate mode (all leds controlled from host)
-                    let message = Message::Introduction([0xF0, 0x47, message.bytes[13], 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
-                    let introduction = TimedMessage::new(0, message);
-
-                    // Rerender & draw what we want to see
-                    self.sequencer.reset();
-                    let mut messages = vec![introduction];
-                    // TODO - Before we timed the messages after introduction to 128 frames, why?
-                    messages.extend(self.sequencer.output_static(true));
-
-                    Some(messages)
-                } else {
-                    None
-                }
-            })
-            .flatten()
-            .collect()
-    }
-
-    // Process messages from APC controller keys being pushed
-    pub fn process_apc_note_messages<'a, I>(&mut self, input: I, cycle: &Cycle, client: &jack::Client)
-        where
-            I: Iterator<Item = jack::RawMidi<'a>>,
-    {
-        input
-            .for_each(|message| {
-                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-                // Only process channel note messages
-                match message.bytes[0] {
-                    0xB0 => {
-                        if message.bytes[1] == 0x2F {
-                            self.sequencer.cue_knob_turned(message.bytes[2]);
-                        }
-                    },
-                    0x90 ..= 0x9F => {
-                        let pressed_key = PressedKey { 
-                            time: cycle.absolute_start + message.time, 
-                            channel: message.bytes[0],
-                            key: message.bytes[1],
-                        };
-
-                        // Remove keypresses that are not within double press range
-                        self.pressed_keys.retain(|previous| {
-                            pressed_key.time - previous.time < Controller::DOUBLE_PRESS_TICKS
-                        });
-
-                        // Check for old keypresses matching currently pressed key
-                        let double_presses: Vec<bool> = self.pressed_keys.iter()
-                            .filter_map(|previous| {
-                                if previous.channel == pressed_key.channel && previous.key == pressed_key.key {
-                                    Some(true)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                        // Always single press 
-                        match message.bytes[1] {
-                            0x5B => { client.transport_start() },
-                            0x5C => {
-                                let (state, _) = client.transport_query();
-                                match state {
-                                    1 => client.transport_stop(),
-                                    _ => client.transport_reposition(jack::Position::default()),
-                                };
-                            },
-                            _ => self.sequencer.key_pressed(message),
-                        }
-
-                        // Double pressed_key when its there
-                        if double_presses.len() > 0 {
-                            self.sequencer.key_double_pressed(message);
-                        }
-
-                        // Save pressed_key
-                        self.pressed_keys.push(pressed_key);
-
-                    },
-                    0x80 ..= 0x8F => self.sequencer.key_released(message),
-                    _ => (),
-                }
-            })
-    }
-
-    // Process messages from APC controller keys being pushed
-    pub fn process_apc_control_change_messages<'a, I>(&mut self, input: I) -> Vec<TimedMessage>
-        where
-            I: Iterator<Item = jack::RawMidi<'a>>,
-    {
-        input
-            .filter_map(|message| {
-                //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-                // Only process channel note messages
-                match message.bytes[0] {
-                    0xB0 ..= 0xB8 => {
-                        match message.bytes[1] {
-                            // APC knobs are ordered weird, reorder them from to 0..16
-                            0x10..=0x17 => Some(self.sequencer.knob_turned(message.time, message.bytes[1] - 8, message.bytes[2])),
-                            0x30..=0x37 => Some(self.sequencer.knob_turned(message.time, message.bytes[1] - 48, message.bytes[2])),
-                            0x7 => Some(self.sequencer.fader_adjusted(message.time, message.bytes[0] - 0xB0, message.bytes[2])),
-                            0xE => Some(self.sequencer.master_adjusted(message.time, message.bytes[2])),
-                            _ => None,
-                        }
-                    },
-                    _ => None,
-                }
-            })
-            .flatten()
-            .collect()
-    }
-    */
 
         /*
     // Process incoming control change messages from plugins of which parameters were changed
@@ -489,7 +373,15 @@ impl Controller for APC20 {
                             let phrase = instrument.get_phrase(self.phrases_shown[surface.instrument_shown()]);
 
                             match button_type {
-                                ButtonType::Grid(x, y) => {
+                                ButtonType::Grid(end_button, y) => {
+                                    let start_button = if let Some(ButtonType::Grid(start, modifier_y)) = modifier {
+                                        if modifier_y == y { start } else { end_button }
+                                    } else { end_button };
+
+                                    // TODO - Calculate ticks, toggle playing pattern
+                                    // TODO Default 4 bars
+                                    // TODO Default zoom should be 4 so we can zoom in & out
+                                    //phrase.toggle_pattern(start_button..end_button, y),
                                 },
                                 ButtonType::Playable(index) => {
                                     if let Some(ButtonType::Playable(modifier_index)) = modifier {

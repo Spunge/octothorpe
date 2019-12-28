@@ -168,27 +168,6 @@ impl Sequencer {
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             // Grid should add notes & add phrases
-            0x35 ..= 0x39 => {
-                // Get start & end in grid of pressed keys
-                let from = self.keys_pressed.iter()
-                    .filter(|keypress| keypress.note == message.bytes[1])
-                    .min_by_key(|keypress| keypress.channel)
-                    .unwrap()
-                    .channel - 0x90;
-
-                let to = self.keys_pressed.iter()
-                    .filter(|keypress| keypress.note == message.bytes[1])
-                    .max_by_key(|keypress| keypress.channel)
-                    .unwrap()
-                    .channel - 0x90;
-
-                match self.detailview {
-                    DetailView::Pattern => self.instrument().pattern().toggle_led_range(from..to, message.bytes[1] - 0x35, 127, 127),
-                    DetailView::Phrase => self.instrument().phrase().toggle_pattern(from..to, message.bytes[1] - 0x35),
-                }
-            },
-            0x5E => self.instrument().pattern().change_base_note(4),
-            0x5F => self.instrument().pattern().change_base_note(-4),
             0x30 => self.instrument().change_quantize_level((message.bytes[0] - 0x90 + 1) as u8),
             0x31 => self.playable().change_zoom((message.bytes[0] - 0x90 + 1) as u32),
             0x32 => {
