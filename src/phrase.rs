@@ -24,17 +24,22 @@ pub struct Phrase {
 }
 
 impl Phrase {
+    pub fn default_length() -> u32 {
+        TimebaseHandler::TICKS_PER_BEAT * 4 * 4
+    }
+
     fn create(played_patterns: Vec<PlayedPattern>) -> Self {
         Phrase { 
-            length: 0,
+            length: Self::default_length(),
             playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), 
             played_patterns, 
         }
     }
 
-    pub fn set_length(&mut self, length: u8) {
-        self.length = length as u32;
+    pub fn set_length(&mut self, length: u32) {
+        self.length = length;
     }
+    pub fn length(&self) -> u32 { self.length }
 
     pub fn new(index: usize) -> Self {
         Phrase::create(vec![

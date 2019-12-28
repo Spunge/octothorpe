@@ -25,7 +25,7 @@ pub struct CueKnob {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ButtonType {
     Grid(u8, u8),
-    Playable(u8),
+    Side(u8),
     Indicator(u8),
     Instrument(u8),
     Activator(u8),
@@ -71,8 +71,8 @@ impl ButtonType {
             0x33 => ButtonType::Instrument(channel),
             0x3F => ButtonType::Quantization,
             0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
-            // Playable grid
-            0x52 ..= 0x56 => ButtonType::Playable(note - 0x52),
+            // Side grid
+            0x52 ..= 0x56 => ButtonType::Side(note - 0x52),
             // Grid should add notes & add phrases
             0x35 ..= 0x39 => ButtonType::Grid(channel, note - 0x35),
             0x5E => ButtonType::Up,
@@ -166,8 +166,9 @@ impl Memory {
         pressed_button.end = Some(end);
     }
 
-    pub fn modifier(&self) -> Option<ButtonType> {
+    pub fn modifier(&self, button_type: ButtonType) -> Option<ButtonType> {
         self.presses.iter()
+            .filter(|pressed_button| pressed_button.button_type != button_type)
             .find(|pressed_button| pressed_button.end.is_none())
             .and_then(|pressed_button| Some(pressed_button.button_type))
     }

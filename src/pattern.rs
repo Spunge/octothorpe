@@ -51,14 +51,23 @@ impl Pattern {
         }
     }
 
-    pub fn clear_note_events(&mut self) {
-        self.note_events = vec![];
-    }
-
     pub fn new(channel: u8) -> Self {
         Pattern::create(channel, vec![])
     }
     
+    pub fn clear_note_events(&mut self) {
+        self.note_events = vec![];
+    }
+
+    pub fn add_note_on(&mut self, tick: u32, note: u8, velocity: u8) {
+        // TODO - Smart stuff, cut off notes etc
+        self.note_events.push(NoteEvent::on(tick, note, velocity));
+    }
+
+    pub fn add_note_off(&mut self, tick: u32, note: u8, velocity: u8) {
+        self.note_events.push(NoteEvent::off(tick, note, velocity));
+    }
+
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {
         let coords = self.notes.iter()
             // start, end, y

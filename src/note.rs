@@ -53,11 +53,11 @@ pub struct NoteEvent {
 }
 
 impl NoteEvent {
-    fn on(tick: u32, note: u8, velocity: u8) -> Self {
+    pub fn on(tick: u32, note: u8, velocity: u8) -> Self {
         Self { tick, note, velocity, note_type: NoteType::On }
     }
 
-    fn off(tick: u32, note: u8, velocity: u8) -> Self {
+    pub fn off(tick: u32, note: u8, velocity: u8) -> Self {
         Self { tick, note, velocity, note_type: NoteType::Off }
     }
 }

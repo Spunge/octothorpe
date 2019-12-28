@@ -1,16 +1,27 @@
 
 mod input;
+mod output;
 
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
+use super::phrase::Phrase;
 use super::sequencer::Sequencer;
 use super::surface::*;
 use super::port::MidiOut;
 use super::mixer::*;
 use super::TimebaseHandler;
 use input::*;
+use output::*;
 
 pub trait Controller {
+    fn ticks_in_grid() -> u32;
+    fn zoom_level(&self) -> u8;
+
+    fn ticks_per_button(&self) -> u32 {
+        // Grid will show 4 beats by default, there are 8 buttons in the grid
+        Self::ticks_in_grid() / 8 / self.zoom_level() as u32
+    }
+
     fn new(client: &jack::Client) -> Self;
 
     fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
@@ -36,16 +47,18 @@ pub struct APC40 {
     base_notes: [u8; 16],
 
     cue_knob: CueKnob,
-}
 
-impl APC40 {
-    fn ticks_per_button(&self) -> u32 {
-        // Grid will show 4 beats by default, there are 8 buttons in the grid
-        TimebaseHandler::TICKS_PER_BEAT * 4 / 8 / self.zoom_level as u32
-    }
+    grid: Grid,
+    side: Side,
+    activator: WideRow,
+    solo: WideRow,
+    arm: WideRow,
 }
 
 impl Controller for APC40 {
+    fn ticks_in_grid() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 8 }
+    fn zoom_level(&self) -> u8 { self.zoom_level }
+
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
         let output = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
@@ -63,11 +76,17 @@ impl Controller for APC40 {
             knob_offset: 0,
 
             patterns_shown: [0; 16],
-            zoom_level: 1,
+            zoom_level: 2,
             offsets: [0; 16],
             base_notes: [58; 16],
 
             cue_knob: CueKnob::new(),
+
+            grid: Grid::new(),
+            side: Side::new(),
+            activator: WideRow::new(0x32),
+            solo: WideRow::new(0x31),
+            arm: WideRow::new(0x30),
         }
     }
 
@@ -120,7 +139,7 @@ impl Controller for APC40 {
                     // Register press in memory to see if we double pressed
                     let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
                     // Get modifier (other currently pressed key)
-                    let modifier = self.memory.modifier();
+                    let modifier = self.memory.modifier(button_type);
 
                     match surface.view {
                         View::Instrument => {
@@ -145,13 +164,15 @@ impl Controller for APC40 {
                                     println!("from {:?} to {:?} play {:?}", start_tick, end_tick, note);
 
                                     let pattern = instrument.get_pattern(self.patterns_shown[surface.instrument_shown()]);
+                                    pattern.add_note_on(start_tick, note, 127);
+                                    pattern.add_note_off(end_tick, note, 127);
 
                                 },
-                                ButtonType::Playable(index) => {
+                                ButtonType::Side(index) => {
                                     if is_double_pressed {
                                         instrument.get_pattern(index).switch_recording_state()
                                     } else {
-                                        if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                        if let Some(ButtonType::Side(modifier_index)) = modifier {
                                             instrument.clone_pattern(modifier_index, index);
                                         } else if let Some(ButtonType::Shift) = modifier {
                                             instrument.get_pattern(index).clear_note_events();
@@ -202,7 +223,7 @@ impl Controller for APC40 {
                                 ButtonType::Grid(x, y) => {
                                     sequence.toggle_phrase(x + self.instrument_offset, y);
                                 },
-                                ButtonType::Playable(index) => {
+                                ButtonType::Side(index) => {
                                     sequence.toggle_row(index);
                                 },
                                 ButtonType::Activator(index) => {
@@ -314,9 +335,23 @@ pub struct APC20 {
     phrases_shown: [u8; 16],
     zoom_level: u8,
     offsets: [u32; 16],
+
+    // Lights
+    grid: Grid,
+    side: Side,
+    activator: WideRow,
+    solo: WideRow,
+    arm: WideRow,
+}
+
+impl APC20 {
+    fn phrase_shown(&self, surface: &Surface) -> u8 { self.phrases_shown[surface.instrument_shown()] }
 }
 
 impl Controller for APC20 {
+    fn ticks_in_grid() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 8 }
+    fn zoom_level(&self) -> u8 { self.zoom_level }
+
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
         let output = client.register_port("APC20 out", jack::MidiOut::default()).unwrap();
@@ -330,8 +365,14 @@ impl Controller for APC20 {
             is_identified: false,
 
             phrases_shown: [0; 16],
-            zoom_level: 0,
+            zoom_level: 2,
             offsets: [0; 16],
+
+            grid: Grid::new(),
+            side: Side::new(),
+            activator: WideRow::new(0x32),
+            solo: WideRow::new(0x31),
+            arm: WideRow::new(0x30),
         }
     }
 
@@ -366,12 +407,12 @@ impl Controller for APC20 {
                     // Register press in memory to see if we double pressed
                     let is_double_pressed = self.memory.press(cycle.time_at_frame(time), button_type);
                     // Get modifier (other currently pressed key)
-                    let modifier = self.memory.modifier();
+                    let modifier = self.memory.modifier(button_type);
 
                     match surface.view {
                         View::Instrument => {
                             let instrument = sequencer.get_instrument(surface.instrument_shown());
-                            let phrase = instrument.get_phrase(self.phrases_shown[surface.instrument_shown()]);
+                            let phrase = instrument.get_phrase(self.phrase_shown(surface));
 
                             match button_type {
                                 ButtonType::Grid(end_button, y) => {
@@ -379,19 +420,30 @@ impl Controller for APC20 {
                                         if modifier_y == y { start } else { end_button }
                                     } else { end_button };
 
+                                    println!("{:?}, {:?}", start_button, end_button);
+
                                     // TODO - Calculate ticks, toggle playing pattern
                                     // TODO Default 4 bars
                                     // TODO Default zoom should be 4 so we can zoom in & out
                                     //phrase.toggle_pattern(start_button..end_button, y),
                                 },
-                                ButtonType::Playable(index) => {
-                                    if let Some(ButtonType::Playable(modifier_index)) = modifier {
+                                ButtonType::Side(index) => {
+                                    if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         instrument.clone_phrase(modifier_index, index);
                                     } else {
                                         self.phrases_shown[surface.instrument_shown()] = index;
                                     }
                                 },
-                                ButtonType::Activator(index) => phrase.set_length(index),
+                                ButtonType::Activator(index) => {
+                                    phrase.set_length(Phrase::default_length() * (index as u32 + 1));
+                                },
+                                ButtonType::Solo(index) => {
+                                    // We divide by zoom level, so don't start at 0
+                                    let zoom_level = index + 1;
+                                    if zoom_level != 7 {
+                                        self.zoom_level = zoom_level;
+                                    }
+                                },
                                 _ => (),
                             }
                         },
@@ -401,7 +453,7 @@ impl Controller for APC20 {
                             match button_type {
                                 ButtonType::Grid(x, y) => sequence.toggle_phrase(x, y),
                                 // TODO - Only switch rows on APC20
-                                ButtonType::Playable(index) => sequence.toggle_row(index),
+                                ButtonType::Side(index) => sequence.toggle_row(index),
                                 ButtonType::Activator(index) => sequence.toggle_active(index),
                                 _ => (),
                             }
@@ -427,8 +479,33 @@ impl Controller for APC20 {
     fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
         if ! self.is_identified {
-            self.output.clear_output_buffer();
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
+        } else {
+            let instrument = sequencer.get_instrument(surface.instrument_shown());
+            let phrase = instrument.get_phrase(self.phrase_shown(surface));
+
+            // TODO Draw main grid
+
+            for index in 0 .. self.side.height() {
+                self.side.draw(index, if self.phrase_shown(surface) == index as u8 { 1 } else { 0 })
+            }
+            //for index in 0 .. self.indicator
+            for index in 0 .. self.activator.width() {
+                let phrase_grid_lengths = phrase.length() / Phrase::default_length();
+                self.activator.draw(index, if index < phrase_grid_lengths as usize { 1 } else { 0 })
+            }
+            for index in 0 .. self.solo.width() {
+                self.solo.draw(index, if index < self.zoom_level as usize { 1 } else { 0 });
+            }
+
+            let mut output = vec![];
+            output.append(&mut self.side.output());
+            output.append(&mut self.activator.output());
+            output.append(&mut self.solo.output());
+
+            for (channel, note) in output {
+                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, 127])));
+            }
         }
 
         self.output.write_midi(cycle.scope);
