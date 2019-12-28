@@ -152,8 +152,9 @@ impl Controller for APC40 {
                                         instrument.get_pattern(index).switch_recording_state()
                                     } else {
                                         if let Some(ButtonType::Playable(modifier_index)) = modifier {
-                                            println!("copying from {:?} to {:?}", modifier_index, index);
                                             instrument.clone_pattern(modifier_index, index);
+                                        } else if let Some(ButtonType::Shift) = modifier {
+                                            instrument.get_pattern(index).clear_note_events();
                                         } else {
                                             self.patterns_shown[surface.instrument_shown()] = index; 
                                         }

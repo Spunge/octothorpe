@@ -159,12 +159,6 @@ impl Sequencer {
         &mut self.sequences[self.sequence as usize]
     }
 
-    fn is_shift_pressed(&self) -> bool {
-        self.keys_pressed.iter().any(|keypress| {
-            keypress.note == 0x62 && keypress.velocity == 0x7F && keypress.channel == 0x90
-        })
-    }
-
     fn instrument_key_pressed(&mut self, message: jack::RawMidi) {
         match message.bytes[1] {
             // Grid should add notes & add phrases
@@ -312,91 +306,8 @@ impl Sequencer {
         self.sequence_queued = Some(sequence as usize);
     }
 
-    fn switch_sequence(&mut self, sequence: u8) {
-        // Queue sequence
-        if self.is_shift_pressed() {
-            self.sequence_queued = Some(sequence as usize);
-        } else {
-            // When we press currently selected overview, return to instrument view, so we can peek
-            if self.sequence == sequence {
-                self.switch_overview();
-            } else {
-                // If we select a new sequence, show that
-                self.sequence = sequence;
-
-                if let OverView::Instrument = self.overview {
-                    self.switch_overview();
-                }
-            }
-        }
-    }
-
-    /*
-    fn switch_instrument(&mut self, instrument: u8) {
-        // If we click selected instrument, return to sequence for peeking
-        if self.instrument == instrument {
-            self.switch_overview();
-        } else {
-            // Otherwise select instrument && switch
-            self.instrument = instrument;
-            self.keyboard_target = instrument;
-            self.drumpad_target = instrument;
-
-            if let OverView::Sequence = self.overview {
-                self.switch_overview();
-            }
-        }
-    }
-    */
-
     pub fn switch_quantizing(&mut self) {
         self.is_quantizing = ! self.is_quantizing;
-    }
-
-    fn copy_playable(&mut self, from: u8, to: u8) {
-        match self.detailview {
-            DetailView::Pattern => {
-                self.instrument().patterns[to as usize] = self.instrument().patterns[from as usize].clone();
-            },
-            DetailView::Phrase => {
-                self.instrument().phrases[to as usize] = self.instrument().phrases[from as usize].clone();
-            },
-        }
-    }
-
-    fn switch_playable(&mut self, playable: u8) {
-        match self.detailview {
-            DetailView::Pattern => self.instrument().pattern = playable as usize,
-            DetailView::Phrase => self.instrument().phrase = playable as usize,
-        }
-
-        // Reset pattern on shift click
-        if self.is_shift_pressed() {
-            match self.detailview {
-                DetailView::Pattern => self.instrument().pattern().reset(),
-                _ => (),
-            }
-        }
-    }
-
-    fn switch_overview(&mut self) {
-        match self.overview {
-            OverView::Instrument => {
-                self.overview = OverView::Sequence
-            },
-            OverView::Sequence => {
-                // Clear as we do not want the selected instrument grid to clear
-                self.indicator_note_offs = vec![];
-                self.overview = OverView::Instrument
-            },
-        }
-    }
-
-    fn switch_detailview(&mut self) {
-        match self.detailview {
-            DetailView::Pattern => self.detailview = DetailView::Phrase,
-            DetailView::Phrase => self.detailview = DetailView::Pattern,
-        }
     }
 
     fn playable(&mut self) -> &mut Playable {

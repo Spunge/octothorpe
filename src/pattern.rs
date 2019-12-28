@@ -51,6 +51,10 @@ impl Pattern {
         }
     }
 
+    pub fn clear_note_events(&mut self) {
+        self.note_events = vec![];
+    }
+
     pub fn new(channel: u8) -> Self {
         Pattern::create(channel, vec![])
     }
