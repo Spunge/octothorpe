@@ -536,60 +536,10 @@ impl Controller for APC20 {
                 while let Some(&[start, stop]) = chunks.next() {
                     //println!("{:?}", (start.tick / ticks_per_button));
                     // TODO - Proper drawing
+                    // TODO - Stop can be before start
+                    // TODO - Don't draw on every cycle
                     self.grid.draw((start.tick / ticks_per_button) as usize, y, 1);
                 }
-
-                //println!("{:?}", temp);
-
-                //let mut renders = vec![];
-
-                /*
-                loop {
-                    let item = events.next();
-                    let peek = events.peek();
-
-                    match item {
-                        Some((index, event)) => {
-                            let render = match event.event_type {
-                                PatternEventType::Stop => {
-                                    // Output from 0 => event.tick
-                                    if index == 0 { Some((0, event.tick)) } else { None }
-                                },
-                                PatternEventType::Start => {
-                                    if let Some((_, PatternEvent { event_type: PatternEventType::Stop, tick, .. })) = peek {
-                                        // Render from event.tick => tick
-                                        Some((event.tick, *tick))
-                                    } else if let None = peek {
-                                        // Render from event.tick => length
-                                        Some((event.tick, phrase.length()))
-                                    } else {
-                                        None
-                                    }
-                                }
-                            };
-
-                            if let Some(ticks) = render {
-                                renders.push(ticks);
-                            }
-                        },
-                        None => break,
-                    }
-                }
-                */
-
-                //println!("{:?}", renders);
-                /*
-                for (index, event) in events {
-
-                    println!("{:?}", index);
-                    //let button = (event.tick as i32 - offset as i32) / ticks_per_button as i32;
-
-                    //println!("{:?}", button);
-
-                    //self.grid.draw(x, y, 1)
-                }
-                */
-
             }
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()) as usize, 1);
