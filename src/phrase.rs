@@ -6,7 +6,7 @@ use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
 use super::TimebaseHandler;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PatternEventType {
     Start,
     Stop,
@@ -28,7 +28,7 @@ impl PartialOrd for PatternEventType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct PatternEvent {
     pub event_type: PatternEventType,
     pub tick: u32,
@@ -105,43 +105,41 @@ impl Phrase {
     pub fn set_length(&mut self, length: u32) { self.length = length; }
     pub fn length(&self) -> u32 { self.length } 
 
-    // TODO - smart cut 
-    pub fn add_pattern_event(&mut self, event: PatternEvent) { 
-        // We only want to insert when event does not already exist
-        let existing = self.pattern_events.iter().find(|e| **e == event);
+    // TODO - Smart cut of |  stop]    [start       |
+    pub fn add_pattern(&mut self, start_tick: u32, stop_tick: u32, pattern: usize) { 
+        // Compare overlap of previous event pairs with current events
+        // Chunks will always be in start => stop events, ticks of start can be after stop though
+        let mut chunks = self.pattern_events.chunks_mut(2);
+        let mut retained: Vec<PatternEvent> = vec![];
 
-        if let None = existing {
-            match event.event_type {
-                // TODO - When both previous events are start, remove start in between
-                PatternEventType::Stop => { 
-                    let mut last_elements = self.pattern_events.iter().filter(|e| e.pattern == event.pattern).rev().take(2);
+        while let Some([start, stop]) = chunks.next() {
+            // Yeah i know this is double check..
+            let is_same_pattern = start.pattern == pattern && stop.pattern == pattern;
+            let overlaps = start.tick >= start_tick && stop.tick <= stop_tick;
+            let overlaps_end = start.tick < start_tick && stop.tick > start_tick;
+            let overlaps_start = start.tick < stop_tick && stop.tick > stop_tick;
 
-                    println!("last 2 elements");
-                    println!("{:?} {:?}", last_elements.next(), last_elements.next());
-                    // Get previous note down
-                    /*
-                    let previous = self.pattern_events.iter_mut()
-                        .enumerate()
-                        .filter(|(_, e)| e.tick < event.tick && e.event_type == event.event_type && e.pattern == event.pattern)
-                        .last();
-
-                    if let Some((index, previous)) = previous {
-                        self.pattern_events.remove(index); 
-                    }
-                    */
-                },
-                // TODO - When both next events are stop, add start in between
-                PatternEventType::Start => { 
+            if is_same_pattern {
+                if overlaps {
+                    // Previous event is completely within current event
+                    continue;
+                } else if overlaps_end {
+                    // Overlap of end of previous note
+                    stop.tick = start_tick;
+                } else if overlaps_start {
+                    // Overlap of start of previous note
+                    start.tick = stop_tick;
                 }
             }
 
-            self.pattern_events.push(event); 
-            self.pattern_events.sort();
-            println!("all:");
-            println!("{:?}", self.pattern_events);
-        } else {
-            println!("exists");
+            retained.push(*start);
+            retained.push(*stop);
         }
+
+        self.pattern_events = retained;
+        self.pattern_events.push(PatternEvent::start(start_tick, pattern));
+        self.pattern_events.push(PatternEvent::stop(stop_tick, pattern));
+        dbg!(&self.pattern_events);
     }
 
     pub fn clear_pattern_events(&mut self) {

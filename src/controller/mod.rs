@@ -26,17 +26,17 @@ pub trait Controller {
     fn offset(&self, index: usize) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
 
-    fn grid_buttons_to_ticks(&self, end_x: u8, y: u8, modifier: Option<ButtonType>) -> (u32, u32) {
+    fn grid_buttons_to_ticks(&self, stop_x: u8, y: u8, modifier: Option<ButtonType>) -> (u32, u32) {
         let start_x = if let Some(ButtonType::Grid(start_x, modifier_y)) = modifier {
-            if modifier_y == y { start_x } else { end_x }
-        } else { end_x };
+            if modifier_y == y { start_x } else { stop_x }
+        } else { stop_x };
 
         let ticks_per_button = self.ticks_per_button();
 
         let start_tick = start_x as u32 * ticks_per_button;
-        let end_tick = (end_x + 1) as u32 * ticks_per_button;
+        let stop_tick = (stop_x + 1) as u32 * ticks_per_button;
 
-        (start_tick, end_tick)
+        (start_tick, stop_tick)
     }
 
     fn new(client: &jack::Client) -> Self;
@@ -170,13 +170,13 @@ impl Controller for APC40 {
                                 ButtonType::Grid(x, y) => {
                                     // We subtract y from 4 as we want lower notes to be lower on
                                     // the grid, the grid counts from the top
-                                    let (start_tick, end_tick) = self.grid_buttons_to_ticks(x, y, modifier);
+                                    let (start_tick, stop_tick) = self.grid_buttons_to_ticks(x, y, modifier);
                                     let note = self.base_notes[surface.instrument_shown()] + (4 - y);
                                     let offset = self.offset(surface.instrument_shown());
 
                                     let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
                                     pattern.add_note_event(NoteEvent::on(start_tick + offset, note, 127));
-                                    pattern.add_note_event(NoteEvent::off(end_tick + offset, note, 127));
+                                    pattern.add_note_event(NoteEvent::off(stop_tick + offset, note, 127));
                                 },
                                 ButtonType::Side(index) => {
                                     if is_double_pressed {
@@ -455,12 +455,11 @@ impl Controller for APC20 {
 
                             match button_type {
                                 ButtonType::Grid(x, y) => {
-                                    let (start_tick, end_tick) = self.grid_buttons_to_ticks(x, y, modifier);
+                                    let (start_tick, stop_tick) = self.grid_buttons_to_ticks(x, y, modifier);
                                     let offset = self.offset(surface.instrument_shown());
 
                                     let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
-                                    phrase.add_pattern_event(PatternEvent::start(start_tick + offset, y as usize));
-                                    phrase.add_pattern_event(PatternEvent::stop(end_tick + offset, y as usize));
+                                    phrase.add_pattern(start_tick + offset, stop_tick + offset, y as usize);
 
                                     //println!("{:?}", phrase.pattern_events);
                                 },
@@ -529,10 +528,22 @@ impl Controller for APC20 {
             let ticks_per_button = self.ticks_per_button();
 
             for y in 0 .. self.grid.height() {
-                let mut events = phrase.pattern_events.iter().filter(|event| event.pattern == y).enumerate().peekable();
+                let events: Vec<&PatternEvent> = phrase.pattern_events.iter()
+                    .filter(|event| event.pattern == y)
+                    .collect();
+                let mut chunks = events.chunks(2);
 
-                let mut renders = vec![];
+                while let Some(&[start, stop]) = chunks.next() {
+                    //println!("{:?}", (start.tick / ticks_per_button));
+                    // TODO - Proper drawing
+                    self.grid.draw((start.tick / ticks_per_button) as usize, y, 1);
+                }
 
+                //println!("{:?}", temp);
+
+                //let mut renders = vec![];
+
+                /*
                 loop {
                     let item = events.next();
                     let peek = events.peek();
@@ -564,6 +575,7 @@ impl Controller for APC20 {
                         None => break,
                     }
                 }
+                */
 
                 //println!("{:?}", renders);
                 /*

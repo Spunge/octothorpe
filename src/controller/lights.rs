@@ -61,7 +61,7 @@ impl Grid {
 
         // Meeeeeh, rust array comparison works up to 32 elements...
         // https://doc.rust-lang.org/std/primitive.array.html#impl-PartialEq%3C%5BB%3B%20N%5D%3E
-        if self.next_state[1..20] != self.state[1..20] || self.next_state[20..] != self.state[20..]  {
+        if self.next_state[0..20] != self.state[0..20] || self.next_state[20..] != self.state[20..]  {
             for x in 0 .. self.width() {
                 for y in 0 .. self.height() {
                     let index = Self::index(x, y);
