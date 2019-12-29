@@ -75,8 +75,9 @@ pub struct PlayingPhrase {
 
 #[derive(Clone)]
 pub struct Phrase {
+    // Length in ticks
     length: u32,
-    pattern_events: Vec<PatternEvent>,
+    pub pattern_events: Vec<PatternEvent>,
 
     // OOOOOoooldd
     pub playable: Playable,
@@ -107,14 +108,18 @@ impl Phrase {
     // TODO - smart cut 
     pub fn add_pattern_event(&mut self, event: PatternEvent) { 
         // We only want to insert when event does not already exist
-        let existing = self.pattern_events.iter()
-            .find(|e| **e == event);
+        let existing = self.pattern_events.iter().find(|e| **e == event);
 
         if let None = existing {
             match event.event_type {
-                // When previous event is a stop, remove it as this stop is after it
+                // TODO - When both previous events are start, remove start in between
                 PatternEventType::Stop => { 
+                    let mut last_elements = self.pattern_events.iter().filter(|e| e.pattern == event.pattern).rev().take(2);
+
+                    println!("last 2 elements");
+                    println!("{:?} {:?}", last_elements.next(), last_elements.next());
                     // Get previous note down
+                    /*
                     let previous = self.pattern_events.iter_mut()
                         .enumerate()
                         .filter(|(_, e)| e.tick < event.tick && e.event_type == event.event_type && e.pattern == event.pattern)
@@ -123,22 +128,21 @@ impl Phrase {
                     if let Some((index, previous)) = previous {
                         self.pattern_events.remove(index); 
                     }
+                    */
                 },
-                // When previous event is a start, this stop will stop that pattern, add
-                // new start for next stop
-                PatternEventType::Start => {
-                    //self.add_pattern_event(PatternEvent::start(event.tick, event.pattern))
-                },
-            }
-            if let PatternEvent { event_type: PatternEventType::Stop, tick, .. } = event {
-
+                // TODO - When both next events are stop, add start in between
+                PatternEventType::Start => { 
+                }
             }
 
             self.pattern_events.push(event); 
+            self.pattern_events.sort();
+            println!("all:");
+            println!("{:?}", self.pattern_events);
+        } else {
+            println!("exists");
         }
     }
-
-    pub fn pattern_events(&self) -> &Vec<PatternEvent> { &self.pattern_events }
 
     pub fn clear_pattern_events(&mut self) {
         self.pattern_events = vec![];

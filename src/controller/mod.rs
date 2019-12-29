@@ -462,7 +462,7 @@ impl Controller for APC20 {
                                     phrase.add_pattern_event(PatternEvent::start(start_tick + offset, y as usize));
                                     phrase.add_pattern_event(PatternEvent::stop(end_tick + offset, y as usize));
 
-                                    println!("{:?}", phrase.pattern_events());
+                                    //println!("{:?}", phrase.pattern_events);
                                 },
                                 ButtonType::Side(index) => {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
@@ -529,16 +529,55 @@ impl Controller for APC20 {
             let ticks_per_button = self.ticks_per_button();
 
             for y in 0 .. self.grid.height() {
-                // Get pattern events in view
-                //let starts = phrase.pattern_events().iter().filter(|event| event.event_type )
-                //for (start, stop) in 
-                //for event in phrase.pattern_events().iter().filter(|event| event.pattern == y) {
+                let mut events = phrase.pattern_events.iter().filter(|event| event.pattern == y).enumerate().peekable();
+
+                let mut renders = vec![];
+
+                loop {
+                    let item = events.next();
+                    let peek = events.peek();
+
+                    match item {
+                        Some((index, event)) => {
+                            let render = match event.event_type {
+                                PatternEventType::Stop => {
+                                    // Output from 0 => event.tick
+                                    if index == 0 { Some((0, event.tick)) } else { None }
+                                },
+                                PatternEventType::Start => {
+                                    if let Some((_, PatternEvent { event_type: PatternEventType::Stop, tick, .. })) = peek {
+                                        // Render from event.tick => tick
+                                        Some((event.tick, *tick))
+                                    } else if let None = peek {
+                                        // Render from event.tick => length
+                                        Some((event.tick, phrase.length()))
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
+
+                            if let Some(ticks) = render {
+                                renders.push(ticks);
+                            }
+                        },
+                        None => break,
+                    }
+                }
+
+                //println!("{:?}", renders);
+                /*
+                for (index, event) in events {
+
+                    println!("{:?}", index);
                     //let button = (event.tick as i32 - offset as i32) / ticks_per_button as i32;
 
                     //println!("{:?}", button);
 
                     //self.grid.draw(x, y, 1)
-                //}
+                }
+                */
+
             }
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()) as usize, 1);
