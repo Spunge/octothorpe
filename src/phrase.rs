@@ -2,91 +2,10 @@
 use std::ops::Range;
 use std::cmp::Ordering;
 
+use super::events::*;
 use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
 use super::TimebaseHandler;
-
-#[derive(Debug, Clone, Copy)]
-pub struct PatternEvent {
-    pub start: u32,
-    pub stop: Option<u32>,
-    pub pattern: usize,
-}
-
-impl PatternEvent {
-    fn new(start: u32, stop: Option<u32>, pattern: usize) -> Self {
-        PatternEvent { start, stop, pattern, }
-    }
-
-    pub fn is_looping(&self) -> bool {
-        match self.stop {
-            Some(stop) => stop <= self.start,
-            _ => false
-        }
-    }
-
-    // Does this event contain another event wholly?
-    fn contains(&self, other: &PatternEvent, max_length: u32) -> bool {
-        match (self.stop, other.stop) {
-            (Some(self_stop), Some(other_stop)) => {
-                if ! self.is_looping() && ! other.is_looping() || self.is_looping() && other.is_looping() {
-                    // Normal ranges both
-                    self.start <= other.start && self_stop >= other_stop
-                } else {
-                    if self.is_looping() && ! other.is_looping() {
-                        self.start <= other.start || self_stop >= other_stop
-                    } else {
-                        // Normal range can only truly contain a looping range when it's as long as
-                        // the container
-                        self.start == 0 && self_stop == max_length
-                    }
-                }
-            },
-            _ => false,
-        }
-    }
-
-    // Move out of the way of other event
-    fn resize_to_fit(&mut self, other: &PatternEvent, max_length: u32) -> Option<PatternEvent> {
-        match (self.stop, other.stop) {
-            (Some(self_stop), Some(other_stop)) => {
-                let starts_before = self.start < other.start;
-                let stops_before = self_stop <= other_stop;
-
-                let stops_after = self_stop > other_stop;
-                let starts_after = self.start >= other.start;
-
-                //       [    other   ]
-                // [    self    ]              
-                let end_overlaps = self_stop > other.start && (stops_before || starts_before);
-                // [    other   ]
-                //       [    self    ]
-                let begin_overlaps = self.start < other_stop && (stops_after || starts_after);
-    
-                match (begin_overlaps, end_overlaps) {
-                    // Only begin overlaps
-                    (true, false) => { self.start = other_stop; None },
-                    // Only end overlaps
-                    (false, true) => { self.stop = Some(other.start); None },
-                    // They both overlap || don't overlap
-                    // Could be valid note placement || split, depending on looping or not
-                    _ => {
-                        if self.contains(other, max_length) {
-                            // Create split pattern event
-                            let event = PatternEvent::new(other_stop, self.stop, self.pattern);
-                            // Adjust own event
-                            self.stop = Some(other.start);
-                            Some(event)
-                        } else {
-                            None
-                        }
-                    },
-                }
-            },
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct PlayingPhrase {
@@ -157,10 +76,11 @@ impl Phrase {
         let index = self.pattern_events.iter_mut().enumerate()
             .filter(|(_, event)| event.pattern == pattern).last().unwrap().0;
         
+        let length = self.length();
+
         // Get event from events so we can compare others
         let mut event = self.pattern_events.swap_remove(index);
-        let length = self.length();
-        event.stop = Some(if stop > length { length } else { stop });
+        event.stop = Some(stop);
 
         // Remove events that are contained in current event
         self.pattern_events.retain(|other| {

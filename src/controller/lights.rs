@@ -51,7 +51,7 @@ impl Grid {
     }
 
     pub fn try_draw(&mut self, x: i32, y: usize, value: u8) {
-        if x >= 0 && y >= 0 {
+        if x >= 0 {
             self.draw(x as usize, y, value);
         }
     }

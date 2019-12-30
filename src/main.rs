@@ -15,6 +15,7 @@ pub mod playable;
 pub mod surface;
 pub mod port;
 pub mod mixer;
+pub mod events;
 
 use std::io;
 use std::sync::mpsc::channel;

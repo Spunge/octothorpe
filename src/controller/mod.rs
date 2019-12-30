@@ -11,8 +11,7 @@ use super::surface::*;
 use super::port::MidiOut;
 use super::mixer::*;
 use super::TimebaseHandler;
-// TODO - Move events into 1 file?
-use super::note::NoteEvent;
+use super::events::*;
 use input::*;
 use lights::*;
 
@@ -21,6 +20,8 @@ const IDENTIFY_CYCLES: u8 = 3;
 
 pub trait Controller {
     const CONTROLLER_ID: u8;
+    const HEAD_COLOR: u8;
+    const TAIL_COLOR: u8;
 
     fn ticks_in_grid(&self) -> u32;
     fn zoom_level(&self) -> u8;
@@ -28,7 +29,10 @@ pub trait Controller {
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
 
     // TODO - More grid logic
-    fn draw_tail(&mut self, x_range: Range<i32>, y: usize, color: u8);
+    fn grid(&mut self) -> &mut Grid;
+    fn draw_tail(&mut self, mut x_range: Range<i32>, y: usize) {
+        while let Some(x) = x_range.next() { self.grid().try_draw(x, y, Self::TAIL_COLOR) }
+    }
 
     fn new(client: &jack::Client) -> Self;
 
@@ -68,10 +72,13 @@ impl APC40 {
 
 impl Controller for APC40 {
     const CONTROLLER_ID: u8 = 0;
+    const HEAD_COLOR: u8 = 1;
+    const TAIL_COLOR: u8 = 5;
 
-    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 8 / self.zoom_level() as u32 }
+    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 16 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
+    fn grid(&mut self) -> &mut Grid { &mut self.grid }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
@@ -88,7 +95,7 @@ impl Controller for APC40 {
             knob_offset: 0,
 
             patterns_shown: [0; 16],
-            zoom_level: 2,
+            zoom_level: 4,
             offsets: [0; 16],
             base_notes: [58; 16],
 
@@ -99,6 +106,7 @@ impl Controller for APC40 {
             instrument: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
+            // TODO - Put length indicator here, get length from longest PatternEvent in phrases?
             arm: WideRow::new(0x30),
         }
     }
@@ -270,8 +278,6 @@ impl Controller for APC40 {
         }
     }
 
-    fn draw_tail(&mut self, x_range: Range<i32>, y: usize, color: u8) {}
-
     /*
      * Output to jack
      */
@@ -380,10 +386,14 @@ impl APC20 {
 
 impl Controller for APC20 {
     const CONTROLLER_ID: u8 = 1;
+    const HEAD_COLOR: u8 = 3;
+    const TAIL_COLOR: u8 = 5;
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 16 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
+
+    fn grid(&mut self) -> &mut Grid { &mut self.grid }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
@@ -469,7 +479,6 @@ impl Controller for APC20 {
                                 ButtonType::Grid(x, y) => {
                                     let offset = self.offset(surface.instrument_shown());
 
-                                    // Only put down start on the first button we press
                                     if let None = modifier {
                                         let start_tick = x as u32 * self.ticks_per_button();
                                         phrase.add_pattern_start(start_tick + offset, y as usize);
@@ -512,24 +521,18 @@ impl Controller for APC20 {
                             }
                         }
                     }
+
+                    match button_type {
+                        ButtonType::Instrument(index) => surface.toggle_instrument(index),
+                        _ => (),
+                    }
                 },
                 Event::ButtonReleased { time, button_type } => {
                     surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
-
-                    //if let (View::Instrument, ButtonType::Grid(x, y)) = (&surface.view, button_type) {
-                        //let tick = (x + 1) as u32 * self.ticks_per_button();
-                        //let offset = self.offset(surface.instrument_shown());
-
-                        //phrase.add_pattern_stop(tick + offset, y as usize);
-                    //}
                 },
                 _ => (),
             }
         }
-    }
-
-    fn draw_tail(&mut self, mut x_range: Range<i32>, y: usize, color: u8) {
-        while let Some(x) = x_range.next() { self.grid.try_draw(x, y, color) }
     }
 
     /*
@@ -571,10 +574,10 @@ impl Controller for APC20 {
                     self.grid.try_draw(start_button, event.pattern, 3);
                     // Draw tail depending on wether this is looping note
                     if stop_button > start_button {
-                        self.draw_tail((start_button + 1) .. stop_button, event.pattern, 5);
+                        self.draw_tail((start_button + 1) .. stop_button, event.pattern);
                     } else {
-                        self.draw_tail((start_button + 1) .. max_button, event.pattern, 5);
-                        self.draw_tail(0 .. stop_button, event.pattern, 5);
+                        self.draw_tail((start_button + 1) .. max_button, event.pattern);
+                        self.draw_tail(0 .. stop_button, event.pattern);
                     }
                 });
 

@@ -101,6 +101,7 @@ impl Instrument {
     }
 
     // Record a note message into recording patterns
+    /*
     pub fn record_message(&mut self, time: u32, channel: u8, key: u8, velocity: u8, is_quantizing: bool) {
         //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
         let recorded_message = RecordedMessage { time, channel, key, velocity, };
@@ -134,4 +135,5 @@ impl Instrument {
             self.recorded_messages.push(recorded_message);
         }
     }
+    */
 }

@@ -201,6 +201,7 @@ impl Sequencer {
         None
     }
 
+    /*
     pub fn recording_key_played(&mut self, instrument: u8, raw_channel: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
         // We're subtracting 9 as drumpads of my keyboard are outputting on channel 9
         let mut instrument_channel = raw_channel + instrument;
@@ -230,6 +231,7 @@ impl Sequencer {
         // Always play the note
         TimedMessage::new(message.time, Message::Note([instrument_channel, message.bytes[1], message.bytes[2]])) 
     }
+    */
 
     pub fn queue_sequence(&mut self, sequence: u8) {
         self.sequence_queued = Some(sequence as usize);
