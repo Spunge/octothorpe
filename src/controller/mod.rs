@@ -479,12 +479,18 @@ impl Controller for APC20 {
                                 ButtonType::Grid(x, y) => {
                                     let offset = self.offset(surface.instrument_shown());
 
-                                    if let None = modifier {
-                                        let start_tick = x as u32 * self.ticks_per_button();
-                                        phrase.add_pattern_start(start_tick + offset, y as usize);
+                                    // Get x from modifier when pressing grid buttons
+                                    let mut start_x = x;
+                                    if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
+                                        if mod_y == y { 
+                                            start_x = mod_x;
+                                        }
                                     }
 
+                                    let start_tick = start_x as u32 * self.ticks_per_button();
                                     let stop_tick = (x + 1) as u32 * self.ticks_per_button();
+
+                                    phrase.add_pattern_start(start_tick + offset, y as usize);
                                     phrase.add_pattern_stop(stop_tick + offset, y as usize);
                                 },
                                 ButtonType::Side(index) => {

@@ -90,10 +90,6 @@ impl Phrase {
         // Resize events around new event, add new event when previous event is split by current event
         let mut split_events: Vec<PatternEvent> = self.pattern_events.iter_mut()
             .filter(|other| event.pattern == other.pattern)
-            // Is event split by current event?
-            // Create 2 events for events that are split by current event
-            // TODO - We can move the contains logic above to this chain aswell probably
-            // TODO - Use drain_filter for this
             .filter_map(|other| other.resize_to_fit(&event, length))
             .collect();
 

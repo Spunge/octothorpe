@@ -1,4 +1,5 @@
 
+#![feature(drain_filter)]
 extern crate jack;
 use jack_sys as j;
 
