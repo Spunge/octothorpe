@@ -4,7 +4,7 @@ use std::ops::Range;
 use super::note::*;
 use super::playable::Playable;
 use super::cycle::Cycle;
-use super::events::NoteEvent;
+use super::events::*;
 use super::TimebaseHandler;
 
 #[derive(Debug, Clone)]
@@ -38,6 +38,8 @@ pub struct Pattern {
 impl Pattern {
     const BASE_NOTE: u8 = 49;
 
+    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 }
+
     fn create(channel: u8, notes: Vec<Note>) -> Self {
         Pattern {
             note_events: vec![],
@@ -60,9 +62,57 @@ impl Pattern {
         self.note_events = vec![];
     }
 
-    // TODO - Smart stuff, cut off notes etc
-    pub fn add_note_event(&mut self, event: NoteEvent) { 
-        self.note_events.push(event) 
+    pub fn length(&self) -> u32 {
+        let max_note = self.note_events.iter()
+            .max_by_key(|event| event.start);
+
+        let min = Self::minimum_length();
+
+        if let Some(note) = max_note { 
+            (note.start / min + 1) * min
+        } else { 
+            min
+        }
+    }
+
+    pub fn add_note_start(&mut self, tick: u32, note: u8, velocity: u8) {
+        let previous = self.note_events.iter()
+            .filter(|event| event.note == note).last();
+
+        if let Some(NoteEvent { stop: None, .. }) = previous {
+            return;
+        }
+
+        self.note_events.push(NoteEvent::new(tick, note, velocity));
+    }
+
+    pub fn add_note_stop(&mut self, tick: u32, note: u8, velocity: u8) {
+         // What note event is this stop for?
+        let index = self.note_events.iter_mut().enumerate()
+            .filter(|(_, event)| event.note == note).last().unwrap().0;
+        
+        let length = self.length();
+        println!("{:?}", length);
+
+        // Get event from events so we can compare others
+        let mut event = self.note_events.swap_remove(index);
+        event.stop = Some(tick);
+
+        // Remove events that are contained in current event
+        self.note_events.retain(|other| {
+            event.note != other.note || ! event.contains(other, length)
+        });
+
+        // Resize events around new event, add new event when previous event is split by current event
+        let mut split_events: Vec<NoteEvent> = self.note_events.iter_mut()
+            .filter(|other| event.note == other.note)
+            // Is event split by current event?
+            // Create 2 events for events that are split by current event
+            .filter_map(|other| other.resize_to_fit(&event, length))
+            .collect();
+
+        self.note_events.append(&mut split_events);
+        self.note_events.push(event);
     }
 
     pub fn led_states(&mut self) -> Vec<(i32, i32, u8)> {

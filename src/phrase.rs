@@ -92,6 +92,8 @@ impl Phrase {
             .filter(|other| event.pattern == other.pattern)
             // Is event split by current event?
             // Create 2 events for events that are split by current event
+            // TODO - We can move the contains logic above to this chain aswell probably
+            // TODO - Use drain_filter for this
             .filter_map(|other| other.resize_to_fit(&event, length))
             .collect();
 
@@ -105,6 +107,7 @@ impl Phrase {
 
     // TODO - when shortening length, notes that are longer as playable length
     // should be cut shorter aswell
+    /*
     pub fn change_length(&mut self, length_modifier: u32) {
         let current_modifier = self.playable.length_modifier();
         let current_length = self.playable.length;
@@ -146,6 +149,7 @@ impl Phrase {
             }
         }
     }
+    */
 
     pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) {
         let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
@@ -200,90 +204,6 @@ impl Phrase {
                 })
             })
             .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn contains() {
-        let no_end = PatternEvent::new(0, None, 0);
-        let normal = PatternEvent::new(50, Some(150), 0);
-        let looping = PatternEvent::new(150, Some(50), 0);
-
-        assert_eq!(no_end.contains(&normal, 200), false);
-        assert_eq!(no_end.contains(&looping, 200), false);
-        assert_eq!(normal.contains(&looping, 200), false);
-        assert_eq!(normal.contains(&no_end, 200), false);
-        assert_eq!(normal.contains(&PatternEvent::new(50, Some(100), 0), 200), true);
-        assert_eq!(normal.contains(&PatternEvent::new(100, Some(150), 0), 200), true);
-        assert_eq!(normal.contains(&PatternEvent::new(50, Some(150), 0), 200), true);
-        assert_eq!(normal.contains(&PatternEvent::new(50, Some(150), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(50, Some(150), 0), 200), false);
-        assert_eq!(looping.contains(&PatternEvent::new(150, Some(170), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(20, Some(50), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(160, Some(40), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(150, Some(50), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(120, Some(50), 0), 200), false);
-        assert_eq!(looping.contains(&PatternEvent::new(150, None, 0), 200), false);
-    }
-
-    #[test]
-    fn resize_to_fit() {
-        let mut no_end = PatternEvent::new(0, None, 0);
-        let mut looping = PatternEvent::new(150, Some(50), 0);
-
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(100, Some(150), 0), 200);
-        assert_eq!((50, Some(100)), (event.start, event.stop));
-        assert_eq!(true, split.is_none());
-
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(0, Some(30), 0), 200);
-        assert_eq!((50, Some(150)), (event.start, event.stop));
-        assert_eq!(true, split.is_none());
-
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(50, Some(100), 0), 200);
-        assert_eq!((100, Some(150)), (event.start, event.stop));
-        assert_eq!(true, split.is_none());
-
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(100, Some(170), 0), 200);
-        assert_eq!((170, Some(50)), (event.start, event.stop));
-        assert_eq!(true, split.is_none());
-
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(40, Some(100), 0), 200);
-        assert_eq!((150, Some(40)), (event.start, event.stop));
-        assert_eq!(true, split.is_none());
-
-        //let mut event = PatternEvent::new(150, Some(50), 0);
-        //let split = event.resize_to_fit(&PatternEvent::new(60, Some(100), 0), 200);
-        //assert_eq!((150, Some(50)), (event.start, event.stop));
-        //assert_eq!(true, split.is_none());
-
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(80, Some(100), 0), 200);
-        assert_eq!((50, Some(80)), (event.start, event.stop));
-        assert_eq!(Some((100, Some(150))), split.and_then(|e| Some((e.start, e.stop))));
-
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(20, Some(40), 0), 200);
-        assert_eq!((150, Some(20)), (event.start, event.stop));
-        assert_eq!(Some((40, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
-
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(170, Some(40), 0), 200);
-        assert_eq!((150, Some(170)), (event.start, event.stop));
-        assert_eq!(Some((40, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
-
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(160, Some(180), 0), 200);
-        assert_eq!((150, Some(160)), (event.start, event.stop));
-        assert_eq!(Some((180, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
     }
 }
 
