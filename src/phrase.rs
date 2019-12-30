@@ -128,7 +128,17 @@ impl Phrase {
     }
 
     pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 4 }
-    pub fn set_length(&mut self, length: u32) { self.length = length; }
+    pub fn set_length(&mut self, length: u32) { 
+        self.length = length; 
+
+        self.pattern_events.iter_mut().for_each(|mut event| {
+            if let Some(stop) = event.stop {
+                if stop > length {
+                    event.stop = Some(length);
+                }
+            }
+        });
+    }
     pub fn length(&self) -> u32 { self.length } 
 
     pub fn add_pattern_start(&mut self, start: u32, pattern: usize) {
@@ -149,9 +159,8 @@ impl Phrase {
         
         // Get event from events so we can compare others
         let mut event = self.pattern_events.swap_remove(index);
-        event.stop = Some(stop);
-
         let length = self.length();
+        event.stop = Some(if stop > length { length } else { stop });
 
         // Remove events that are contained in current event
         self.pattern_events.retain(|other| {

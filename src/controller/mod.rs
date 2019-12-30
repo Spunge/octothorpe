@@ -381,7 +381,7 @@ impl APC20 {
 impl Controller for APC20 {
     const CONTROLLER_ID: u8 = 1;
 
-    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 8 / self.zoom_level() as u32 }
+    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 16 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
@@ -396,7 +396,7 @@ impl Controller for APC20 {
             identified_cycles: 0,
 
             phrases_shown: [0; 16],
-            zoom_level: 2,
+            zoom_level: 4,
             offsets: [0; 16],
 
             cue_knob: CueKnob::new(),
@@ -467,10 +467,16 @@ impl Controller for APC20 {
                         View::Instrument => {
                             match button_type {
                                 ButtonType::Grid(x, y) => {
-                                    let tick = x as u32 * self.ticks_per_button();
                                     let offset = self.offset(surface.instrument_shown());
 
-                                    phrase.add_pattern_start(tick + offset, y as usize);
+                                    // Only put down start on the first button we press
+                                    if let None = modifier {
+                                        let start_tick = x as u32 * self.ticks_per_button();
+                                        phrase.add_pattern_start(start_tick + offset, y as usize);
+                                    }
+
+                                    let stop_tick = (x + 1) as u32 * self.ticks_per_button();
+                                    phrase.add_pattern_stop(stop_tick + offset, y as usize);
                                 },
                                 ButtonType::Side(index) => {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
@@ -506,21 +512,16 @@ impl Controller for APC20 {
                             }
                         }
                     }
-
-                    match button_type {
-                        ButtonType::Instrument(index) => surface.toggle_instrument(index),
-                        _ => (),
-                    }
                 },
                 Event::ButtonReleased { time, button_type } => {
                     surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
 
-                    if let (View::Instrument, ButtonType::Grid(x, y)) = (&surface.view, button_type) {
-                        let tick = (x + 1) as u32 * self.ticks_per_button();
-                        let offset = self.offset(surface.instrument_shown());
+                    //if let (View::Instrument, ButtonType::Grid(x, y)) = (&surface.view, button_type) {
+                        //let tick = (x + 1) as u32 * self.ticks_per_button();
+                        //let offset = self.offset(surface.instrument_shown());
 
-                        phrase.add_pattern_stop(tick + offset, y as usize);
-                    }
+                        //phrase.add_pattern_stop(tick + offset, y as usize);
+                    //}
                 },
                 _ => (),
             }
@@ -557,6 +558,7 @@ impl Controller for APC20 {
                 .for_each(|event| {
                     let button_ticks = self.ticks_per_button() as i32;
 
+                    // Get buttons from event ticks
                     let max_button = phrase.length() as i32 / button_ticks;
                     let start_button = (event.start as i32 - offset as i32) / button_ticks;
                     let stop_button = if event.stop.is_none() { 
@@ -565,7 +567,9 @@ impl Controller for APC20 {
                         (event.stop.unwrap() as i32 - offset as i32) / button_ticks
                     };
 
+                    // Always draw first button head
                     self.grid.try_draw(start_button, event.pattern, 3);
+                    // Draw tail depending on wether this is looping note
                     if stop_button > start_button {
                         self.draw_tail((start_button + 1) .. stop_button, event.pattern, 5);
                     } else {
