@@ -1,6 +1,6 @@
 
 // All the things we can show in grid
-pub trait Loopable: Clone {
+pub trait LoopableEvent: Clone {
     fn start(&self) -> u32;
     fn stop(&self) -> Option<u32>;
     fn set_stop(&mut self, stop: u32);
@@ -14,7 +14,7 @@ pub trait Loopable: Clone {
     }
 
     // Does this event contain another event wholly?
-    fn contains(&self, other: &impl Loopable, max_length: u32) -> bool {
+    fn contains(&self, other: &impl LoopableEvent, max_length: u32) -> bool {
         match (self.stop(), other.stop()) {
             (Some(self_stop), Some(other_stop)) => {
                 if ! self.is_looping() && ! other.is_looping() || self.is_looping() && other.is_looping() {
@@ -34,7 +34,7 @@ pub trait Loopable: Clone {
     }
 
     // Move out of the way of other event
-    fn resize_to_fit(&mut self, other: &impl Loopable, max_length: u32) -> Option<Self> {
+    fn resize_to_fit(&mut self, other: &impl LoopableEvent, max_length: u32) -> Option<Self> {
         match (self.stop(), other.stop()) {
             (Some(self_stop), Some(other_stop)) => {
                 let starts_before = self.start() < other.start();
@@ -88,7 +88,7 @@ pub struct NoteEvent {
     pub stop_velocity: Option<u8>,
 }
 
-impl Loopable for NoteEvent {
+impl LoopableEvent for NoteEvent {
     fn start(&self) -> u32 { self.start }
     fn stop(&self) -> Option<u32> { self.stop }
     fn set_start(&mut self, tick: u32) { self.start = tick }
@@ -108,7 +108,7 @@ pub struct PatternEvent {
     pub pattern: usize,
 }
 
-impl Loopable for PatternEvent {
+impl LoopableEvent for PatternEvent {
     fn start(&self) -> u32 { self.start }
     fn stop(&self) -> Option<u32> { self.stop }
     fn set_start(&mut self, tick: u32) { self.start = tick }

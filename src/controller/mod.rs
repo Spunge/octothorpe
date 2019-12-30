@@ -493,12 +493,12 @@ impl Controller for APC20 {
                                         // Add pattern get x from modifier when its a grid button in the same row
                                         if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
                                             if mod_y == y { 
-                                                start_tick = mod_x as u32 * self.ticks_per_button();
+                                                start_tick = self.button_to_ticks(mod_x, offset);
                                             }
                                         }
 
-                                        phrase.add_pattern_start(start_tick + offset, pattern);
-                                        phrase.add_pattern_stop(stop_tick + offset, pattern);
+                                        phrase.add_pattern_start(start_tick, pattern);
+                                        phrase.add_pattern_stop(stop_tick, pattern);
                                     }
 
                                 },

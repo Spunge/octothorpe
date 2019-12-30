@@ -111,6 +111,7 @@ impl Phrase {
 
         self.pattern_events.append(&mut split_events);
         self.pattern_events.push(event);
+        dbg!(&self.pattern_events);
     }
 
     pub fn clear_pattern_events(&mut self) {
