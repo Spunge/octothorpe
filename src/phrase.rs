@@ -50,6 +50,7 @@ impl Phrase {
     pub fn set_length(&mut self, length: u32) { 
         self.length = length; 
 
+        // Cut patterns short when shortening length
         self.pattern_events.iter_mut().for_each(|mut event| {
             if let Some(stop) = event.stop {
                 if stop > length {
@@ -59,6 +60,21 @@ impl Phrase {
         });
     }
     pub fn length(&self) -> u32 { self.length } 
+
+    pub fn contains_starting_patterns(&self, start: u32, stop: u32, pattern: usize) -> bool {
+        self.pattern_events.iter()
+            .find(|event| event.start >= start && event.start < stop && event.pattern == pattern)
+            .is_some()
+    }
+
+    pub fn remove_patterns_starting_between(&mut self, start: u32, stop: u32, pattern: usize) {
+        let indexes: Vec<usize> = self.pattern_events.iter().enumerate()
+            .filter(|(_, event)| event.start >= start && event.start < stop && event.pattern == pattern)
+            .map(|(index, _)| index)
+            .collect();
+
+        indexes.into_iter().for_each(|index| { self.pattern_events.remove(index); () });
+    }
 
     pub fn add_pattern_start(&mut self, start: u32, pattern: usize) {
         let previous = self.pattern_events.iter()
@@ -99,74 +115,6 @@ impl Phrase {
 
     pub fn clear_pattern_events(&mut self) {
         self.pattern_events = vec![];
-    }
-
-    // TODO - when shortening length, notes that are longer as playable length
-    // should be cut shorter aswell
-    /*
-    pub fn change_length(&mut self, length_modifier: u32) {
-        let current_modifier = self.playable.length_modifier();
-        let current_length = self.playable.length;
-
-        if let Some(next_modifier) = self.playable.change_length(length_modifier) {
-            // Add to current patterns
-            if current_modifier < next_modifier {
-                let times = next_modifier / current_modifier;
-
-                let played_patterns: Vec<PlayedPattern> = (1..times).into_iter()
-                    .flat_map(|multiplier| -> Vec<PlayedPattern> {
-                        self.played_patterns.iter()
-                            .map(|played_pattern| played_pattern.clone())
-                            .map(|mut played_pattern| { 
-                                played_pattern.start = played_pattern.start + multiplier * current_length;
-                                played_pattern.end = played_pattern.end + multiplier * current_length;
-                                played_pattern
-                            })
-                            .collect()
-                    })
-                    .collect();
-
-                self.played_patterns.extend(played_patterns);
-            } 
-
-            // Cut from current patterns
-            if current_modifier > next_modifier {
-                let new_length = next_modifier * self.playable.minimum_length;
-
-                self.played_patterns.retain(|played_pattern| {
-                    played_pattern.start < new_length
-                });
-
-                self.played_patterns.iter_mut().for_each(|played_pattern| {
-                    if played_pattern.end > new_length {
-                        played_pattern.end = new_length;
-                    }
-                });
-            }
-        }
-    }
-    */
-
-    pub fn toggle_pattern(&mut self, x: Range<u8>, index: u8) {
-        let start = self.playable.ticks_offset() + self.playable.ticks_per_led() * x.start as u32;
-        let end = self.playable.ticks_offset() + self.playable.ticks_per_led() * (x.end + 1) as u32;
-
-        let patterns = self.played_patterns.len();
-        
-        // Shorten pattern when a button is clicked that falls in the range of the note
-        for play in &mut self.played_patterns {
-            if play.start < start && play.end > start && play.index == index as usize {
-                play.end = start;
-            }
-        }
-
-        self.played_patterns.retain(|play| {
-            (play.start < start || play.start >= end) || play.index != index as usize
-        });
-
-        if patterns == self.played_patterns.len() || x.start != x.end {
-            self.played_patterns.push(PlayedPattern { index: index as usize, start, end });
-        }
     }
    
     pub fn playing_patterns(&self, patterns: &[Pattern], playing_phrase: &PlayingPhrase) -> Vec<PlayingPattern> {

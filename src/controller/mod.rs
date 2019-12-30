@@ -27,6 +27,9 @@ pub trait Controller {
     fn zoom_level(&self) -> u8;
     fn offset(&self, index: usize) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
+    fn button_to_ticks(&self, button: u8, offset: u32) -> u32 {
+        button as u32 * self.ticks_per_button() + offset
+    }
 
     // TODO - More grid logic
     fn grid(&mut self) -> &mut Grid;
@@ -478,20 +481,26 @@ impl Controller for APC20 {
                             match button_type {
                                 ButtonType::Grid(x, y) => {
                                     let offset = self.offset(surface.instrument_shown());
+                                    let pattern = y as usize;
 
-                                    // Get x from modifier when pressing grid buttons
-                                    let mut start_x = x;
-                                    if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
-                                        if mod_y == y { 
-                                            start_x = mod_x;
+                                    let mut start_tick = self.button_to_ticks(x, offset);
+                                    let stop_tick = self.button_to_ticks(x + 1, offset);
+
+                                    // Should we delete the pattern we're clicking?
+                                    if let (None, true) = (modifier, phrase.contains_starting_patterns(start_tick, stop_tick, pattern)) {
+                                        phrase.remove_patterns_starting_between(start_tick, stop_tick, pattern);
+                                    } else {
+                                        // Add pattern get x from modifier when its a grid button in the same row
+                                        if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
+                                            if mod_y == y { 
+                                                start_tick = mod_x as u32 * self.ticks_per_button();
+                                            }
                                         }
+
+                                        phrase.add_pattern_start(start_tick + offset, pattern);
+                                        phrase.add_pattern_stop(stop_tick + offset, pattern);
                                     }
 
-                                    let start_tick = start_x as u32 * self.ticks_per_button();
-                                    let stop_tick = (x + 1) as u32 * self.ticks_per_button();
-
-                                    phrase.add_pattern_start(start_tick + offset, y as usize);
-                                    phrase.add_pattern_stop(stop_tick + offset, y as usize);
                                 },
                                 ButtonType::Side(index) => {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
