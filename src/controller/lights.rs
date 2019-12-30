@@ -50,6 +50,12 @@ impl Grid {
         y * 8 + x
     }
 
+    pub fn try_draw(&mut self, x: i32, y: usize, value: u8) {
+        if x >= 0 && y >= 0 {
+            self.draw(x as usize, y, value);
+        }
+    }
+
     pub fn draw(&mut self, x: usize, y: usize, value: u8) {
         if x < self.width() && y < self.height() {
             self.next_state[Self::index(x, y)] = value;

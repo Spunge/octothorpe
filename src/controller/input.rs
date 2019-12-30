@@ -40,7 +40,7 @@ pub enum Event {
     InquiryResponse(u8),
     ButtonPressed { time: u32, button_type: ButtonType },
     ButtonReleased { time: u32, button_type: ButtonType },
-    KnobTurned { value: u8, knob_type: KnobType },
+    KnobTurned { time: u32, value: u8, knob_type: KnobType },
     FaderMoved { time: u32, value: u8, fader_type: FaderType },
     Unknown,
 }
@@ -56,6 +56,7 @@ impl ButtonType {
             0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
             // Side grid
             0x52 ..= 0x56 => ButtonType::Side(note - 0x52),
+            0x51 => ButtonType::Shift,
             // Grid should add notes & add phrases
             0x35 ..= 0x39 => ButtonType::Grid(channel, note - 0x35),
             0x5E => ButtonType::Up,
@@ -91,11 +92,11 @@ impl Event {
                         let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
                         let index = bytes[1] - modifier;
 
-                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect { time, index } }
+                        Self::KnobTurned { time, value: bytes[2], knob_type: KnobType::Effect { time, index } }
                     },
                     0x7 => Self::FaderMoved { time, value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0) },
                     0xE => Self::FaderMoved { time, value: bytes[2], fader_type: FaderType::Master },
-                    0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
+                    0x2F => Self::KnobTurned { time, value: bytes[2], knob_type: KnobType::Cue },
                     _ => Self::Unknown,
                 }
             },
