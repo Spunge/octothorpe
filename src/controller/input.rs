@@ -109,7 +109,7 @@ impl Event {
  * Struct that will decrease cueknob rotation speed a bit
  */
 impl CueKnob {
-    const CUE_KNOB_DELTA_PER_BUTTON: i8 = 10;
+    const CUE_KNOB_DELTA_PER_BUTTON: i8 = 8;
 
     pub fn new() -> Self { CueKnob { delta: 0 } }
 

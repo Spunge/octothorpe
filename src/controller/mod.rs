@@ -171,7 +171,6 @@ impl Controller for APC40 {
                                 },
                                 ButtonType::Side(index) => {
                                     if is_double_pressed {
-                                        println!("rec");
                                         instrument.get_pattern(index).switch_recording_state()
                                     } else {
                                         if let Some(ButtonType::Side(modifier_index)) = modifier {

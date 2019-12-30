@@ -166,51 +166,9 @@ impl Phrase {
             .filter_map(|other| other.resize_to_fit(&event, length))
             .collect();
 
-        if split_events.len() > 0 {
-            dbg!(&event);
-            dbg!(&split_events);
-        }
-
         self.pattern_events.append(&mut split_events);
         self.pattern_events.push(event);
-
-        dbg!(&self.pattern_events);
     }
-
-    // TODO - Smart cut of |  stop]    [start       |
-    /*
-    pub fn add_pattern(&mut self, start_tick: u32, stop_tick: u32, pattern: usize) { 
-        // Compare overlap of previous event pairs with current events
-        // Chunks will always be in start => stop events, ticks of start can be after stop though
-        while let Some([start, stop]) = chunks.next() {
-            // Yeah i know this is double check..
-            let is_same_pattern = start.pattern == pattern && stop.pattern == pattern;
-            let overlaps = start.tick >= start_tick && stop.tick <= stop_tick;
-            let overlaps_end = start.tick < start_tick && stop.tick > start_tick;
-            let overlaps_start = start.tick < stop_tick && stop.tick > stop_tick;
-
-            if is_same_pattern {
-                if overlaps {
-                    // Previous event is completely within current event
-                    continue;
-                } else if overlaps_end {
-                    // Overlap of end of previous note
-                    stop.tick = start_tick;
-                } else if overlaps_start {
-                    // Overlap of start of previous note
-                    start.tick = stop_tick;
-                }
-            }
-
-            retained.push(*start);
-            retained.push(*stop);
-        }
-
-        self.pattern_events = retained;
-        self.pattern_events.push(PatternEvent::new)
-        dbg!(&self.pattern_events);
-    }
-    */
 
     pub fn clear_pattern_events(&mut self) {
         self.pattern_events = vec![];
