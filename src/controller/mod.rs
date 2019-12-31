@@ -31,6 +31,27 @@ pub trait Controller {
         button as u32 * self.ticks_per_button() + offset
     }
 
+    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<(u32, u32)> {
+        let mut start_tick = self.button_to_ticks(x, offset);
+        let stop_tick = self.button_to_ticks(x + 1, offset);
+
+        // Should we delete the event we're clicking?
+        if let (None, true) = (modifier, loopable.contains_events_starting_between(start_tick, stop_tick, row)) {
+            loopable.remove_events_starting_between(start_tick, stop_tick, row);
+            None
+        } else {
+            // Add event get x from modifier when its a grid button in the same row
+            if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
+                if mod_y == y { 
+                    start_tick = self.button_to_ticks(mod_x, offset);
+                }
+            }
+
+            Some((start_tick, stop_tick))
+        }
+
+    }
+
     // TODO - More grid logic
     fn grid(&mut self) -> &mut Grid;
     fn draw_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, offset_x: u32, offset_y: u8) {
@@ -209,27 +230,11 @@ impl Controller for APC40 {
                                 ButtonType::Grid(x, y) => {
                                     // We subtract y from 4 as we want lower notes to be lower on
                                     // the grid, the grid counts from the top
-                                    //let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
-                                    //pattern.add_note_event(NoteEvent::on(start_tick + offset, note, 127));
-                                    //pattern.add_note_event(NoteEvent::off(stop_tick + offset, note, 127));
                                     let offset = self.offset(surface.instrument_shown());
                                     // We put base note in center of grid
                                     let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
 
-                                    let mut start_tick = self.button_to_ticks(x, offset);
-                                    let stop_tick = self.button_to_ticks(x + 1, offset);
-
-                                    // Should we delete the pattern we're clicking?
-                                    if let (None, true) = (modifier, pattern.contains_events_starting_between(start_tick, stop_tick, note)) {
-                                        pattern.remove_events_starting_between(start_tick, stop_tick, note);
-                                    } else {
-                                        // Add pattern get x from modifier when its a grid button in the same row
-                                        if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
-                                            if mod_y == y { 
-                                                start_tick = self.button_to_ticks(mod_x, offset);
-                                            }
-                                        }
-
+                                    if let Some((start_tick, stop_tick)) = self.should_add_event(pattern, modifier, x, y, offset, note) {
                                         pattern.try_add_starting_event(NoteEvent::new(start_tick, note, 127));
                                         let mut event = pattern.get_last_event_on_row(note);
                                         event.set_stop(stop_tick);
@@ -237,8 +242,6 @@ impl Controller for APC40 {
 
                                         pattern.add_complete_event(event);
                                     }
-
-
                                 },
                                 ButtonType::Side(index) => {
                                     if is_double_pressed {
@@ -356,7 +359,6 @@ impl Controller for APC40 {
 
             // TODO Draw main grid
             let base_note = self.base_notes[surface.instrument_shown()];
-
             let events = pattern.events().iter()
                 .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
 
@@ -552,20 +554,7 @@ impl Controller for APC20 {
                                     // We draw grids from bottom to top
                                     let pattern = 4 - y;
 
-                                    let mut start_tick = self.button_to_ticks(x, offset);
-                                    let stop_tick = self.button_to_ticks(x + 1, offset);
-
-                                    // Should we delete the pattern we're clicking?
-                                    if let (None, true) = (modifier, phrase.contains_events_starting_between(start_tick, stop_tick, pattern)) {
-                                        phrase.remove_events_starting_between(start_tick, stop_tick, pattern);
-                                    } else {
-                                        // Add pattern get x from modifier when its a grid button in the same row
-                                        if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
-                                            if mod_y == y { 
-                                                start_tick = self.button_to_ticks(mod_x, offset);
-                                            }
-                                        }
-
+                                    if let Some((start_tick, stop_tick)) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
                                         phrase.try_add_starting_event(PatternEvent::new(start_tick, pattern));
                                         let mut event = phrase.get_last_event_on_row(pattern);
                                         event.set_stop(stop_tick);
