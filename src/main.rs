@@ -1,5 +1,5 @@
 
-#![feature(drain_filter)]
+//#![feature(drain_filter)]
 extern crate jack;
 use jack_sys as j;
 
@@ -9,9 +9,7 @@ pub mod sequencer;
 pub mod cycle;
 pub mod instrument;
 pub mod loopable;
-pub mod note;
 pub mod sequence;
-pub mod playable;
 pub mod surface;
 pub mod port;
 pub mod mixer;
