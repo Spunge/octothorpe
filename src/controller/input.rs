@@ -107,10 +107,11 @@ impl Event {
  * Struct that will decrease cueknob rotation speed a bit
  */
 impl CueKnob {
-    const CUE_KNOB_DELTA_PER_BUTTON: i8 = 8;
+    const CUE_KNOB_DELTA_PER_BUTTON: i8 = 4;
 
     pub fn new() -> Self { CueKnob { delta: 0 } }
 
+    // TODO - Use time for this aswell, so that turning knob instantly moves grid
     pub fn process_turn(&mut self, value: u8) -> i8 {
         // Transform 0->up / 128->down to -delta / +delta
         let delta = (value as i8).rotate_left(1) / 2;

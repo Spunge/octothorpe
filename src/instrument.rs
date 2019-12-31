@@ -18,7 +18,7 @@ pub struct Instrument {
     pub pattern: usize,
 
     pub knob_group: u8,
-    knob_values: [u8; 64],
+    knob_values: [u8; 128],
 
     pub recorded_messages: Vec<RecordedMessage>,
     pub quantize_level: u8,
@@ -37,7 +37,7 @@ impl Instrument {
 
             // There's 4 knob groups, this way we can have knobs * 4 !
             knob_group: 0,
-            knob_values: [0; 64],
+            knob_values: [0; 128],
 
             recorded_messages: vec![],
             quantize_level: 2,
@@ -92,47 +92,4 @@ impl Instrument {
             None
         }
     }
-
-    pub fn change_quantize_level(&mut self, level: u8) {
-        if level != 7 {
-            self.quantize_level = level;
-        }
-    }
-
-    // Record a note message into recording patterns
-    /*
-    pub fn record_message(&mut self, time: u32, channel: u8, key: u8, velocity: u8, is_quantizing: bool) {
-        //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-        let recorded_message = RecordedMessage { time, channel, key, velocity, };
-
-        // if note is note off, merge it with previous note on on the same key
-        if channel == 0x80 {
-            let index = self.recorded_messages.iter().position(|message| {
-                message.key == recorded_message.key && message.channel == 0x90
-            }).unwrap();
-
-            let message = &self.recorded_messages[index];
-            let quantize_level = self.quantize_level;
-
-            self.patterns.iter_mut()
-                .filter(|pattern| pattern.is_recording)
-                .for_each(move |pattern| {
-                    pattern.toggle_note(
-                        message.time,
-                        recorded_message.time,
-                        recorded_message.key,
-                        message.velocity,
-                        recorded_message.velocity,
-                        quantize_level,
-                        is_quantizing,
-                    );
-                });
-
-            self.recorded_messages.remove(index);
-        } else {
-            // If this is a note on message, push it onto the stack
-            self.recorded_messages.push(recorded_message);
-        }
-    }
-    */
 }

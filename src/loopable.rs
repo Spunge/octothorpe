@@ -97,41 +97,6 @@ impl Phrase {
             }
         });
     }
-   
-    /*
-    pub fn playing_patterns(&self, patterns: &[Pattern], playing_phrase: &PlayingPhrase) -> Vec<PlayingPattern> {
-        // Fill up patterns that are larger as 1 iterationn of pattern with multiple playedpatterns
-        // of the same kind
-        self.played_patterns.iter()
-            .flat_map(|played_pattern| {
-                let played_pattern_length = played_pattern.end - played_pattern.start;
-                let pattern_length = patterns[played_pattern.index].playable.length;
-                // Dirty way to round up
-                let iterations = (played_pattern_length + pattern_length - 1) / pattern_length;
-
-                (0..iterations).map(move |iteration| {
-                    let start = played_pattern.start + iteration * pattern_length;
-                    let mut end = start + pattern_length;
-                    // It could be pattern is cut short as played pattern is not exactly divisible
-                    // by pattern length
-                    if played_pattern.end < end {
-                        end = played_pattern.end;
-                    }
-
-                    // Return played pattern for this iteration through phrase & pattern for next
-                    // iteration through phrase
-                    PlayingPattern { 
-                        // Add phrase start to get ticks that we can compare with cycle
-                        start: start + playing_phrase.start,
-                        end: end + playing_phrase.start,
-                        pattern: played_pattern.index,
-                        instrument: playing_phrase.instrument,
-                    }
-                })
-            })
-            .collect()
-    }
-    */
 }
 
 #[derive(Clone)]
@@ -170,35 +135,5 @@ impl Pattern {
     pub fn switch_recording_state(&mut self) {
         self.is_recording = ! self.is_recording;
     }
-
-    /*
-    pub fn quantize(&self, tick: u32, quantize_level: u8) -> u32 {
-        let quantize_by_ticks = TimebaseHandler::beats_to_ticks(1.0) / quantize_level as u32;
-        let offset = tick % quantize_by_ticks;
-    
-        if offset < quantize_by_ticks / 2 {
-            tick - offset
-        } else {
-            (tick - offset) + quantize_by_ticks
-        }
-    }
-
-    pub fn playing_notes(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(u32, &Note)> {
-         self.notes.iter()
-            .filter_map(move |note| {
-                let note_start = note.start + start;
-
-                // Does note fall in cycle?
-                if note_start >= cycle.start && note_start < cycle.end && note_start < end {
-                    let delta_ticks = note_start - cycle.start;
-
-                    Some((delta_ticks, note))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-    */
 }
 

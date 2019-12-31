@@ -525,6 +525,7 @@ impl Controller for APC20 {
                 Event::KnobTurned { time, value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
+                            // TODO - This should be part of trait as it is the same for notes
                             let max_offset = phrase.length() as i32 - self.ticks_in_grid() as i32;
 
                             if max_offset > 0 {
