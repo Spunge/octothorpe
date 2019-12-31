@@ -24,12 +24,25 @@ pub trait Controller {
     const TAIL_COLOR: u8;
 
     fn ticks_in_grid(&self) -> u32;
-    fn zoom_level(&self) -> u8;
-    fn offset(&self, index: usize) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
     fn button_to_ticks(&self, button: u8, offset: u32) -> u32 {
         button as u32 * self.ticks_per_button() + offset
     }
+
+    fn zoom_level(&self) -> u8;
+    fn offset(&self, index: usize) -> u32;
+    fn adjusted_offset(&self, instrument: usize, length: u32, delta_buttons: i8) -> u32 {
+        let max_offset = length as i32 - self.ticks_in_grid() as i32;
+
+        let delta_ticks = delta_buttons as i32 * self.ticks_per_button() as i32;
+        let new_offset = self.offset(instrument) as i32 + delta_ticks;
+
+        if max_offset > 0 && new_offset >= 0 {
+            if new_offset < max_offset { new_offset as u32 } else { max_offset as u32 }
+        } else { 0 }
+    }
+
+    fn grid(&mut self) -> &mut Grid;
 
     fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<(u32, u32)> {
         let mut start_tick = self.button_to_ticks(x, offset);
@@ -52,8 +65,6 @@ pub trait Controller {
 
     }
 
-    // TODO - More grid logic
-    fn grid(&mut self) -> &mut Grid;
     fn draw_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, offset_x: u32, offset_y: u8) {
         let grid_stop = offset_x + self.ticks_in_grid();
 
@@ -91,6 +102,7 @@ pub trait Controller {
                 }
             });
     }
+
     fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8) {
         while let Some(x) = x_range.next() { self.grid().try_draw(x, y, Self::TAIL_COLOR) }
     }
@@ -121,6 +133,7 @@ pub struct APC40 {
 
     grid: Grid,
     side: Side,
+    indicator: WideRow,
     instrument: WideRow,
     activator: WideRow,
     solo: WideRow,
@@ -164,6 +177,7 @@ impl Controller for APC40 {
 
             grid: Grid::new(),
             side: Side::new(),
+            indicator: WideRow::new(0x34),
             instrument: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
@@ -198,15 +212,9 @@ impl Controller for APC40 {
                 Event::KnobTurned { time, value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
-                            let delta_ticks = self.cue_knob.process_turn(value) as i32 * self.ticks_per_button() as i32;
-        
-                            // TODO - Move this offset stuff to struct as we will need it for
-
-                            // Update offset of shown instrument when it's above
-                            let new_offset = self.offset(surface.instrument_shown()) as i32 + delta_ticks;
-                            if new_offset >= 0 {
-                                self.offsets[surface.instrument_shown()] = new_offset as u32;
-                            }
+                            let delta_buttons = self.cue_knob.process_turn(value);
+                            let offset = self.adjusted_offset(surface.instrument_shown(), pattern.length(), delta_buttons);
+                            self.offsets[surface.instrument_shown()] = offset;
                         },
                         KnobType::Effect { time, index } => sequencer.knob_turned(time, index + self.knob_offset, value),
                     };
@@ -250,6 +258,7 @@ impl Controller for APC40 {
                                         if let Some(ButtonType::Side(modifier_index)) = modifier {
                                             instrument.clone_pattern(modifier_index, index);
                                         } else if let Some(ButtonType::Shift) = global_modifier {
+                                            // TODO - Reset offset aswell
                                             instrument.get_pattern(index).clear_events();
                                         } else {
                                             self.patterns_shown[surface.instrument_shown()] = index; 
@@ -361,10 +370,20 @@ impl Controller for APC40 {
             let base_note = self.base_notes[surface.instrument_shown()];
             let events = pattern.events().iter()
                 .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
-
             self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
 
             self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
+
+            //for index in 0 .. self.indicator
+            let length_buttons = self.indicator.width() / (pattern.length() / self.ticks_in_grid()) as u8;
+            let offset_buttons = (self.offset(surface.instrument_shown()) / self.ticks_per_button()) as u8;
+            let start_button = offset_buttons / (8 / length_buttons);
+            let stop_button = start_button + length_buttons;
+
+            for index in start_button .. stop_button {
+                self.indicator.draw(index as u8, 1);
+            }
+
             if surface.instrument_shown() >= self.instrument_offset as usize {
                 let instrument = surface.instrument_shown() - self.instrument_offset as usize;
                 self.instrument.draw(instrument as u8, 1);
@@ -376,6 +395,7 @@ impl Controller for APC40 {
             let mut output = vec![];
             output.append(&mut self.grid.output());
             output.append(&mut self.side.output());
+            output.append(&mut self.indicator.output());
             output.append(&mut self.instrument.output());
             output.append(&mut self.solo.output());
 
@@ -525,17 +545,9 @@ impl Controller for APC20 {
                 Event::KnobTurned { time, value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
-                            // TODO - This should be part of trait as it is the same for notes
-                            let max_offset = phrase.length() as i32 - self.ticks_in_grid() as i32;
-
-                            if max_offset > 0 {
-                                let delta_ticks = self.cue_knob.process_turn(value) as i32 * self.ticks_per_button() as i32;
-                                // TODO - We shoudl readjust offset on zoom aswell
-                                let new_offset = self.offset(surface.instrument_shown()) as i32 + delta_ticks;
-                                let adjusted_offset = if new_offset < 0 { 0 } else if new_offset > max_offset { max_offset } else { new_offset };
-
-                                self.offsets[surface.instrument_shown()] = adjusted_offset as u32;
-                            }
+                            let delta_buttons = self.cue_knob.process_turn(value);
+                            let offset = self.adjusted_offset(surface.instrument_shown(), phrase.length(), delta_buttons);
+                            self.offsets[surface.instrument_shown()] = offset;
                         },
                         _ => (),
                     }

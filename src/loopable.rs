@@ -109,16 +109,22 @@ impl Loopable for Pattern {
     type Event = NoteEvent;
 
     fn length(&self) -> u32 {
-        let max_note = self.note_events.iter()
-            .max_by_key(|event| event.start);
+        // Get max tick, stop || start
+        let max_tick = self.note_events.iter().map(|event| event.start).max().and_then(|max_start| {
+             self.note_events.iter().filter(|event| event.stop.is_some()).map(|event| event.stop.unwrap()).max()
+                .and_then(|max_stop| Some(if max_stop > max_start { max_stop } else { max_start }))
+                .or_else(|| Some(max_start))
+        });
 
-        let min = Self::minimum_length();
+        let mut length = Self::minimum_length();
 
-        if let Some(note) = max_note { 
-            (note.start / min + 1) * min
-        } else { 
-            min
+        if let Some(tick) = max_tick { 
+            while length / 2 <= tick {
+                length = length * 2;
+            }
         }
+
+        length
     }
 
     fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
@@ -137,3 +143,31 @@ impl Pattern {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new(start: u32, stop: Option<u32>) -> PatternEvent {
+        PatternEvent { start, stop, pattern: 0 }
+    }
+
+    #[test]
+    fn length() {
+        let mut pattern = Pattern::new();
+
+        let length = Pattern::minimum_length();
+        let half_length = length / 2;
+
+        let mut event = NoteEvent::new(half_length, 1, 1);
+        event.set_stop(half_length + 10);
+
+        pattern.add_complete_event(event);
+        assert_eq!(pattern.length(), length * 2);
+
+        let mut event = NoteEvent::new(length, 1, 1);
+        event.set_stop(length + 10);
+
+        pattern.add_complete_event(event);
+        assert_eq!(pattern.length(), length * 4);
+    }
+}

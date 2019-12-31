@@ -145,79 +145,79 @@ mod tests {
 
     #[test]
     fn contains() {
-        let no_end = Self::new(0, None);
-        let normal = Self::new(50, Some(150));
-        let looping = Self::new(150, Some(50));
+        let no_end = tests::new(0, None);
+        let normal = tests::new(50, Some(150));
+        let looping = tests::new(150, Some(50));
 
         assert_eq!(no_end.contains(&normal, 200), false);
         assert_eq!(no_end.contains(&looping, 200), false);
         assert_eq!(normal.contains(&looping, 200), false);
         assert_eq!(normal.contains(&no_end, 200), false);
-        assert_eq!(normal.contains(&Self::new(50, Some(100)), 200), true);
-        assert_eq!(normal.contains(&Self::new(100, Some(150)), 200), true);
-        assert_eq!(normal.contains(&Self::new(50, Some(150)), 200), true);
-        assert_eq!(normal.contains(&Self::new(50, Some(150)), 200), true);
-        assert_eq!(looping.contains(&Self::new(50, Some(150)), 200), false);
-        assert_eq!(looping.contains(&Self::new(150, Some(170)), 200), true);
-        assert_eq!(looping.contains(&Self::new(20, Some(50)), 200), true);
-        assert_eq!(looping.contains(&Self::new(160, Some(40)), 200), true);
-        assert_eq!(looping.contains(&Self::new(150, Some(50)), 200), true);
-        assert_eq!(looping.contains(&Self::new(120, Some(50)), 200), false);
-        assert_eq!(looping.contains(&Self::new(150, None), 200), false);
+        assert_eq!(normal.contains(&tests::new(50, Some(100)), 200), true);
+        assert_eq!(normal.contains(&tests::new(100, Some(150)), 200), true);
+        assert_eq!(normal.contains(&tests::new(50, Some(150)), 200), true);
+        assert_eq!(normal.contains(&tests::new(50, Some(150)), 200), true);
+        assert_eq!(looping.contains(&tests::new(50, Some(150)), 200), false);
+        assert_eq!(looping.contains(&tests::new(150, Some(170)), 200), true);
+        assert_eq!(looping.contains(&tests::new(20, Some(50)), 200), true);
+        assert_eq!(looping.contains(&tests::new(160, Some(40)), 200), true);
+        assert_eq!(looping.contains(&tests::new(150, Some(50)), 200), true);
+        assert_eq!(looping.contains(&tests::new(120, Some(50)), 200), false);
+        assert_eq!(looping.contains(&tests::new(150, None), 200), false);
     }
 
     #[test]
     fn resize_to_fit() {
-        let mut no_end = Self::new(0, None);
-        let mut looping = Self::new(150, Some(50));
+        let mut no_end = tests::new(0, None);
+        let mut looping = tests::new(150, Some(50));
 
-        let mut event = Self::new(50, Some(150));
-        let split = event.resize_to_fit(&Self::new(100, Some(150)), 200);
+        let mut event = tests::new(50, Some(150));
+        let split = event.resize_to_fit(&tests::new(100, Some(150)), 200);
         assert_eq!((50, Some(100)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = Self::new(50, Some(150));
-        let split = event.resize_to_fit(&Self::new(0, Some(30)), 200);
+        let mut event = tests::new(50, Some(150));
+        let split = event.resize_to_fit(&tests::new(0, Some(30)), 200);
         assert_eq!((50, Some(150)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = Self::new(50, Some(150));
-        let split = event.resize_to_fit(&Self::new(50, Some(100)), 200);
+        let mut event = tests::new(50, Some(150));
+        let split = event.resize_to_fit(&tests::new(50, Some(100)), 200);
         assert_eq!((100, Some(150)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = Self::new(150, Some(50));
-        let split = event.resize_to_fit(&Self::new(100, Some(170)), 200);
+        let mut event = tests::new(150, Some(50));
+        let split = event.resize_to_fit(&tests::new(100, Some(170)), 200);
         assert_eq!((170, Some(50)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = Self::new(150, Some(50));
-        let split = event.resize_to_fit(&Self::new(40, Some(100)), 200);
+        let mut event = tests::new(150, Some(50));
+        let split = event.resize_to_fit(&tests::new(40, Some(100)), 200);
         assert_eq!((150, Some(40)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = Self::new(150, Some(50));
-        let split = event.resize_to_fit(&Self::new(60, Some(100)), 200);
+        let mut event = tests::new(150, Some(50));
+        let split = event.resize_to_fit(&tests::new(60, Some(100)), 200);
         assert_eq!((150, Some(50)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = Self::new(50, Some(150));
-        let split = event.resize_to_fit(&Self::new(80, Some(100)), 200);
+        let mut event = tests::new(50, Some(150));
+        let split = event.resize_to_fit(&tests::new(80, Some(100)), 200);
         assert_eq!((50, Some(80)), (event.start, event.stop));
         assert_eq!(Some((100, Some(150))), split.and_then(|e| Some((e.start, e.stop))));
 
-        let mut event = Self::new(150, Some(50));
-        let split = event.resize_to_fit(&Self::new(20, Some(40)), 200);
+        let mut event = tests::new(150, Some(50));
+        let split = event.resize_to_fit(&tests::new(20, Some(40)), 200);
         assert_eq!((150, Some(20)), (event.start, event.stop));
         assert_eq!(Some((40, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
 
-        let mut event = Self::new(150, Some(50));
-        let split = event.resize_to_fit(&Self::new(170, Some(40)), 200);
+        let mut event = tests::new(150, Some(50));
+        let split = event.resize_to_fit(&tests::new(170, Some(40)), 200);
         assert_eq!((150, Some(170)), (event.start, event.stop));
         assert_eq!(Some((40, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
 
-        let mut event = Self::new(150, Some(50));
-        let split = event.resize_to_fit(&Self::new(160, Some(180)), 200);
+        let mut event = tests::new(150, Some(50));
+        let split = event.resize_to_fit(&tests::new(160, Some(180)), 200);
         assert_eq!((150, Some(160)), (event.start, event.stop));
         assert_eq!(Some((180, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
     }
