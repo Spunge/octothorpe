@@ -22,6 +22,7 @@ impl MidiOut {
     }
 
     pub fn output_message(&mut self, message: TimedMessage) {
+        //dbg!(&message);
         self.messages.push(message);
     }
 

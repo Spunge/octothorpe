@@ -60,7 +60,7 @@ pub trait Controller {
                 let row = 4 - event.row(offset_y);
 
                 // Always draw first button head
-                self.grid().try_draw(start_button, row, 3);
+                self.grid().try_draw(start_button, row, Self::HEAD_COLOR);
                 // Draw tail depending on wether this is looping note
                 if stop_button > start_button {
                     self.draw_tail((start_button + 1) .. stop_button, row);
@@ -224,8 +224,8 @@ impl Controller for APC40 {
                                         pattern.remove_events_starting_between(start_tick, stop_tick, note);
                                     } else {
                                         // Add pattern get x from modifier when its a grid button in the same row
-                                        if let Some(ButtonType::Grid(mod_x, mod_note)) = modifier {
-                                            if mod_note == note { 
+                                        if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
+                                            if mod_y == y { 
                                                 start_tick = self.button_to_ticks(mod_x, offset);
                                             }
                                         }
@@ -358,11 +358,9 @@ impl Controller for APC40 {
             let base_note = self.base_notes[surface.instrument_shown()];
 
             let events = pattern.events().iter()
-                .filter(|event| event.is_note_in_range(base_note - 2, base_note + 2));
+                .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
 
-
-            self.draw_events(events, self.offset(surface.instrument_shown()), base_note);
-
+            self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
 
             self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
             if surface.instrument_shown() >= self.instrument_offset as usize {
@@ -374,12 +372,13 @@ impl Controller for APC40 {
             for index in 0 .. self.zoom_level { self.solo.draw(index, 1); }
 
             let mut output = vec![];
+            output.append(&mut self.grid.output());
             output.append(&mut self.side.output());
             output.append(&mut self.instrument.output());
             output.append(&mut self.solo.output());
 
             for (channel, note, velocity) in output {
-                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, 127])));
+                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, velocity])));
             }
 
         }
@@ -562,7 +561,7 @@ impl Controller for APC20 {
                                     } else {
                                         // Add pattern get x from modifier when its a grid button in the same row
                                         if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
-                                            if 4 - mod_y == pattern { 
+                                            if mod_y == y { 
                                                 start_tick = self.button_to_ticks(mod_x, offset);
                                             }
                                         }

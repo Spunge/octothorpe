@@ -1,6 +1,7 @@
 
+
 // All the things we can show in grid
-pub trait LoopableEvent: Clone {
+pub trait LoopableEvent: Clone + std::fmt::Debug {
     fn start(&self) -> u32;
     fn stop(&self) -> Option<u32>;
     fn set_stop(&mut self, stop: u32);
@@ -108,10 +109,6 @@ impl LoopableEvent for NoteEvent {
 impl NoteEvent {
     pub fn new(start: u32, note: u8, start_velocity: u8) -> Self {
         Self { start, note, start_velocity, stop: None, stop_velocity: None }
-    }
-
-    pub fn is_note_in_range(&self, start: u8, stop: u8) -> bool {
-        self.note <= start && self.note < stop
     }
 }
 
