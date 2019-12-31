@@ -379,7 +379,6 @@ impl Controller for APC40 {
             let offset_buttons = (self.offset(surface.instrument_shown()) / self.ticks_per_button()) as u8;
             let start_button = offset_buttons / (8 / length_buttons);
             let stop_button = start_button + length_buttons;
-
             for index in start_button .. stop_button {
                 self.indicator.draw(index as u8, 1);
             }
@@ -467,6 +466,7 @@ pub struct APC20 {
     // Lights
     grid: Grid,
     side: Side,
+    indicator: WideRow,
     instrument: WideRow,
     activator: WideRow,
     solo: WideRow,
@@ -506,6 +506,7 @@ impl Controller for APC20 {
 
             grid: Grid::new(),
             side: Side::new(),
+            indicator: WideRow::new(0x34),
             instrument: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
@@ -640,6 +641,17 @@ impl Controller for APC20 {
             self.draw_events(phrase.events().iter(), self.offset(surface.instrument_shown()), 0);
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
+
+            // TODO _ triat zoom
+            //for index in 0 .. self.indicator
+            let length_buttons = self.indicator.width() / (phrase.length() / self.ticks_in_grid()) as u8;
+            let offset_buttons = (self.offset(surface.instrument_shown()) / self.ticks_per_button()) as u8;
+            let start_button = offset_buttons / (8 / length_buttons);
+            let stop_button = start_button + length_buttons;
+            for index in start_button .. stop_button {
+                self.indicator.draw(index as u8, 1);
+            }
+
             self.instrument.draw(surface.instrument_shown() as u8, 1);
 
             //for index in 0 .. self.indicator
@@ -651,6 +663,7 @@ impl Controller for APC20 {
             let mut output = vec![];
             output.append(&mut self.grid.output());
             output.append(&mut self.side.output());
+            output.append(&mut self.indicator.output());
             output.append(&mut self.instrument.output());
             output.append(&mut self.activator.output());
             output.append(&mut self.solo.output());
