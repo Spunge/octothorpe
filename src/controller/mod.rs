@@ -33,7 +33,7 @@ pub trait Controller {
 
     // TODO - More grid logic
     fn grid(&mut self) -> &mut Grid;
-    fn draw_tail(&mut self, mut x_range: Range<i32>, y: usize) {
+    fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8) {
         while let Some(x) = x_range.next() { self.grid().try_draw(x, y, Self::TAIL_COLOR) }
     }
 
@@ -296,13 +296,14 @@ impl Controller for APC40 {
 
             // TODO Draw main grid
 
-            self.side.draw(self.pattern_shown(surface.instrument_shown()) as usize, 1);
+            self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
             if surface.instrument_shown() >= self.instrument_offset as usize {
-                self.instrument.draw(surface.instrument_shown() - self.instrument_offset as usize, 1);
+                let instrument = surface.instrument_shown() - self.instrument_offset as usize;
+                self.instrument.draw(instrument as u8, 1);
             }
 
             //for index in 0 .. self.indicator
-            for index in 0 .. self.zoom_level as usize { self.solo.draw(index, 1); }
+            for index in 0 .. self.zoom_level { self.solo.draw(index, 1); }
 
             let mut output = vec![];
             output.append(&mut self.side.output());
@@ -479,26 +480,28 @@ impl Controller for APC20 {
                     match surface.view {
                         View::Instrument => {
                             match button_type {
-                                ButtonType::Grid(x, y) => {
+                                ButtonType::Grid(x, pattern) => {
                                     let offset = self.offset(surface.instrument_shown());
-                                    let pattern = y as usize;
 
                                     let mut start_tick = self.button_to_ticks(x, offset);
                                     let stop_tick = self.button_to_ticks(x + 1, offset);
 
                                     // Should we delete the pattern we're clicking?
-                                    if let (None, true) = (modifier, phrase.contains_starting_patterns(start_tick, stop_tick, pattern)) {
-                                        phrase.remove_patterns_starting_between(start_tick, stop_tick, pattern);
+                                    if let (None, true) = (modifier, phrase.contains_events_starting_between(start_tick, stop_tick, pattern)) {
+                                        phrase.remove_events_starting_between(start_tick, stop_tick, pattern);
                                     } else {
                                         // Add pattern get x from modifier when its a grid button in the same row
-                                        if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
-                                            if mod_y == y { 
+                                        if let Some(ButtonType::Grid(mod_x, mod_pattern)) = modifier {
+                                            if mod_pattern == pattern { 
                                                 start_tick = self.button_to_ticks(mod_x, offset);
                                             }
                                         }
 
-                                        phrase.add_pattern_start(start_tick, pattern);
-                                        phrase.add_pattern_stop(stop_tick, pattern);
+                                        phrase.try_add_starting_event(PatternEvent::new(start_tick, None, pattern));
+                                        let mut event = phrase.get_last_event_on_row(pattern);
+                                        event.set_stop(stop_tick);
+
+                                        phrase.add_complete_event(event);
                                     }
 
                                 },
@@ -506,7 +509,7 @@ impl Controller for APC20 {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         instrument.clone_phrase(modifier_index, index);
                                     } else if let Some(ButtonType::Shift) = global_modifier {
-                                        instrument.get_phrase(index).clear_pattern_events();
+                                        instrument.get_phrase(index).clear_events();
                                     } else {
                                         self.phrases_shown[surface.instrument_shown()] = index;
                                     }
@@ -596,14 +599,14 @@ impl Controller for APC20 {
                     }
                 });
 
-            self.side.draw(self.phrase_shown(surface.instrument_shown()) as usize, 1);
-            self.instrument.draw(surface.instrument_shown(), 1);
+            self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
+            self.instrument.draw(surface.instrument_shown() as u8, 1);
 
             //for index in 0 .. self.indicator
-            for index in 0 .. (phrase.length() / Phrase::default_length()) as usize {
-                self.activator.draw(index, 1);
+            for index in 0 .. (phrase.length() / Phrase::default_length()) {
+                self.activator.draw(index as u8, 1);
             }
-            for index in 0 .. self.zoom_level as usize { self.solo.draw(index, 1); }
+            for index in 0 .. self.zoom_level { self.solo.draw(index, 1); }
 
             let mut output = vec![];
             output.append(&mut self.grid.output());

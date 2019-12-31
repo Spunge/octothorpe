@@ -1,6 +1,4 @@
 
-use std::mem;
-
 pub struct CueKnob {
     delta: i8,
 }

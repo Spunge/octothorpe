@@ -43,20 +43,20 @@ impl Grid {
         Grid { state: [9; 40], next_state: [0; 40] }
     }
 
-    pub fn width(&self) -> usize { 8 }
-    pub fn height(&self) -> usize { 5 }
+    pub fn width(&self) -> u8 { 8 }
+    pub fn height(&self) -> u8 { 5 }
 
-    fn index(x: usize, y: usize) -> usize {
-        y * 8 + x
+    fn index(x: u8, y: u8) -> usize {
+        y as usize * 8 + x as usize
     }
 
-    pub fn try_draw(&mut self, x: i32, y: usize, value: u8) {
+    pub fn try_draw(&mut self, x: i32, y: u8, value: u8) {
         if x >= 0 {
-            self.draw(x as usize, y, value);
+            self.draw(x as u8, y, value);
         }
     }
 
-    pub fn draw(&mut self, x: usize, y: usize, value: u8) {
+    pub fn draw(&mut self, x: u8, y: u8, value: u8) {
         if x < self.width() && y < self.height() {
             self.next_state[Self::index(x, y)] = value;
         }
@@ -93,11 +93,11 @@ impl Side {
         Side { state: [9; 5], next_state: [0; 5] }
     }
 
-    pub fn height(&self) -> usize { 5 }
+    pub fn height(&self) -> u8 { 5 }
 
-    pub fn draw(&mut self, index: usize, value: u8) {
+    pub fn draw(&mut self, index: u8, value: u8) {
         if index < self.height() {
-            self.next_state[index] = value;
+            self.next_state[index as usize] = value;
         }
     }
 
@@ -105,7 +105,7 @@ impl Side {
         let mut output = vec![];
 
         if self.next_state != self.state {
-            for index in 0 .. self.height() {
+            for index in 0 .. self.height() as usize {
                 if self.next_state[index] != self.state[index] {
                     let channel = if self.next_state[index] == 1 { 0x90 } else { 0x80 };
                     let note = 0x52 + index as u8;
@@ -126,11 +126,11 @@ impl WideRow {
         WideRow { state: [9; 8], next_state: [0; 8], note, }
     }
 
-    pub fn width(&self) -> usize { 8 }
+    pub fn width(&self) -> u8 { 8 }
 
-    pub fn draw(&mut self, index: usize, value: u8) {
+    pub fn draw(&mut self, index: u8, value: u8) {
         if index < self.width() {
-            self.next_state[index] = value;
+            self.next_state[index as usize] = value;
         }
     }
 
@@ -138,7 +138,7 @@ impl WideRow {
         let mut output = vec![];
 
         if self.next_state != self.state {
-            for index in 0 .. self.width() {
+            for index in 0 .. self.width() as usize {
                 if self.next_state[index] != self.state[index] {
                     let channel = if self.next_state[index] == 1 { 0x90 } else { 0x80 };
 
@@ -158,11 +158,11 @@ impl NarrowRow {
         NarrowRow { state: [9; 4], next_state: [0; 4], note, }
     }
 
-    pub fn width(&self) -> usize { 4 }
+    pub fn width(&self) -> u8 { 4 }
 
-    pub fn draw(&mut self, index: usize, value: u8) {
+    pub fn draw(&mut self, index: u8, value: u8) {
         if index < self.width() {
-            self.next_state[index] = value;
+            self.next_state[index as usize] = value;
         }
     }
 }

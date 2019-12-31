@@ -1,11 +1,71 @@
 
-use std::ops::Range;
-use std::cmp::Ordering;
-
 use super::events::*;
 use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
 use super::playable::Playable;
 use super::TimebaseHandler;
+
+pub trait Loopable {
+    type Event: LoopableEvent;
+
+    fn length(&self) -> u32;
+    fn events(&mut self) -> &mut Vec<Self::Event>;
+
+    fn clear_events(&mut self) {
+        self.events().clear();
+    }
+
+    fn try_add_starting_event(&mut self, event: Self::Event) {
+        let previous = self.events().iter().filter(|other| other.is_on_same_row(&event)).last();
+
+        if let Some(true) = previous.and_then(|event| Some(event.stop().is_none())) {
+            return;
+        }
+
+        self.events().push(event);
+    }
+
+    fn get_last_event_on_row(&mut self, index: u8) -> Self::Event {
+        // What pattern event is this stop for?
+        let index = self.events().iter_mut().enumerate()
+            .filter(|(_, event)| event.is_on_row(index)).last().unwrap().0;
+        
+        // Get event from events so we can compare others
+        self.events().swap_remove(index)
+    }
+
+    fn add_complete_event(&mut self, event: Self::Event) {
+        let length = self.length();
+
+        // Remove events that are contained in current event
+        self.events().retain(|other| {
+            ! event.is_on_same_row(other) || ! event.contains(other, length)
+        });
+
+        // Resize events around new event, add new event when previous event is split by current event
+        let mut split_events: Vec<Self::Event> = self.events().iter_mut()
+            .filter(|other| other.is_on_same_row(&event))
+            .filter_map(|other| other.resize_to_fit(&event, length))
+            .collect();
+
+        self.events().append(&mut split_events);
+        self.events().push(event);
+    }
+
+    fn contains_events_starting_between(&mut self, start: u32, stop: u32, index: u8) -> bool {
+        self.events().iter()
+            .find(|event| event.is_on_row(index) && event.starts_between(start, stop))
+            .is_some()
+    }
+
+    fn remove_events_starting_between(&mut self, start: u32, stop: u32, index: u8) {
+        let indexes: Vec<usize> = self.events().iter().enumerate()
+            .filter(|(_, event)| event.is_on_row(index) && event.starts_between(start, stop))
+            .map(|(index, _)| index)
+            .collect();
+
+        indexes.into_iter().for_each(|index| { self.events().remove(index); () });
+    }
+}
 
 #[derive(Debug)]
 pub struct PlayingPhrase {
@@ -27,6 +87,13 @@ pub struct Phrase {
     // OOOOOoooldd
     pub playable: Playable,
     pub played_patterns: Vec<PlayedPattern>,
+}
+
+impl Loopable for Phrase {
+    type Event = PatternEvent;
+
+    fn length(&self) -> u32 { self.length } 
+    fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.pattern_events }
 }
 
 impl Phrase {
@@ -58,64 +125,6 @@ impl Phrase {
                 }
             }
         });
-    }
-    pub fn length(&self) -> u32 { self.length } 
-
-    pub fn contains_starting_patterns(&self, start: u32, stop: u32, pattern: usize) -> bool {
-        self.pattern_events.iter()
-            .find(|event| event.start >= start && event.start < stop && event.pattern == pattern)
-            .is_some()
-    }
-
-    pub fn remove_patterns_starting_between(&mut self, start: u32, stop: u32, pattern: usize) {
-        let indexes: Vec<usize> = self.pattern_events.iter().enumerate()
-            .filter(|(_, event)| event.start >= start && event.start < stop && event.pattern == pattern)
-            .map(|(index, _)| index)
-            .collect();
-
-        indexes.into_iter().for_each(|index| { self.pattern_events.remove(index); () });
-    }
-
-    pub fn add_pattern_start(&mut self, start: u32, pattern: usize) {
-        let previous = self.pattern_events.iter()
-            .filter(|event| event.pattern == pattern).last();
-
-        if let Some(PatternEvent { stop: None, .. }) = previous {
-            return;
-        }
-
-        self.pattern_events.push(PatternEvent::new(start, None, pattern));
-    }
-
-    pub fn add_pattern_stop(&mut self, stop: u32, pattern: usize) {
-        // What pattern event is this stop for?
-        let index = self.pattern_events.iter_mut().enumerate()
-            .filter(|(_, event)| event.pattern == pattern).last().unwrap().0;
-        
-        let length = self.length();
-
-        // Get event from events so we can compare others
-        let mut event = self.pattern_events.swap_remove(index);
-        event.stop = Some(stop);
-
-        // Remove events that are contained in current event
-        self.pattern_events.retain(|other| {
-            event.pattern != other.pattern || ! event.contains(other, length)
-        });
-
-        // Resize events around new event, add new event when previous event is split by current event
-        let mut split_events: Vec<PatternEvent> = self.pattern_events.iter_mut()
-            .filter(|other| event.pattern == other.pattern)
-            .filter_map(|other| other.resize_to_fit(&event, length))
-            .collect();
-
-        self.pattern_events.append(&mut split_events);
-        self.pattern_events.push(event);
-        dbg!(&self.pattern_events);
-    }
-
-    pub fn clear_pattern_events(&mut self) {
-        self.pattern_events = vec![];
     }
    
     pub fn playing_patterns(&self, patterns: &[Pattern], playing_phrase: &PlayingPhrase) -> Vec<PlayingPattern> {

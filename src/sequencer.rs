@@ -1,9 +1,7 @@
 
-use std::ops::Range;
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
-use super::TimebaseHandler;
 use super::phrase::PlayingPhrase;
 use super::pattern::PlayingPattern;
 use super::sequence::Sequence;

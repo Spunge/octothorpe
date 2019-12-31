@@ -5,12 +5,18 @@ pub trait LoopableEvent: Clone {
     fn stop(&self) -> Option<u32>;
     fn set_stop(&mut self, stop: u32);
     fn set_start(&mut self, start: u32);
+    fn is_on_row(&self, index: u8) -> bool;
+    fn is_on_same_row(&self, other: &Self) -> bool;
 
     fn is_looping(&self) -> bool {
         match self.stop() {
             Some(stop) => stop <= self.start(),
             _ => false
         }
+    }
+    
+    fn starts_between(&self, start: u32, stop: u32) -> bool {
+         self.start() >= start && self.start() < stop
     }
 
     // Does this event contain another event wholly?
@@ -93,6 +99,8 @@ impl LoopableEvent for NoteEvent {
     fn stop(&self) -> Option<u32> { self.stop }
     fn set_start(&mut self, tick: u32) { self.start = tick }
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
+    fn is_on_row(&self, index: u8) -> bool { self.note == index }
+    fn is_on_same_row(&self, other: &Self) -> bool { self.note == other.note }
 }
 
 impl NoteEvent {
@@ -105,7 +113,7 @@ impl NoteEvent {
 pub struct PatternEvent {
     pub start: u32,
     pub stop: Option<u32>,
-    pub pattern: usize,
+    pub pattern: u8,
 }
 
 impl LoopableEvent for PatternEvent {
@@ -113,10 +121,12 @@ impl LoopableEvent for PatternEvent {
     fn stop(&self) -> Option<u32> { self.stop }
     fn set_start(&mut self, tick: u32) { self.start = tick }
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
+    fn is_on_row(&self, index: u8) -> bool { self.pattern == index }
+    fn is_on_same_row(&self, other: &Self) -> bool { self.pattern == other.pattern }
 }
 
 impl PatternEvent {
-    pub fn new(start: u32, stop: Option<u32>, pattern: usize) -> Self {
+    pub fn new(start: u32, stop: Option<u32>, pattern: u8) -> Self {
         PatternEvent { start, stop, pattern, }
     }
 }
