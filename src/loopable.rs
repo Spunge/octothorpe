@@ -1,7 +1,5 @@
 
 use super::events::*;
-use super::pattern::{Pattern, PlayedPattern, PlayingPattern};
-use super::playable::Playable;
 use super::TimebaseHandler;
 
 pub trait Loopable {
@@ -67,26 +65,11 @@ pub trait Loopable {
     }
 }
 
-#[derive(Debug)]
-pub struct PlayingPhrase {
-    // Index in sequencers instruments array
-    pub instrument: usize,
-    // Index in Instruments phrases array
-    pub phrase: usize,
-    // Start & end of phrases
-    pub start: u32,
-    pub end: u32,
-}
-
 #[derive(Clone)]
 pub struct Phrase {
     // Length in ticks
     length: u32,
     pub pattern_events: Vec<PatternEvent>,
-
-    // OOOOOoooldd
-    pub playable: Playable,
-    pub played_patterns: Vec<PlayedPattern>,
 }
 
 impl Loopable for Phrase {
@@ -97,20 +80,8 @@ impl Loopable for Phrase {
 }
 
 impl Phrase {
-    fn create(played_patterns: Vec<PlayedPattern>) -> Self {
-        Phrase { 
-            length: Self::default_length(),
-            pattern_events: vec![],
-
-            playable: Playable::new(TimebaseHandler::bars_to_ticks(4), TimebaseHandler::bars_to_ticks(4), 3, 5), 
-            played_patterns, 
-        }
-    }
-
-    pub fn new(index: usize) -> Self {
-        Phrase::create(vec![
-            PlayedPattern { index, start: TimebaseHandler::bars_to_ticks(0), end: TimebaseHandler::bars_to_ticks(4) },
-        ])
+    pub fn new() -> Self {
+        Phrase { length: Self::default_length(), pattern_events: vec![] }
     }
 
     pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 4 }
@@ -127,6 +98,7 @@ impl Phrase {
         });
     }
    
+    /*
     pub fn playing_patterns(&self, patterns: &[Pattern], playing_phrase: &PlayingPhrase) -> Vec<PlayingPattern> {
         // Fill up patterns that are larger as 1 iterationn of pattern with multiple playedpatterns
         // of the same kind
@@ -159,5 +131,74 @@ impl Phrase {
             })
             .collect()
     }
+    */
+}
+
+#[derive(Clone)]
+pub struct Pattern {
+    note_events: Vec<NoteEvent>,
+    pub is_recording: bool,
+}
+
+impl Loopable for Pattern {
+    type Event = NoteEvent;
+
+    fn length(&self) -> u32 {
+        let max_note = self.note_events.iter()
+            .max_by_key(|event| event.start);
+
+        let min = Self::minimum_length();
+
+        if let Some(note) = max_note { 
+            (note.start / min + 1) * min
+        } else { 
+            min
+        }
+    }
+
+    fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
+}
+
+impl Pattern {
+    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 }
+
+    pub fn new() -> Self {
+        Pattern { note_events: vec![], is_recording: false }
+    }
+
+    // Start recording notes from input into pattern
+    pub fn switch_recording_state(&mut self) {
+        self.is_recording = ! self.is_recording;
+    }
+
+    /*
+    pub fn quantize(&self, tick: u32, quantize_level: u8) -> u32 {
+        let quantize_by_ticks = TimebaseHandler::beats_to_ticks(1.0) / quantize_level as u32;
+        let offset = tick % quantize_by_ticks;
+    
+        if offset < quantize_by_ticks / 2 {
+            tick - offset
+        } else {
+            (tick - offset) + quantize_by_ticks
+        }
+    }
+
+    pub fn playing_notes(&self, cycle: &Cycle, start: u32, end: u32) -> Vec<(u32, &Note)> {
+         self.notes.iter()
+            .filter_map(move |note| {
+                let note_start = note.start + start;
+
+                // Does note fall in cycle?
+                if note_start >= cycle.start && note_start < cycle.end && note_start < end {
+                    let delta_ticks = note_start - cycle.start;
+
+                    Some((delta_ticks, note))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+    */
 }
 

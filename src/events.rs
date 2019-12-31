@@ -7,6 +7,7 @@ pub trait LoopableEvent: Clone {
     fn set_start(&mut self, start: u32);
     fn is_on_row(&self, index: u8) -> bool;
     fn is_on_same_row(&self, other: &Self) -> bool;
+    fn row(&self, offset: u8) -> u8;
 
     fn is_looping(&self) -> bool {
         match self.stop() {
@@ -101,11 +102,16 @@ impl LoopableEvent for NoteEvent {
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
     fn is_on_row(&self, index: u8) -> bool { self.note == index }
     fn is_on_same_row(&self, other: &Self) -> bool { self.note == other.note }
+    fn row(&self, offset: u8) -> u8 { self.note - offset }
 }
 
 impl NoteEvent {
     pub fn new(start: u32, note: u8, start_velocity: u8) -> Self {
         Self { start, note, start_velocity, stop: None, stop_velocity: None }
+    }
+
+    pub fn is_note_in_range(&self, start: u8, stop: u8) -> bool {
+        self.note <= start && self.note < stop
     }
 }
 
@@ -123,11 +129,12 @@ impl LoopableEvent for PatternEvent {
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
     fn is_on_row(&self, index: u8) -> bool { self.pattern == index }
     fn is_on_same_row(&self, other: &Self) -> bool { self.pattern == other.pattern }
+    fn row(&self, offset: u8) -> u8 { self.pattern - offset }
 }
 
 impl PatternEvent {
-    pub fn new(start: u32, stop: Option<u32>, pattern: u8) -> Self {
-        PatternEvent { start, stop, pattern, }
+    pub fn new(start: u32, pattern: u8) -> Self {
+        PatternEvent { start, stop: None, pattern, }
     }
 }
 
@@ -135,81 +142,85 @@ impl PatternEvent {
 mod tests {
     use super::*;
 
+    fn new(start: u32, stop: Option<u32>) -> PatternEvent {
+        PatternEvent { start, stop, pattern: 0 }
+    }
+
     #[test]
     fn contains() {
-        let no_end = PatternEvent::new(0, None, 0);
-        let normal = PatternEvent::new(50, Some(150), 0);
-        let looping = PatternEvent::new(150, Some(50), 0);
+        let no_end = Self::new(0, None);
+        let normal = Self::new(50, Some(150));
+        let looping = Self::new(150, Some(50));
 
         assert_eq!(no_end.contains(&normal, 200), false);
         assert_eq!(no_end.contains(&looping, 200), false);
         assert_eq!(normal.contains(&looping, 200), false);
         assert_eq!(normal.contains(&no_end, 200), false);
-        assert_eq!(normal.contains(&PatternEvent::new(50, Some(100), 0), 200), true);
-        assert_eq!(normal.contains(&PatternEvent::new(100, Some(150), 0), 200), true);
-        assert_eq!(normal.contains(&PatternEvent::new(50, Some(150), 0), 200), true);
-        assert_eq!(normal.contains(&PatternEvent::new(50, Some(150), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(50, Some(150), 0), 200), false);
-        assert_eq!(looping.contains(&PatternEvent::new(150, Some(170), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(20, Some(50), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(160, Some(40), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(150, Some(50), 0), 200), true);
-        assert_eq!(looping.contains(&PatternEvent::new(120, Some(50), 0), 200), false);
-        assert_eq!(looping.contains(&PatternEvent::new(150, None, 0), 200), false);
+        assert_eq!(normal.contains(&Self::new(50, Some(100)), 200), true);
+        assert_eq!(normal.contains(&Self::new(100, Some(150)), 200), true);
+        assert_eq!(normal.contains(&Self::new(50, Some(150)), 200), true);
+        assert_eq!(normal.contains(&Self::new(50, Some(150)), 200), true);
+        assert_eq!(looping.contains(&Self::new(50, Some(150)), 200), false);
+        assert_eq!(looping.contains(&Self::new(150, Some(170)), 200), true);
+        assert_eq!(looping.contains(&Self::new(20, Some(50)), 200), true);
+        assert_eq!(looping.contains(&Self::new(160, Some(40)), 200), true);
+        assert_eq!(looping.contains(&Self::new(150, Some(50)), 200), true);
+        assert_eq!(looping.contains(&Self::new(120, Some(50)), 200), false);
+        assert_eq!(looping.contains(&Self::new(150, None), 200), false);
     }
 
     #[test]
     fn resize_to_fit() {
-        let mut no_end = PatternEvent::new(0, None, 0);
-        let mut looping = PatternEvent::new(150, Some(50), 0);
+        let mut no_end = Self::new(0, None);
+        let mut looping = Self::new(150, Some(50));
 
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(100, Some(150), 0), 200);
+        let mut event = Self::new(50, Some(150));
+        let split = event.resize_to_fit(&Self::new(100, Some(150)), 200);
         assert_eq!((50, Some(100)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(0, Some(30), 0), 200);
+        let mut event = Self::new(50, Some(150));
+        let split = event.resize_to_fit(&Self::new(0, Some(30)), 200);
         assert_eq!((50, Some(150)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(50, Some(100), 0), 200);
+        let mut event = Self::new(50, Some(150));
+        let split = event.resize_to_fit(&Self::new(50, Some(100)), 200);
         assert_eq!((100, Some(150)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(100, Some(170), 0), 200);
+        let mut event = Self::new(150, Some(50));
+        let split = event.resize_to_fit(&Self::new(100, Some(170)), 200);
         assert_eq!((170, Some(50)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(40, Some(100), 0), 200);
+        let mut event = Self::new(150, Some(50));
+        let split = event.resize_to_fit(&Self::new(40, Some(100)), 200);
         assert_eq!((150, Some(40)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(60, Some(100), 0), 200);
+        let mut event = Self::new(150, Some(50));
+        let split = event.resize_to_fit(&Self::new(60, Some(100)), 200);
         assert_eq!((150, Some(50)), (event.start, event.stop));
         assert_eq!(true, split.is_none());
 
-        let mut event = PatternEvent::new(50, Some(150), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(80, Some(100), 0), 200);
+        let mut event = Self::new(50, Some(150));
+        let split = event.resize_to_fit(&Self::new(80, Some(100)), 200);
         assert_eq!((50, Some(80)), (event.start, event.stop));
         assert_eq!(Some((100, Some(150))), split.and_then(|e| Some((e.start, e.stop))));
 
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(20, Some(40), 0), 200);
+        let mut event = Self::new(150, Some(50));
+        let split = event.resize_to_fit(&Self::new(20, Some(40)), 200);
         assert_eq!((150, Some(20)), (event.start, event.stop));
         assert_eq!(Some((40, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
 
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(170, Some(40), 0), 200);
+        let mut event = Self::new(150, Some(50));
+        let split = event.resize_to_fit(&Self::new(170, Some(40)), 200);
         assert_eq!((150, Some(170)), (event.start, event.stop));
         assert_eq!(Some((40, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
 
-        let mut event = PatternEvent::new(150, Some(50), 0);
-        let split = event.resize_to_fit(&PatternEvent::new(160, Some(180), 0), 200);
+        let mut event = Self::new(150, Some(50));
+        let split = event.resize_to_fit(&Self::new(160, Some(180)), 200);
         assert_eq!((150, Some(160)), (event.start, event.stop));
         assert_eq!(Some((180, Some(50))), split.and_then(|e| Some((e.start, e.stop))));
     }

@@ -1,6 +1,5 @@
 
 use super::instrument::Instrument;
-use super::phrase::PlayingPhrase;
 
 pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
@@ -30,6 +29,7 @@ impl Sequence {
         Sequence::create([Some(value); 16])
     }
 
+    /*
     pub fn led_states(&mut self, group: u8) -> Vec<(i32, i32, u8)> {
         let start = 8 * group;
         let end = start + 8;
@@ -60,6 +60,7 @@ impl Sequence {
             })
             .max()
     }
+    */
 
     pub fn toggle_row(&mut self, phrase: u8) {
         self.phrases = [Some(phrase as usize); 16];
@@ -81,6 +82,7 @@ impl Sequence {
         self.active[instrument as usize] = ! self.active[instrument as usize];
     }
 
+    /*
     // Get playing phrases of this sequence
     pub fn playing_phrases(&self, instruments: &[Instrument], sequence_start: u32) -> Vec<PlayingPhrase> {
         // Could be this is a 0 length sequence
@@ -128,4 +130,5 @@ impl Sequence {
             None
         }
     }
+    */
 }

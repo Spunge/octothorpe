@@ -1,6 +1,5 @@
 
-use super::pattern::Pattern;
-use super::phrase::Phrase;
+use super::loopable::*;
 
 #[derive(Debug)]
 pub struct RecordedMessage {
@@ -27,8 +26,8 @@ pub struct Instrument {
 
 impl Instrument {
     pub fn new(c: u8) -> Self {
-        let patterns = [ Pattern::new(c), Pattern::new(c), Pattern::new(c), Pattern::new(c), Pattern::new(c), ];
-        let phrases = [ Phrase::new(0), Phrase::new(1), Phrase::new(2), Phrase::new(3), Phrase::new(4), ];
+        let patterns = [ Pattern::new(), Pattern::new(), Pattern::new(), Pattern::new(), Pattern::new(), ];
+        let phrases = [ Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), ];
 
         Instrument {
             phrases,

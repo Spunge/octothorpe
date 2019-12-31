@@ -5,7 +5,7 @@ mod lights;
 use std::ops::Range;
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
-use super::phrase::*;
+use super::loopable::*;
 use super::sequencer::Sequencer;
 use super::surface::*;
 use super::port::MidiOut;
@@ -33,6 +33,43 @@ pub trait Controller {
 
     // TODO - More grid logic
     fn grid(&mut self) -> &mut Grid;
+    fn draw_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, offset_x: u32, offset_y: u8) {
+        let grid_stop = offset_x + self.ticks_in_grid();
+
+        // Draw main grid
+        events
+            .filter(|event| { 
+                let grid_contains_event = event.start() < grid_stop 
+                    && (event.stop().is_none() || event.stop().unwrap() > offset_x);
+
+                grid_contains_event || event.is_looping()
+            })
+            .for_each(|event| {
+                let button_ticks = self.ticks_per_button() as i32;
+
+                // Get buttons from event ticks
+                let max_button = self.grid().width() as i32;
+                let start_button = (event.start() as i32 - offset_x as i32) / button_ticks;
+                let stop_button = if event.stop().is_none() { 
+                    start_button + 1
+                } else { 
+                    (event.stop().unwrap() as i32 - offset_x as i32) / button_ticks
+                };
+
+                // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
+                let row = 4 - event.row(offset_y);
+
+                // Always draw first button head
+                self.grid().try_draw(start_button, row, 3);
+                // Draw tail depending on wether this is looping note
+                if stop_button > start_button {
+                    self.draw_tail((start_button + 1) .. stop_button, row);
+                } else {
+                    self.draw_tail((start_button + 1) .. max_button, row);
+                    self.draw_tail(0 .. stop_button, row);
+                }
+            });
+    }
     fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8) {
         while let Some(x) = x_range.next() { self.grid().try_draw(x, y, Self::TAIL_COLOR) }
     }
@@ -100,7 +137,7 @@ impl Controller for APC40 {
             patterns_shown: [0; 16],
             zoom_level: 4,
             offsets: [0; 16],
-            base_notes: [58; 16],
+            base_notes: [60; 16],
 
             cue_knob: CueKnob::new(),
 
@@ -120,6 +157,8 @@ impl Controller for APC40 {
     fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
             let event = Event::new(message.time, message.bytes);
+            let instrument = sequencer.get_instrument(surface.instrument_shown());
+            let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
@@ -166,19 +205,40 @@ impl Controller for APC40 {
 
                     match surface.view {
                         View::Instrument => {
-                            let instrument = sequencer.get_instrument(surface.instrument_shown());
-                        
                             match button_type {
                                 ButtonType::Grid(x, y) => {
                                     // We subtract y from 4 as we want lower notes to be lower on
                                     // the grid, the grid counts from the top
-                                    //let (start_tick, stop_tick) = self.grid_buttons_to_ticks(x, y, modifier);
-                                    //let note = self.base_notes[surface.instrument_shown()] + (4 - y);
-                                    //let offset = self.offset(surface.instrument_shown());
-
                                     //let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
                                     //pattern.add_note_event(NoteEvent::on(start_tick + offset, note, 127));
                                     //pattern.add_note_event(NoteEvent::off(stop_tick + offset, note, 127));
+                                    let offset = self.offset(surface.instrument_shown());
+                                    // We put base note in center of grid
+                                    let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
+
+                                    let mut start_tick = self.button_to_ticks(x, offset);
+                                    let stop_tick = self.button_to_ticks(x + 1, offset);
+
+                                    // Should we delete the pattern we're clicking?
+                                    if let (None, true) = (modifier, pattern.contains_events_starting_between(start_tick, stop_tick, note)) {
+                                        pattern.remove_events_starting_between(start_tick, stop_tick, note);
+                                    } else {
+                                        // Add pattern get x from modifier when its a grid button in the same row
+                                        if let Some(ButtonType::Grid(mod_x, mod_note)) = modifier {
+                                            if mod_note == note { 
+                                                start_tick = self.button_to_ticks(mod_x, offset);
+                                            }
+                                        }
+
+                                        pattern.try_add_starting_event(NoteEvent::new(start_tick, note, 127));
+                                        let mut event = pattern.get_last_event_on_row(note);
+                                        event.set_stop(stop_tick);
+                                        event.stop_velocity = Some(127);
+
+                                        pattern.add_complete_event(event);
+                                    }
+
+
                                 },
                                 ButtonType::Side(index) => {
                                     if is_double_pressed {
@@ -187,7 +247,7 @@ impl Controller for APC40 {
                                         if let Some(ButtonType::Side(modifier_index)) = modifier {
                                             instrument.clone_pattern(modifier_index, index);
                                         } else if let Some(ButtonType::Shift) = global_modifier {
-                                            instrument.get_pattern(index).clear_note_events();
+                                            instrument.get_pattern(index).clear_events();
                                         } else {
                                             self.patterns_shown[surface.instrument_shown()] = index; 
                                         }
@@ -295,6 +355,14 @@ impl Controller for APC40 {
             let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
             // TODO Draw main grid
+            let base_note = self.base_notes[surface.instrument_shown()];
+
+            let events = pattern.events().iter()
+                .filter(|event| event.is_note_in_range(base_note - 2, base_note + 2));
+
+
+            self.draw_events(events, self.offset(surface.instrument_shown()), base_note);
+
 
             self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
             if surface.instrument_shown() >= self.instrument_offset as usize {
@@ -480,8 +548,10 @@ impl Controller for APC20 {
                     match surface.view {
                         View::Instrument => {
                             match button_type {
-                                ButtonType::Grid(x, pattern) => {
+                                ButtonType::Grid(x, y) => {
                                     let offset = self.offset(surface.instrument_shown());
+                                    // We draw grids from bottom to top
+                                    let pattern = 4 - y;
 
                                     let mut start_tick = self.button_to_ticks(x, offset);
                                     let stop_tick = self.button_to_ticks(x + 1, offset);
@@ -491,13 +561,13 @@ impl Controller for APC20 {
                                         phrase.remove_events_starting_between(start_tick, stop_tick, pattern);
                                     } else {
                                         // Add pattern get x from modifier when its a grid button in the same row
-                                        if let Some(ButtonType::Grid(mod_x, mod_pattern)) = modifier {
-                                            if mod_pattern == pattern { 
+                                        if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
+                                            if 4 - mod_y == pattern { 
                                                 start_tick = self.button_to_ticks(mod_x, offset);
                                             }
                                         }
 
-                                        phrase.try_add_starting_event(PatternEvent::new(start_tick, None, pattern));
+                                        phrase.try_add_starting_event(PatternEvent::new(start_tick, pattern));
                                         let mut event = phrase.get_last_event_on_row(pattern);
                                         event.set_stop(stop_tick);
 
@@ -565,39 +635,8 @@ impl Controller for APC20 {
         } else {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
-            let offset = self.offset(surface.instrument_shown());
-            let grid_stop = offset + self.ticks_in_grid();
 
-            // Draw main grid
-            phrase.pattern_events.iter()
-                .filter(|event| { 
-                    let grid_contains_event = event.start < grid_stop 
-                        && (event.stop.is_none() || event.stop.unwrap() > offset);
-
-                    grid_contains_event || event.is_looping()
-                })
-                .for_each(|event| {
-                    let button_ticks = self.ticks_per_button() as i32;
-
-                    // Get buttons from event ticks
-                    let max_button = phrase.length() as i32 / button_ticks;
-                    let start_button = (event.start as i32 - offset as i32) / button_ticks;
-                    let stop_button = if event.stop.is_none() { 
-                        start_button + 1
-                    } else { 
-                        (event.stop.unwrap() as i32 - offset as i32) / button_ticks
-                    };
-
-                    // Always draw first button head
-                    self.grid.try_draw(start_button, event.pattern, 3);
-                    // Draw tail depending on wether this is looping note
-                    if stop_button > start_button {
-                        self.draw_tail((start_button + 1) .. stop_button, event.pattern);
-                    } else {
-                        self.draw_tail((start_button + 1) .. max_button, event.pattern);
-                        self.draw_tail(0 .. stop_button, event.pattern);
-                    }
-                });
+            self.draw_events(phrase.events().iter(), self.offset(surface.instrument_shown()), 0);
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
             self.instrument.draw(surface.instrument_shown() as u8, 1);

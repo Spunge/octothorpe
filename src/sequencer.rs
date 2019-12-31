@@ -2,42 +2,11 @@
 use super::cycle::Cycle;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
-use super::phrase::PlayingPhrase;
-use super::pattern::PlayingPattern;
 use super::sequence::Sequence;
-use super::note::Note;
-
-pub enum OverView {
-    Instrument,
-    Sequence,
-}
-
-pub enum DetailView {
-    Pattern,
-    Phrase,
-}
-
-#[derive(Debug, Clone)]
-pub struct KeyPress {
-    channel: u8,
-    note: u8,
-    velocity: u8,
-}
-
-impl KeyPress {
-    fn new(message: jack::RawMidi) -> Self {
-        KeyPress {
-            channel: message.bytes[0],
-            note: message.bytes[1],
-            velocity: message.bytes[2],
-        }
-    }
-}
 
 pub struct Sequencer {
     sequence_note_offs: Vec<(u32, Message)>,
     indicator_note_offs: Vec<(u32, Message)>,
-    keys_pressed: Vec<KeyPress>,
 
     pub instruments: [Instrument; 16],
     pub instrument_group: u8,
@@ -77,7 +46,6 @@ impl Sequencer {
             drumpad_target: 0,
             is_quantizing: true,
 
-            keys_pressed: vec![],
             sequence_note_offs: vec![],
             indicator_note_offs: vec![],
 
@@ -239,6 +207,7 @@ impl Sequencer {
         self.is_quantizing = ! self.is_quantizing;
     }
 
+    /*
     // Get playing phrases that fall in this cycle
     fn playing_phrases(&mut self, cycle: &Cycle) -> Option<Vec<PlayingPhrase>> {
         let playing_sequence = &self.sequences[self.sequence_playing];
@@ -342,7 +311,6 @@ impl Sequencer {
     }
 
     // Show playing, queued and selected sequence
-    /*
     fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {
         let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
 
@@ -531,6 +499,7 @@ impl Sequencer {
     }
 */
 
+    /*
     // Send midi to process handler
     pub fn output_midi(&mut self, cycle: &Cycle) -> (Vec<TimedMessage>, Vec<TimedMessage>) {
         // Play note offs
@@ -598,4 +567,5 @@ impl Sequencer {
         // Return messages
         (control_out_messages, sequence_out_messages)
     }
+        */
 }
