@@ -43,7 +43,12 @@ pub trait Controller {
     }
 
     fn grid(&mut self) -> &mut Grid;
+    fn indicator(&mut self) -> &mut WideRow;
 
+    /*
+     * Remove existing events when there's starting events in tick range, otherwise, remove tick
+     * range so we can add new event
+     */
     fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<(u32, u32)> {
         let mut start_tick = self.button_to_ticks(x, offset);
         let stop_tick = self.button_to_ticks(x + 1, offset);
@@ -62,7 +67,18 @@ pub trait Controller {
 
             Some((start_tick, stop_tick))
         }
+    }
 
+    // TODO - only draw length indicator at position 0 when we are really at 0
+    fn draw_length_indicator(&mut self, length: u32, offset: u32) {
+        let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / length) as u8;
+        //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
+        let offset_buttons = (offset / self.ticks_per_button()) as u8;
+        let start_button = offset_buttons * length_buttons / self.indicator().width();
+        let stop_button = start_button + length_buttons;
+        for index in start_button .. stop_button {
+            self.indicator().draw(index as u8, 1);
+        }
     }
 
     fn draw_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, offset_x: u32, offset_y: u8) {
@@ -153,6 +169,7 @@ impl Controller for APC40 {
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
+    fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
@@ -191,14 +208,14 @@ impl Controller for APC40 {
      */
     fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
-            let event = Event::new(message.time, message.bytes);
+            let event = InputEvent::new(message.time, message.bytes);
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
             match event {
-                Event::InquiryResponse(device_id) => {
+                InputEvent::InquiryResponse(device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
@@ -209,7 +226,7 @@ impl Controller for APC40 {
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
-                Event::KnobTurned { time, value, knob_type } => {
+                InputEvent::KnobTurned { time, value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
                             let delta_buttons = self.cue_knob.process_turn(value);
@@ -219,15 +236,15 @@ impl Controller for APC40 {
                         KnobType::Effect { time, index } => sequencer.knob_turned(time, index + self.knob_offset, value),
                     };
                 },
-                Event::FaderMoved { time, value, fader_type } => {
+                InputEvent::FaderMoved { time, value, fader_type } => {
                     match fader_type {
                         FaderType::Track(index) => mixer.fader_adjusted(time, index + self.instrument_offset, value),
                         FaderType::Master => mixer.master_adjusted(time, value),
                     };
                 },
-                Event::ButtonPressed { time, button_type } => {
-                    // Register press in memory to see if we double pressed
-                    let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
+                InputEvent::ButtonPressed { time, button_type } => {
+                    // Register press in memory to keep track of modifing buttons
+                    surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                     // Get modifier (other currently pressed key)
                     let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
                     let global_modifier = surface.memory.global_modifier(button_type);
@@ -252,7 +269,8 @@ impl Controller for APC40 {
                                     }
                                 },
                                 ButtonType::Side(index) => {
-                                    if is_double_pressed {
+                                    // TODO - double press logic
+                                    if false {
                                         instrument.get_pattern(index).switch_recording_state()
                                     } else {
                                         if let Some(ButtonType::Side(modifier_index)) = modifier {
@@ -345,7 +363,7 @@ impl Controller for APC40 {
                         _ => (),
                     }
                 },
-                Event::ButtonReleased { time, button_type } => {
+                InputEvent::ButtonReleased { time, button_type } => {
                     surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                 },
                 _ => (),
@@ -366,7 +384,7 @@ impl Controller for APC40 {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
-            // TODO Draw main grid
+            // Get base note of instrument, as we draw the grid with base note in vertical center
             let base_note = self.base_notes[surface.instrument_shown()];
             let events = pattern.events().iter()
                 .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
@@ -374,14 +392,7 @@ impl Controller for APC40 {
 
             self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
 
-            //for index in 0 .. self.indicator
-            let length_buttons = self.indicator.width() / (pattern.length() / self.ticks_in_grid()) as u8;
-            let offset_buttons = (self.offset(surface.instrument_shown()) / self.ticks_per_button()) as u8;
-            let start_button = offset_buttons / (8 / length_buttons);
-            let stop_button = start_button + length_buttons;
-            for index in start_button .. stop_button {
-                self.indicator.draw(index as u8, 1);
-            }
+            self.draw_length_indicator(pattern.length(), self.offset(surface.instrument_shown()));
 
             if surface.instrument_shown() >= self.instrument_offset as usize {
                 let instrument = surface.instrument_shown() - self.instrument_offset as usize;
@@ -487,6 +498,7 @@ impl Controller for APC20 {
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
+    fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
@@ -519,14 +531,14 @@ impl Controller for APC20 {
      */
     fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
-            let event = Event::new(message.time, message.bytes);
+            let event = InputEvent::new(message.time, message.bytes);
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
             match event {
-                Event::InquiryResponse(device_id) => {
+                InputEvent::InquiryResponse(device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
@@ -536,14 +548,14 @@ impl Controller for APC20 {
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
-                Event::FaderMoved { time, value, fader_type } => {
+                InputEvent::FaderMoved { time, value, fader_type } => {
                     // TODO - Pass these to "mixer"
                     match fader_type {
                         FaderType::Track(index) => mixer.fader_adjusted(time, index, value),
                         _ => (),
                     };
                 },
-                Event::KnobTurned { time, value, knob_type } => {
+                InputEvent::KnobTurned { time, value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
                             let delta_buttons = self.cue_knob.process_turn(value);
@@ -553,7 +565,7 @@ impl Controller for APC20 {
                         _ => (),
                     }
                 }
-                Event::ButtonPressed { time, button_type } => {
+                InputEvent::ButtonPressed { time, button_type } => {
                     // Register press in memory to see if we double pressed
                     let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                     // Get modifier (other currently pressed key)
@@ -617,7 +629,7 @@ impl Controller for APC20 {
                         _ => (),
                     }
                 },
-                Event::ButtonReleased { time, button_type } => {
+                InputEvent::ButtonReleased { time, button_type } => {
                     surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
                 },
                 _ => (),
@@ -642,15 +654,7 @@ impl Controller for APC20 {
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
 
-            // TODO _ triat zoom
-            //for index in 0 .. self.indicator
-            let length_buttons = self.indicator.width() / (phrase.length() / self.ticks_in_grid()) as u8;
-            let offset_buttons = (self.offset(surface.instrument_shown()) / self.ticks_per_button()) as u8;
-            let start_button = offset_buttons / (8 / length_buttons);
-            let stop_button = start_button + length_buttons;
-            for index in start_button .. stop_button {
-                self.indicator.draw(index as u8, 1);
-            }
+            self.draw_length_indicator(phrase.length(), self.offset(surface.instrument_shown()));
 
             self.instrument.draw(surface.instrument_shown() as u8, 1);
 

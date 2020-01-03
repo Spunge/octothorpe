@@ -72,21 +72,22 @@ impl Surface {
 }
 
 #[derive(Debug)]
+struct OccurredEvent {
+    controller_id: u8,
+    time: u64,
+    event: InputEvent,
+}
+
+#[derive(Debug)]
 struct ButtonPress {
     controller_id: u8,
     start: u64,
-    end: Option<u64>,
     button_type: ButtonType,
 }
 
-impl ButtonPress {
-    pub fn new(controller_id: u8, start: u64, button_type: ButtonType) -> Self {
-        Self { controller_id, start, end: None, button_type, }
-    }
-}
-
 pub struct Memory {
-    presses: Vec<ButtonPress>,
+    // Remember pressed buttons
+    pressed_buttons: Vec<ButtonPress>,
 }
 
 /*
@@ -96,61 +97,41 @@ impl Memory {
     const DOUBLE_PRESS_USECS: u64 = 300000;
 
     pub fn new() -> Self {
-        Self { presses: vec![] }
+        Self { pressed_buttons: vec![] }
     }
 
     // We pressed a button!
-    pub fn press(&mut self, controller_id: u8, start: u64, button_type: ButtonType) -> bool {
-        // Remove all keypresses that are not within double press range, while checking if this
-        // key is double pressed wihtin short perioud
-        let mut is_double_pressed = false;
-
-        self.presses.retain(|previous| {
-            let falls_within_double_press_ticks = 
-                previous.end.is_none() || start - previous.end.unwrap() < Memory::DOUBLE_PRESS_USECS;
-
-            let is_same_button = previous.button_type == button_type && previous.controller_id == controller_id;
-
-            // Ugly side effects, but i thought this to be cleaner as 2 iters looking for the same
-            // thing
-            is_double_pressed = falls_within_double_press_ticks && is_same_button;
-
-            falls_within_double_press_ticks
-        });
-
-        // Save pressed_button to compare next pressed keys with, do this after comparing to not
-        // compare with current press
-        self.presses.push(ButtonPress::new(controller_id, start, button_type));
-
-        is_double_pressed
+    pub fn press(&mut self, controller_id: u8, start: u64, button_type: ButtonType) {
+        // Save pressed_button to keep track of modifing keys (multiple keys pressed twice)
+        self.pressed_buttons.push(ButtonPress { controller_id, start, button_type, });
     }
 
     pub fn release(&mut self, controller_id: u8, end: u64, button_type: ButtonType) {
-        let mut pressed_button = self.presses.iter_mut().rev()
-            .find(|pressed_button| {
-                pressed_button.button_type == button_type
-                    && pressed_button.controller_id == controller_id
-            })
-            // We can safely unwrap as you can't press the same button twice
-            .unwrap();
+        let pressed_button = self.pressed_buttons.iter().enumerate().rev().find(|(_, pressed_button)| {
+            pressed_button.button_type == button_type
+                && pressed_button.controller_id == controller_id
+        });
 
-        pressed_button.end = Some(end);
+        // We only use if let instead of unwrap to not crash when first event is button release
+        if let Some((index, _)) = pressed_button {
+            self.pressed_buttons.remove(index);
+        }
     }
 
     pub fn modifier(&self, controller_id: u8, button_type: ButtonType) -> Option<ButtonType> {
-        self.presses.iter()
+        self.pressed_buttons.iter()
             .filter(|pressed_button| {
                 pressed_button.button_type != button_type
                     && pressed_button.controller_id == controller_id
             })
-            .find(|pressed_button| pressed_button.end.is_none())
+            .next()
             .and_then(|pressed_button| Some(pressed_button.button_type))
     }
 
     pub fn global_modifier(&self, button_type: ButtonType) -> Option<ButtonType> {
-        self.presses.iter()
+        self.pressed_buttons.iter()
             .filter(|pressed_button| pressed_button.button_type != button_type)
-            .find(|pressed_button| pressed_button.end.is_none())
+            .next()
             .and_then(|pressed_button| Some(pressed_button.button_type))
     }
 }

@@ -24,17 +24,20 @@ pub enum ButtonType {
     Unknown,
 }
 
+#[derive(Debug)]
 pub enum FaderType {
     Track(u8),
     Master,
 }
 
+#[derive(Debug)]
 pub enum KnobType {
     Effect { time: u32, index: u8},
     Cue,
 }
 
-pub enum Event {
+#[derive(Debug)]
+pub enum InputEvent {
     InquiryResponse(u8),
     ButtonPressed { time: u32, button_type: ButtonType },
     ButtonReleased { time: u32, button_type: ButtonType },
@@ -42,7 +45,6 @@ pub enum Event {
     FaderMoved { time: u32, value: u8, fader_type: FaderType },
     Unknown,
 }
-
 
 impl ButtonType {
     fn new(channel: u8, note: u8) -> Self {
@@ -70,7 +72,7 @@ impl ButtonType {
     }
 }
 
-impl Event {
+impl InputEvent {
     pub fn new(time: u32, bytes: &[u8]) -> Self {
         match bytes[0] {
             0xF0 => {
