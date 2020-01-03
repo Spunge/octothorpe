@@ -214,8 +214,8 @@ impl Controller for APC40 {
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
-            match event {
-                InputEvent::InquiryResponse(device_id) => {
+            match event.event_type {
+                InputEventType::InquiryResponse(device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
@@ -226,25 +226,26 @@ impl Controller for APC40 {
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
-                InputEvent::KnobTurned { time, value, knob_type } => {
+                InputEventType::KnobTurned { value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
                             let delta_buttons = self.cue_knob.process_turn(value);
                             let offset = self.adjusted_offset(surface.instrument_shown(), pattern.length(), delta_buttons);
                             self.offsets[surface.instrument_shown()] = offset;
                         },
-                        KnobType::Effect { time, index } => sequencer.knob_turned(time, index + self.knob_offset, value),
+                        KnobType::Effect(index) => sequencer.knob_turned(event.time, index + self.knob_offset, value),
                     };
                 },
-                InputEvent::FaderMoved { time, value, fader_type } => {
+                InputEventType::FaderMoved { value, fader_type } => {
                     match fader_type {
-                        FaderType::Track(index) => mixer.fader_adjusted(time, index + self.instrument_offset, value),
-                        FaderType::Master => mixer.master_adjusted(time, value),
+                        FaderType::Track(index) => mixer.fader_adjusted(event.time, index + self.instrument_offset, value),
+                        FaderType::Master => mixer.master_adjusted(event.time, value),
                     };
                 },
-                InputEvent::ButtonPressed { time, button_type } => {
+                InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep track of modifing buttons
-                    surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
+ //cycle.time_at_frame(event.time),
+                    surface.memory.press(Self::CONTROLLER_ID, button_type);
                     // Get modifier (other currently pressed key)
                     let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
                     let global_modifier = surface.memory.global_modifier(button_type);
@@ -363,8 +364,8 @@ impl Controller for APC40 {
                         _ => (),
                     }
                 },
-                InputEvent::ButtonReleased { time, button_type } => {
-                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
+                InputEventType::ButtonReleased(button_type) => {
+                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
                 },
                 _ => (),
             }
@@ -537,8 +538,8 @@ impl Controller for APC20 {
 
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
-            match event {
-                InputEvent::InquiryResponse(device_id) => {
+            match event.event_type {
+                InputEventType::InquiryResponse(device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
@@ -548,14 +549,14 @@ impl Controller for APC20 {
 
                     self.output.output_message(TimedMessage::new(0, message));
                 },
-                InputEvent::FaderMoved { time, value, fader_type } => {
+                InputEventType::FaderMoved { value, fader_type } => {
                     // TODO - Pass these to "mixer"
                     match fader_type {
-                        FaderType::Track(index) => mixer.fader_adjusted(time, index, value),
+                        FaderType::Track(index) => mixer.fader_adjusted(event.time, index, value),
                         _ => (),
                     };
                 },
-                InputEvent::KnobTurned { time, value, knob_type } => {
+                InputEventType::KnobTurned { value, knob_type } => {
                     match knob_type {
                         KnobType::Cue => {
                             let delta_buttons = self.cue_knob.process_turn(value);
@@ -565,9 +566,10 @@ impl Controller for APC20 {
                         _ => (),
                     }
                 }
-                InputEvent::ButtonPressed { time, button_type } => {
+                InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to see if we double pressed
-                    let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
+                    //  cycle.time_at_frame(event.time),
+                    let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, button_type);
                     // Get modifier (other currently pressed key)
                     let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
                     let global_modifier = surface.memory.global_modifier(button_type);
@@ -629,8 +631,8 @@ impl Controller for APC20 {
                         _ => (),
                     }
                 },
-                InputEvent::ButtonReleased { time, button_type } => {
-                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(time), button_type);
+                InputEventType::ButtonReleased(button_type) => {
+                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
                 },
                 _ => (),
             }

@@ -72,21 +72,35 @@ impl Surface {
 }
 
 #[derive(Debug)]
-struct OccurredEvent {
-    controller_id: u8,
-    time: u64,
-    event: InputEvent,
+enum OccurredEvent {
+    ButtonPressed { time: u64, button_type: ButtonType },
+    ButtonReleased { time: u64, button_type: ButtonType },
+    KnobTurned { time: u64, knob_type: KnobType },
+    FaderMoved { time: u64, fader_type: FaderType },
+}
+
+impl PartialEq for OccurredEvent {
+    fn eq(&self, other: &Self) -> bool {
+        false
+        //match self {
+            //OccurredEvent::ButtonPressed | OccurredEvent::ButtonReleased => self.button_type == other.button_type,
+            //OccurredEvent::KnobTurned => self.knob_type == other.knob_type,
+            //OccurredEvent::FaderMoved => self.fader_type == other.fader_type,
+        //}
+    }
 }
 
 #[derive(Debug)]
 struct ButtonPress {
     controller_id: u8,
-    start: u64,
     button_type: ButtonType,
 }
 
 pub struct Memory {
-    // Remember pressed buttons
+    // Remember occurred events to provide double click & other occurred since logic
+    occurred_events: Vec<OccurredEvent>,
+    // Remember pressed buttons to provide "modifier" functionality, we *could* use occurred_events
+    // for this, but the logic will be a lot easier to understand when we use seperate struct
     pressed_buttons: Vec<ButtonPress>,
 }
 
@@ -94,16 +108,16 @@ pub struct Memory {
  * This will keep track of button presses so we can support double press & range press
  */
 impl Memory {
-    const DOUBLE_PRESS_USECS: u64 = 300000;
-
     pub fn new() -> Self {
-        Self { pressed_buttons: vec![] }
+        Self { occurred_events: vec![], pressed_buttons: vec![] }
     }
 
+    //pub fn register_event(&mut self, controller_id: u8, time: u64, InputEvent:)
+
     // We pressed a button!
-    pub fn press(&mut self, controller_id: u8, start: u64, button_type: ButtonType) {
+    pub fn press(&mut self, controller_id: u8, button_type: ButtonType) {
         // Save pressed_button to keep track of modifing keys (multiple keys pressed twice)
-        self.pressed_buttons.push(ButtonPress { controller_id, start, button_type, });
+        self.pressed_buttons.push(ButtonPress { controller_id, button_type, });
     }
 
     pub fn release(&mut self, controller_id: u8, end: u64, button_type: ButtonType) {

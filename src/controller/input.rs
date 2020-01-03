@@ -32,18 +32,23 @@ pub enum FaderType {
 
 #[derive(Debug)]
 pub enum KnobType {
-    Effect { time: u32, index: u8},
+    Effect(u8),
     Cue,
 }
 
 #[derive(Debug)]
-pub enum InputEvent {
+pub enum InputEventType {
     InquiryResponse(u8),
-    ButtonPressed { time: u32, button_type: ButtonType },
-    ButtonReleased { time: u32, button_type: ButtonType },
-    KnobTurned { time: u32, value: u8, knob_type: KnobType },
-    FaderMoved { time: u32, value: u8, fader_type: FaderType },
+    ButtonPressed(ButtonType),
+    ButtonReleased(ButtonType),
+    KnobTurned { value: u8, knob_type: KnobType },
+    FaderMoved { value: u8, fader_type: FaderType },
     Unknown,
+}
+
+pub struct InputEvent {
+    pub time: u32,
+    pub event_type: InputEventType,
 }
 
 impl ButtonType {
@@ -72,9 +77,12 @@ impl ButtonType {
     }
 }
 
-impl InputEvent {
-    pub fn new(time: u32, bytes: &[u8]) -> Self {
-        match bytes[0] {
+/*
+ * Get input event type from sent bytes
+ */
+impl InputEventType {
+    pub fn new(bytes: &[u8]) -> Self {
+         match bytes[0] {
             0xF0 => {
                 // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
                 if bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && (bytes[6] == 0x73 || bytes[6] == 0x7b) {
@@ -83,8 +91,8 @@ impl InputEvent {
                     Self::Unknown
                 }
             },
-            0x90 ..= 0x9F => Self::ButtonPressed { time, button_type: ButtonType::new(bytes[0] - 0x90, bytes[1]) },
-            0x80 ..= 0x8F => Self::ButtonReleased { time, button_type: ButtonType::new(bytes[0] - 0x80, bytes[1]) },
+            0x90 ..= 0x9F => Self::ButtonPressed(ButtonType::new(bytes[0] - 0x90, bytes[1])),
+            0x80 ..= 0x8F => Self::ButtonReleased(ButtonType::new(bytes[0] - 0x80, bytes[1])),
             0xB0 ..= 0xB8 => {
                 match bytes[1] {
                     0x30 ..= 0x37 | 0x10 ..= 0x17 => {
@@ -92,16 +100,22 @@ impl InputEvent {
                         let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
                         let index = bytes[1] - modifier;
 
-                        Self::KnobTurned { time, value: bytes[2], knob_type: KnobType::Effect { time, index } }
+                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect(index) }
                     },
-                    0x7 => Self::FaderMoved { time, value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0) },
-                    0xE => Self::FaderMoved { time, value: bytes[2], fader_type: FaderType::Master },
-                    0x2F => Self::KnobTurned { time, value: bytes[2], knob_type: KnobType::Cue },
+                    0x7 => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0) },
+                    0xE => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Master },
+                    0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
                     _ => Self::Unknown,
                 }
             },
             _ => Self::Unknown,
         }
+    }
+}
+
+impl InputEvent {
+    pub fn new(time: u32, bytes: &[u8]) -> Self {
+        Self { time, event_type: InputEventType::new(bytes) }
     }
 }
 
