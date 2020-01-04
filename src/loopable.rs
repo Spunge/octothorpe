@@ -102,7 +102,6 @@ impl Phrase {
 #[derive(Clone)]
 pub struct Pattern {
     note_events: Vec<NoteEvent>,
-    pub is_recording: bool,
 }
 
 impl Loopable for Pattern {
@@ -135,12 +134,7 @@ impl Pattern {
     fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 }
 
     pub fn new() -> Self {
-        Pattern { note_events: vec![], is_recording: false }
-    }
-
-    // Start recording notes from input into pattern
-    pub fn switch_recording_state(&mut self) {
-        self.is_recording = ! self.is_recording;
+        Pattern { note_events: vec![] }
     }
 }
 

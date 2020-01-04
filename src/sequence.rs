@@ -7,26 +7,18 @@ pub struct Sequence {
     pub active: [bool; 16],
 
     pub knob_group: u8,
-    knob_values: [u8; 64],
+    knob_values: [u8; 128],
 }
 
 impl Sequence {
-    fn create(phrases: [Option<usize>; 16]) -> Self {
+    pub fn new() -> Self {
         Sequence {
-            phrases,
+            phrases: [Some(0); 16],
             active: [true; 16],
 
             knob_group: 0,
-            knob_values: [0; 64],
+            knob_values: [0; 128],
         }
-    }
-
-    pub fn new() -> Self {
-        Sequence::create([None; 16])
-    }
-
-    pub fn default(value: usize) -> Self {
-        Sequence::create([Some(value); 16])
     }
 
     /*

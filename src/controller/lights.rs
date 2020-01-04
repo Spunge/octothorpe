@@ -1,6 +1,17 @@
 
+use super::super::message::*;
 
 // TODO - We could probably macro these grids, but.. alas, i'm not familiar enough with macros
+
+pub trait Drawable {
+    fn output_messages(&mut self, frame: u32) -> Vec<TimedMessage> {
+        self.output().into_iter()
+            .map(|(channel, note, velocity)| TimedMessage::new(frame, Message::Note([channel, note, velocity])))
+            .collect()
+    }
+
+    fn output(&mut self) -> Vec<(u8, u8, u8)>;
+}
 
 // 40 boi at the top
 pub struct Grid {
@@ -61,8 +72,10 @@ impl Grid {
             self.next_state[Self::index(x, y)] = value;
         }
     }
+}
 
-    pub fn output(&mut self) -> Vec<(u8, u8, u8)> {
+impl Drawable for Grid {
+    fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
         // Meeeeeh, rust array comparison works up to 32 elements...
@@ -100,8 +113,10 @@ impl Side {
             self.next_state[index as usize] = value;
         }
     }
+}
 
-    pub fn output(&mut self) -> Vec<(u8, u8, u8)> {
+impl Drawable for Side {
+    fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
         if self.next_state != self.state {
@@ -133,8 +148,10 @@ impl WideRow {
             self.next_state[index as usize] = value;
         }
     }
+}
 
-    pub fn output(&mut self) -> Vec<(u8, u8, u8)> {
+impl Drawable for WideRow {
+    fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
         if self.next_state != self.state {

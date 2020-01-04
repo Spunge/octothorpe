@@ -111,7 +111,7 @@ pub trait APC {
             }
         }
 
-        Self::grid_output_to_timed_messages(frame, self.indicator().output())
+        self.indicator().output_messages(frame)
     }
 
     /*
@@ -248,12 +248,6 @@ pub trait APC {
         }
     }
 
-    fn grid_output_to_timed_messages(frame: u32, events: Vec<(u8, u8, u8)>) -> Vec<TimedMessage> {
-        events.into_iter()
-            .map(|(channel, note, velocity)| TimedMessage::new(frame, Message::Note([channel, note, velocity])))
-            .collect()
-    }
-
     fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
         if self.identified_cycles() == 0 {
@@ -273,8 +267,8 @@ pub trait APC {
             // APC specific messages
             let mut messages = self.output_messages(cycle, sequencer, surface);
             // Shared stuff
-            messages.append(&mut Self::grid_output_to_timed_messages(0, self.instrument().output()));
-            messages.append(&mut Self::grid_output_to_timed_messages(0, self.solo().output()));
+            messages.append(&mut self.instrument().output_messages(0));
+            messages.append(&mut self.solo().output_messages(0));
 
             // TODO - As all messages are here as one vec, we don't have to use the sorting struct
             // MidiOut anymore
@@ -427,9 +421,9 @@ impl APC for APC40 {
                                 }
                             },
                             ButtonType::Side(index) => {
-                                // TODO - double press logic
+                                // TODO - double press logic && recording logic
                                 if false {
-                                    instrument.get_pattern(index).switch_recording_state()
+                                    //instrument.get_pattern(index).switch_recording_state()
                                 } else {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         instrument.clone_pattern(modifier_index, index);
@@ -515,9 +509,9 @@ impl APC for APC40 {
         let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
         let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
 
-        messages.append(&mut Self::grid_output_to_timed_messages(0, self.grid.output()));
-        messages.append(&mut Self::grid_output_to_timed_messages(0, self.side.output()));
-        messages.append(&mut Self::grid_output_to_timed_messages(0, self.activator.output()));
+        messages.append(&mut self.grid.output_messages(0));
+        messages.append(&mut self.side.output_messages(0));
+        messages.append(&mut self.activator.output_messages(0));
 
         messages
     }
@@ -684,9 +678,9 @@ impl APC for APC20 {
         let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
         let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
 
-        messages.append(&mut Self::grid_output_to_timed_messages(0, self.grid.output()));
-        messages.append(&mut Self::grid_output_to_timed_messages(0, self.side.output()));
-        messages.append(&mut Self::grid_output_to_timed_messages(0, self.activator.output()));
+        messages.append(&mut self.grid.output_messages(0));
+        messages.append(&mut self.side.output_messages(0));
+        messages.append(&mut self.activator.output_messages(0));
         messages
     }
 }

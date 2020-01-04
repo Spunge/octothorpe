@@ -28,14 +28,14 @@ impl Sequencer {
     pub fn new(client: &jack::Client) -> Self {
         // Build instruments for each midi channel
         let instruments = [
-            Instrument::new(0), Instrument::new(1), Instrument::new(2), Instrument::new(3),
-            Instrument::new(4), Instrument::new(5), Instrument::new(6), Instrument::new(7),
-            Instrument::new(8), Instrument::new(9), Instrument::new(10), Instrument::new(11),
-            Instrument::new(12), Instrument::new(13), Instrument::new(14), Instrument::new(15),
+            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
+            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
+            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
+            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
         ];
     
         // Build sequence we can trigger
-        let sequences = [ Sequence::default(0), Sequence::default(1), Sequence::default(2), Sequence::default(3), ];
+        let sequences = [ Sequence::new(), Sequence::new(), Sequence::new(), Sequence::new(), ];
 
         Sequencer {
             instruments,
