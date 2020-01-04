@@ -9,7 +9,8 @@ pub enum View {
 
 pub struct Surface {
     pub view: View,
-    pub memory: Memory,
+    pub button_memory: ButtonMemory,
+    pub event_memory: EventMemory,
 
     instrument_shown: u8,
     sequence_shown: u8,
@@ -19,7 +20,8 @@ impl Surface {
     pub fn new() -> Self {
         Surface { 
             view: View::Instrument, 
-            memory: Memory::new(),
+            button_memory: ButtonMemory::new(),
+            event_memory: EventMemory::new(),
 
             instrument_shown: 0,
             sequence_shown: 0,
@@ -71,21 +73,46 @@ impl Surface {
 }
 
 #[derive(Debug)]
-enum OccurredEvent {
-    ButtonPressed { time: u64, button_type: ButtonType },
-    ButtonReleased { time: u64, button_type: ButtonType },
-    KnobTurned { time: u64, knob_type: KnobType },
-    FaderMoved { time: u64, fader_type: FaderType },
+struct OccurredInputEvent {
+    controller_id: u8,
+    time: u64,
+    event_type: InputEventType,
 }
 
-impl PartialEq for OccurredEvent {
-    fn eq(&self, other: &Self) -> bool {
-        false
-        //match self {
-            //OccurredEvent::ButtonPressed | OccurredEvent::ButtonReleased => self.button_type == other.button_type,
-            //OccurredEvent::KnobTurned => self.knob_type == other.knob_type,
-            //OccurredEvent::FaderMoved => self.fader_type == other.fader_type,
-        //}
+pub struct EventMemory {
+    // Remember when the last occurence of input event was for each input event on the controller,
+    // this was we can keep track of double clicks or show info based on touched buttons
+    occurred_events: Vec<OccurredInputEvent>,
+}
+
+impl EventMemory {
+    fn new() -> Self {
+        Self { occurred_events: vec![] }
+    }
+
+    pub fn register_event(&mut self, controller_id: u8, time: u64, event_type: InputEventType) {
+        let mut previous = self.occurred_events.iter_mut()
+            .find(|event| event.controller_id == controller_id && event.event_type == event_type);
+
+        if let Some(event) = previous {
+            event.time = time;
+        } else {
+            self.occurred_events.push(OccurredInputEvent { controller_id, time, event_type });
+        }
+    }
+
+    pub fn event_last_occurred<F>(&self, controller_id: u8, f: F) -> Option<u64> where F: Fn(&InputEventType) -> bool {
+        self.occurred_events.iter()
+            .filter(|event| f(&event.event_type) && controller_id == event.controller_id)
+            .map(|event| event.time)
+            .max()
+    }
+
+    pub fn event_occurred_after<F>(&self, controller_id: u8, f: F, usecs: u64) -> bool where F: Fn(&InputEventType) -> bool {
+        self.event_last_occurred(controller_id, f)
+            .and_then(|time| Some(time >= usecs))
+            .or(Some(false))
+            .unwrap()
     }
 }
 
@@ -95,9 +122,7 @@ struct ButtonPress {
     button_type: ButtonType,
 }
 
-pub struct Memory {
-    // Remember occurred events to provide double click & other occurred since logic
-    occurred_events: Vec<OccurredEvent>,
+pub struct ButtonMemory {
     // Remember pressed buttons to provide "modifier" functionality, we *could* use occurred_events
     // for this, but the logic will be a lot easier to understand when we use seperate struct
     pressed_buttons: Vec<ButtonPress>,
@@ -106,9 +131,9 @@ pub struct Memory {
 /*
  * This will keep track of button presses so we can support double press & range press
  */
-impl Memory {
+impl ButtonMemory {
     pub fn new() -> Self {
-        Self { occurred_events: vec![], pressed_buttons: vec![] }
+        Self { pressed_buttons: vec![] }
     }
 
     //pub fn register_event(&mut self, controller_id: u8, time: u64, InputEvent:)

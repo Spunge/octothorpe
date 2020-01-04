@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 jack = { git = "https://github.com/spunge/rust-jack.git" }
 jack-sys = "0.2.0"
+matches = "0.1.8"
 
 [[bin]]
 name = "octothorpe"

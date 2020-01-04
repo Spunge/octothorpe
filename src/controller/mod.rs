@@ -215,6 +215,7 @@ impl APC for APC40 {
     fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
             let event = InputEvent::new(message.time, message.bytes);
+
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
@@ -234,8 +235,13 @@ impl APC for APC40 {
                 },
                 InputEventType::KnobTurned { value, knob_type } => {
                     match knob_type {
+                        // TODO - This can live in trait
                         KnobType::Cue => {
-                            let delta_buttons = self.cue_knob.process_turn(value);
+                            // TODO - this time can live somewhere in a CONST
+                            let usecs = cycle.time_at_frame(event.time) - 500000;
+                            let is_first_turn = ! surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
+
+                            let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
                             let offset = self.adjusted_offset(surface.instrument_shown(), pattern.length(), delta_buttons);
                             self.offsets[surface.instrument_shown()] = offset;
                         },
@@ -250,11 +256,10 @@ impl APC for APC40 {
                 },
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep track of modifing buttons
- //cycle.time_at_frame(event.time),
-                    surface.memory.press(Self::CONTROLLER_ID, button_type);
+                    surface.button_memory.press(Self::CONTROLLER_ID, button_type);
                     // Get modifier (other currently pressed key)
-                    let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
-                    let global_modifier = surface.memory.global_modifier(button_type);
+                    let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
+                    let global_modifier = surface.button_memory.global_modifier(button_type);
 
                     match surface.view {
                         View::Instrument => {
@@ -371,10 +376,13 @@ impl APC for APC40 {
                     }
                 },
                 InputEventType::ButtonReleased(button_type) => {
-                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
+                    surface.button_memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
                 },
                 _ => (),
             }
+
+            // Keep track of event so we can use it to calculate double presses etc.
+            surface.event_memory.register_event(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), event.event_type);
         }
     }
 
@@ -399,7 +407,15 @@ impl APC for APC40 {
 
             self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
 
-            self.draw_length_indicator(pattern.length(), self.offset(surface.instrument_shown()));
+            // Indicator
+            let usecs = cycle.time_at_frame(0) - 500000;
+            let cue_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
+            let zoom_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_solo_button, usecs);
+            let grid_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_grid_button, usecs);
+
+            if cue_occurred || zoom_occurred || grid_occurred {
+                self.draw_length_indicator(pattern.length(), self.offset(surface.instrument_shown()));
+            }
 
             if surface.instrument_shown() >= self.instrument_offset as usize {
                 let instrument = surface.instrument_shown() - self.instrument_offset as usize;
@@ -542,6 +558,7 @@ impl APC for APC20 {
     fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
             let event = InputEvent::new(message.time, message.bytes);
+
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
 
@@ -568,21 +585,26 @@ impl APC for APC20 {
                 },
                 InputEventType::KnobTurned { value, knob_type } => {
                     match knob_type {
+                        // TODO - This can live in trait
                         KnobType::Cue => {
-                            let delta_buttons = self.cue_knob.process_turn(value);
+                            // TODO - Move this time to somewhere configgy
+                            let usecs = cycle.time_at_frame(0) - 500000;
+                            let is_first_turn = ! surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
+
+                            let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
                             let offset = self.adjusted_offset(surface.instrument_shown(), phrase.length(), delta_buttons);
                             self.offsets[surface.instrument_shown()] = offset;
                         },
                         _ => (),
                     }
-                }
+                },
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to see if we double pressed
                     //  cycle.time_at_frame(event.time),
-                    let is_double_pressed = surface.memory.press(Self::CONTROLLER_ID, button_type);
+                    surface.button_memory.press(Self::CONTROLLER_ID, button_type);
                     // Get modifier (other currently pressed key)
-                    let modifier = surface.memory.modifier(Self::CONTROLLER_ID, button_type);
-                    let global_modifier = surface.memory.global_modifier(button_type);
+                    let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
+                    let global_modifier = surface.button_memory.global_modifier(button_type);
 
                     match surface.view {
                         View::Instrument => {
@@ -642,10 +664,13 @@ impl APC for APC20 {
                     }
                 },
                 InputEventType::ButtonReleased(button_type) => {
-                    surface.memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
+                    surface.button_memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
                 },
                 _ => (),
             }
+
+            // Keep track of event so we can use it to double press etc
+            surface.event_memory.register_event(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), event.event_type);
         }
     }
 
@@ -666,7 +691,15 @@ impl APC for APC20 {
 
             self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
 
-            self.draw_length_indicator(phrase.length(), self.offset(surface.instrument_shown()));
+            // Indicator
+            let usecs = cycle.time_at_frame(0) - 500000;
+            let cue_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
+            let zoom_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_solo_button, usecs);
+            let length_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_activator_button, usecs);
+
+            if cue_occurred || zoom_occurred || length_occurred {
+                self.draw_length_indicator(phrase.length(), self.offset(surface.instrument_shown()));
+            }
 
             self.instrument.draw(surface.instrument_shown() as u8, 1);
 

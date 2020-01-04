@@ -24,19 +24,19 @@ pub enum ButtonType {
     Unknown,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum FaderType {
     Track(u8),
     Master,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum KnobType {
     Effect(u8),
     Cue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum InputEventType {
     InquiryResponse(u8, u8),
     ButtonPressed(ButtonType),
@@ -117,31 +117,54 @@ impl InputEvent {
     pub fn new(time: u32, bytes: &[u8]) -> Self {
         Self { time, event_type: InputEventType::new(bytes) }
     }
+
+    pub fn is_cue_knob(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::KnobTurned { knob_type: KnobType::Cue, .. }) 
+    }
+
+    pub fn is_activator_button(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Activator(_)))
+    }
+
+    pub fn is_solo_button(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Solo(_)))
+    }
+
+    pub fn is_grid_button(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Grid(_, _)))
+    }
 }
 
 /*
  * Struct that will decrease cueknob rotation speed a bit
  */
 impl CueKnob {
-    const CUE_KNOB_DELTA_PER_BUTTON: i8 = 4;
+    const DELTA_PER_BUTTON: i8 = 6;
 
     pub fn new() -> Self { CueKnob { delta: 0 } }
 
     // TODO - Use time for this aswell, so that turning knob instantly moves grid
-    pub fn process_turn(&mut self, value: u8) -> i8 {
+    pub fn process_turn(&mut self, value: u8, is_first_turn: bool) -> i8 {
         // Transform 0->up / 128->down to -delta / +delta
         let delta = (value as i8).rotate_left(1) / 2;
 
-        self.delta = self.delta + delta;
+        // Reset on first turn and return 1 step
+        if is_first_turn {
+            self.delta = 0;
 
-        let steps = self.delta / Self::CUE_KNOB_DELTA_PER_BUTTON;
-        let remainder = self.delta % Self::CUE_KNOB_DELTA_PER_BUTTON;
+            if delta > 0 { 1 } else { -1 }
+        } else {
+            self.delta = self.delta + delta;
 
-        if steps != 0 {
-            self.delta = remainder;
+            let steps = self.delta / Self::DELTA_PER_BUTTON;
+            let remainder = self.delta % Self::DELTA_PER_BUTTON;
+
+            if steps != 0 {
+                self.delta = remainder;
+            }
+
+            steps
         }
-
-        steps
     }
 }
 

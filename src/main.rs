@@ -1,5 +1,8 @@
 
 //#![feature(drain_filter)]
+#[macro_use]
+extern crate matches;
+
 extern crate jack;
 use jack_sys as j;
 
