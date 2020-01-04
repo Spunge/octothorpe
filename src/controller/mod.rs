@@ -18,10 +18,13 @@ use lights::*;
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
 
-pub trait Controller {
+pub trait APC {
     const CONTROLLER_ID: u8;
     const HEAD_COLOR: u8;
     const TAIL_COLOR: u8;
+
+    fn identified_cycles(&self) -> u8;
+    fn set_identified_cycles(&mut self, cycles: u8);
 
     fn ticks_in_grid(&self) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
@@ -160,10 +163,13 @@ impl APC40 {
     fn pattern_shown(&self, index: usize) -> u8 { self.patterns_shown[index] }
 }
 
-impl Controller for APC40 {
+impl APC for APC40 {
     const CONTROLLER_ID: u8 = 0;
     const HEAD_COLOR: u8 = 1;
     const TAIL_COLOR: u8 = 5;
+
+    fn identified_cycles(&self) -> u8 { self.identified_cycles }
+    fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 16 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
@@ -215,11 +221,11 @@ impl Controller for APC40 {
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
             match event.event_type {
-                InputEventType::InquiryResponse(device_id) => {
+                InputEventType::InquiryResponse(local_id, device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
-                    let message = Message::Introduction([0xF0, 0x47, device_id, 0x73, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                    let message = Message::Introduction([0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
                     // Make sure we stop inquiring
                     // TODO - Make sure every grid is re-initialized after identifying
                     self.identified_cycles = 1;
@@ -489,10 +495,13 @@ impl APC20 {
     fn phrase_shown(&self, index: usize) -> u8 { self.phrases_shown[index] }
 }
 
-impl Controller for APC20 {
+impl APC for APC20 {
     const CONTROLLER_ID: u8 = 1;
     const HEAD_COLOR: u8 = 3;
     const TAIL_COLOR: u8 = 5;
+
+    fn identified_cycles(&self) -> u8 { self.identified_cycles }
+    fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 16 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
@@ -539,12 +548,13 @@ impl Controller for APC20 {
             //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
             // Only process channel note messages
             match event.event_type {
-                InputEventType::InquiryResponse(device_id) => {
+                InputEventType::InquiryResponse(local_id, device_id) => {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
-                    let message = Message::Introduction([0xF0, 0x47, device_id, 0x7b, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                    let message = Message::Introduction([0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
                     // Make sure we stop inquiring
+                    // TODO - Make sure every grid is re-initialized after identifying
                     self.identified_cycles = 1;
 
                     self.output.output_message(TimedMessage::new(0, message));

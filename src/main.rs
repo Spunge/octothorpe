@@ -98,8 +98,8 @@ impl jack::TimebaseHandler for TimebaseHandler {
 
 pub struct ProcessHandler {
     // Controllers
-    apc40: APC40,
     apc20: APC20,
+    apc40: APC40,
 
     mixer: Mixer,
     sequencer: Sequencer,

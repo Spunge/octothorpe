@@ -1,5 +1,4 @@
 
-use super::controller::Controller;
 use super::controller::input::*;
 
 #[derive(PartialEq)]
