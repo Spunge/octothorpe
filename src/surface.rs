@@ -101,18 +101,15 @@ impl EventMemory {
         }
     }
 
-    pub fn event_last_occurred<F>(&self, controller_id: u8, f: F) -> Option<u64> where F: Fn(&InputEventType) -> bool {
+    pub fn last_occurred_event_after<F>(&self, controller_id: u8, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
         self.occurred_events.iter()
-            .filter(|event| f(&event.event_type) && controller_id == event.controller_id)
+            .filter(|event| {
+                controller_id == event.controller_id
+                    && event.time >= usecs
+                    && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
+            })
             .map(|event| event.time)
             .max()
-    }
-
-    pub fn event_occurred_after<F>(&self, controller_id: u8, f: F, usecs: u64) -> bool where F: Fn(&InputEventType) -> bool {
-        self.event_last_occurred(controller_id, f)
-            .and_then(|time| Some(time >= usecs))
-            .or(Some(false))
-            .unwrap()
     }
 }
 

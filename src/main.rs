@@ -166,11 +166,11 @@ impl jack::ProcessHandler for ProcessHandler {
 
         let cycle = ProcessCycle { scope, client };
 
-        self.apc20.process_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
-        self.apc40.process_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
 
-        self.apc20.output(&cycle, &mut self.sequencer, &mut self.surface);
-        self.apc40.output(&cycle, &mut self.sequencer, &mut self.surface);
+        self.apc20.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
+        self.apc40.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
 
         //let mut apc_messages = vec![];
         //let mut control_messages = vec![];

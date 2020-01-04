@@ -17,6 +17,7 @@ use lights::*;
 
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
+const LENGTH_INDICATOR_USECS: u64 = 600000;
 
 pub trait APC {
     const CONTROLLER_ID: u8;
@@ -45,6 +46,8 @@ pub trait APC {
         } else { 0 }
     }
 
+    fn output(&mut self) -> &mut MidiOut;
+    
     fn grid(&mut self) -> &mut Grid;
     fn indicator(&mut self) -> &mut WideRow;
 
@@ -72,15 +75,33 @@ pub trait APC {
         }
     }
 
-    // TODO - only draw length indicator at position 0 when we are really at 0
-    fn draw_length_indicator(&mut self, length: u32, offset: u32) {
-        let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / length) as u8;
-        //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
-        let offset_buttons = (offset / self.ticks_per_button()) as u8;
-        let start_button = offset_buttons * length_buttons / self.indicator().width();
-        let stop_button = start_button + length_buttons;
-        for index in start_button .. stop_button {
-            self.indicator().draw(index as u8, 1);
+    // TODO - only draw length indicator at position 0 only when we are precisely at 0
+    fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) where F: Fn(&InputEventType) -> bool {
+        let usecs = cycle.time_at_stop() - LENGTH_INDICATOR_USECS;
+        let mut frame = 0;
+
+        // TODO - move this timing logic to seperate function when we need it for other things
+        // Do we need to draw length indicator, and when?
+        if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, filters, usecs) {
+            let usecs_ago = cycle.time_at_stop() - usecs;
+            let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
+
+            if hide_in_usecs < cycle.usecs() {
+                frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
+            } else {
+                let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / length) as u8;
+                //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
+                let offset_buttons = (self.offset(surface.instrument_shown()) / self.ticks_per_button()) as u8;
+                let start_button = offset_buttons * length_buttons / self.indicator().width();
+                let stop_button = start_button + length_buttons;
+                for index in start_button .. stop_button {
+                    self.indicator().draw(index as u8, 1);
+                }
+            }
+        }
+
+        for (channel, note, velocity) in self.indicator().output() {
+            self.output().output_message(TimedMessage::new(frame, Message::Note([channel, note, velocity])));
         }
     }
 
@@ -128,8 +149,8 @@ pub trait APC {
 
     fn new(client: &jack::Client) -> Self;
 
-    fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
-    fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
+    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
+    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
 }
 
 // TODO - THis is not dry, seems like only way to clear this up at the moment is to create a nested "apc" struct,
@@ -174,6 +195,9 @@ impl APC for APC40 {
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 16 / self.zoom_level() as u32 }
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
+
+    fn output(&mut self) -> &mut MidiOut { &mut self.output }
+
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
 
@@ -212,7 +236,7 @@ impl APC for APC40 {
     /*
      * Process input from controller jackport
      */
-    fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
             let event = InputEvent::new(message.time, message.bytes);
 
@@ -238,8 +262,10 @@ impl APC for APC40 {
                         // TODO - This can live in trait
                         KnobType::Cue => {
                             // TODO - this time can live somewhere in a CONST
-                            let usecs = cycle.time_at_frame(event.time) - 500000;
-                            let is_first_turn = ! surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
+                            let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
+                            let is_first_turn = surface.event_memory
+                                .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
+                                .is_none();
 
                             let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
                             let offset = self.adjusted_offset(surface.instrument_shown(), pattern.length(), delta_buttons);
@@ -389,7 +415,7 @@ impl APC for APC40 {
     /*
      * Output to jack
      */
-    fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
         if self.identified_cycles == 0 {
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
@@ -408,14 +434,8 @@ impl APC for APC40 {
             self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
 
             // Indicator
-            let usecs = cycle.time_at_frame(0) - 500000;
-            let cue_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
-            let zoom_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_solo_button, usecs);
-            let grid_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_grid_button, usecs);
-
-            if cue_occurred || zoom_occurred || grid_occurred {
-                self.draw_length_indicator(pattern.length(), self.offset(surface.instrument_shown()));
-            }
+            let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
+            self.output_indicator(cycle, &filters, surface, pattern.length());
 
             if surface.instrument_shown() >= self.instrument_offset as usize {
                 let instrument = surface.instrument_shown() - self.instrument_offset as usize;
@@ -428,17 +448,16 @@ impl APC for APC40 {
             let mut output = vec![];
             output.append(&mut self.grid.output());
             output.append(&mut self.side.output());
-            output.append(&mut self.indicator.output());
             output.append(&mut self.instrument.output());
             output.append(&mut self.solo.output());
 
             for (channel, note, velocity) in output {
-                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, velocity])));
+                self.output().output_message(TimedMessage::new(0, Message::Note([channel, note, velocity])));
             }
 
         }
 
-        self.output.write_midi(cycle.scope);
+        self.output().write_midi(cycle.scope);
     }
 
         /*
@@ -523,6 +542,8 @@ impl APC for APC20 {
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
+    fn output(&mut self) -> &mut MidiOut { &mut self.output }
+
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
 
@@ -555,7 +576,7 @@ impl APC for APC20 {
     /*
      * Process input from controller jackport
      */
-    fn process_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         for message in self.input.iter(cycle.scope) {
             let event = InputEvent::new(message.time, message.bytes);
 
@@ -588,8 +609,10 @@ impl APC for APC20 {
                         // TODO - This can live in trait
                         KnobType::Cue => {
                             // TODO - Move this time to somewhere configgy
-                            let usecs = cycle.time_at_frame(0) - 500000;
-                            let is_first_turn = ! surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
+                            let usecs = cycle.time_at_frame(0) - LENGTH_INDICATOR_USECS;
+                            let is_first_turn = surface.event_memory
+                                .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
+                                .is_none();
 
                             let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
                             let offset = self.adjusted_offset(surface.instrument_shown(), phrase.length(), delta_buttons);
@@ -598,6 +621,7 @@ impl APC for APC20 {
                         _ => (),
                     }
                 },
+                // TODO - Use indicator row as fast movement
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to see if we double pressed
                     //  cycle.time_at_frame(event.time),
@@ -677,7 +701,7 @@ impl APC for APC20 {
     /*
      * Output to jack
      */
-    fn output(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
         // Identify when no controller found yet
         if self.identified_cycles == 0 {
             self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
@@ -692,14 +716,8 @@ impl APC for APC20 {
             self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
 
             // Indicator
-            let usecs = cycle.time_at_frame(0) - 500000;
-            let cue_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_cue_knob, usecs);
-            let zoom_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_solo_button, usecs);
-            let length_occurred = surface.event_memory.event_occurred_after(Self::CONTROLLER_ID, InputEvent::is_activator_button, usecs);
-
-            if cue_occurred || zoom_occurred || length_occurred {
-                self.draw_length_indicator(phrase.length(), self.offset(surface.instrument_shown()));
-            }
+            let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+            self.output_indicator(cycle, &filters, surface, phrase.length());
 
             self.instrument.draw(surface.instrument_shown() as u8, 1);
 
@@ -712,7 +730,6 @@ impl APC for APC20 {
             let mut output = vec![];
             output.append(&mut self.grid.output());
             output.append(&mut self.side.output());
-            output.append(&mut self.indicator.output());
             output.append(&mut self.instrument.output());
             output.append(&mut self.activator.output());
             output.append(&mut self.solo.output());
