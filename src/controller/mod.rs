@@ -20,21 +20,27 @@ const IDENTIFY_CYCLES: u8 = 3;
 const LENGTH_INDICATOR_USECS: u64 = 600000;
 
 pub trait APC {
+    type Loopable: Loopable;
+
     const CONTROLLER_ID: u8;
+    const INSTRUMENT_OFFSET: u8;
     const HEAD_COLOR: u8;
     const TAIL_COLOR: u8;
 
     fn identified_cycles(&self) -> u8;
     fn set_identified_cycles(&mut self, cycles: u8);
 
+    fn zoom_level(&self) -> u8;
+    fn set_zoom_level(&mut self, level: u8);
     fn ticks_in_grid(&self) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
     fn button_to_ticks(&self, button: u8, offset: u32) -> u32 {
         button as u32 * self.ticks_per_button() + offset
     }
 
-    fn zoom_level(&self) -> u8;
     fn offset(&self, index: usize) -> u32;
+    fn set_offset(&mut self, index: usize, ticks: u32);
+
     fn max_offset(&self, length: u32) -> u32 {
         let max = length as i32 - self.ticks_in_grid() as i32;
         if max > 0 { max as u32 } else { 0 }
@@ -48,6 +54,9 @@ pub trait APC {
         } else { 0 }
     }
 
+    fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
+
+    fn cue_knob(&mut self) -> &mut CueKnob;
     fn grid(&mut self) -> &mut Grid;
     fn indicator(&mut self) -> &mut WideRow;
 
@@ -152,7 +161,93 @@ pub trait APC {
 
     fn new(client: &jack::Client) -> Self;
 
-    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
+    /*
+     * Process incoming midi, handle generic midi here, pass controller specific input to
+     * controller via process_inputevent
+     */ 
+    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+        for event in self.input_events(cycle.scope) {
+            // Only process channel note messages
+            match event.event_type {
+                InputEventType::InquiryResponse(local_id, device_id) => {
+                    // Introduce ourselves to controller
+                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
+                    // 0x42 is ableton alternate mode (all leds controlled from host)
+                    let message = Message::Introduction([0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                    // Make sure we stop inquiring
+                    // TODO - Make sure every grid is re-initialized after identifying
+                    self.set_identified_cycles(1);
+
+                    self.output().output_message(TimedMessage::new(0, message));
+                },
+                InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
+                    mixer.fader_adjusted(event.time, index + Self::INSTRUMENT_OFFSET, value);
+                },
+                InputEventType::KnobTurned { value, knob_type: KnobType::Cue } => {
+                    let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
+                    let is_first_turn = surface.event_memory
+                        .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
+                        .is_none();
+
+                    let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
+                    let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
+                    let offset = self.adjusted_offset(surface.instrument_shown(), max_offset, delta_buttons);
+                    self.set_offset(surface.instrument_shown(), offset);
+                },
+                InputEventType::ButtonPressed(button_type) => {
+                    // Register press in memory to keep track of modifing buttons
+                    surface.button_memory.press(Self::CONTROLLER_ID, button_type);
+
+                    // Do the right thing in the right visualization
+                    match surface.view {
+                        View::Instrument => {
+                            match button_type {
+                                ButtonType::Solo(index) => {
+                                    // We divide by zoom level, so don't start at 0
+                                    let zoom_level = index + 1;
+                                    if zoom_level != 7 {
+                                        self.set_zoom_level(zoom_level);
+
+                                        // It could happen that we're moved out of range when zooming out
+                                        let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
+                                        if self.offset(surface.instrument_shown()) > max_offset {
+                                            self.set_offset(surface.instrument_shown(), max_offset);
+                                        }
+                                    }
+                                },
+                                _ => (),
+                            }
+                        },
+                        View::Sequence => {
+                            let sequence = sequencer.get_sequence(surface.sequence_shown());
+
+                            match button_type {
+                                ButtonType::Grid(x, y) => sequence.toggle_phrase(x + Self::INSTRUMENT_OFFSET, y),
+                                ButtonType::Side(index) => sequence.toggle_row(index),
+                                ButtonType::Activator(index) => sequence.toggle_active(index + Self::INSTRUMENT_OFFSET),
+                                _ => (),
+                            }
+                        }
+                    }
+
+                    // Independent of current view
+                    match button_type {
+                        ButtonType::Instrument(index) => surface.toggle_instrument(index + Self::INSTRUMENT_OFFSET),
+                        _ => self.process_inputevent(&event, cycle, sequencer, surface, mixer),
+                    }
+                },
+                InputEventType::ButtonReleased(button_type) => {
+                    surface.button_memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
+                },
+                // This message is controller specific, handle it accordingly
+                _ => self.process_inputevent(&event, cycle, sequencer, surface, mixer),
+            }
+
+            // Keep track of event so we can use it to calculate double presses etc.
+            surface.event_memory.register_event(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), event.event_type);
+        }
+    }
+
     fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
 
     fn output(&mut self) -> &mut MidiOut;
@@ -161,6 +256,8 @@ pub trait APC {
     fn input_events(&self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
         self.input().iter(scope).map(|message| InputEvent::new(message.time, message.bytes)).collect()
     }
+
+    fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
 }
 
 // TODO - THis is not dry, seems like only way to clear this up at the moment is to create a nested "apc" struct,
@@ -171,7 +268,6 @@ pub struct APC40 {
     output: MidiOut,
 
     identified_cycles: u8,
-    instrument_offset: u8,
     knob_offset: u8,
 
     patterns_shown: [u8; 16],
@@ -195,7 +291,10 @@ impl APC40 {
 }
 
 impl APC for APC40 {
+    type Loopable = Pattern;
+
     const CONTROLLER_ID: u8 = 0;
+    const INSTRUMENT_OFFSET: u8 = 8;
     const HEAD_COLOR: u8 = 1;
     const TAIL_COLOR: u8 = 5;
 
@@ -203,12 +302,22 @@ impl APC for APC40 {
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 16 / self.zoom_level() as u32 }
+
     fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn set_zoom_level(&mut self, level: u8) { self.zoom_level = level }
+
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
+    fn set_offset(&mut self, index: usize, ticks: u32) { self.offsets[index] = ticks }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
+    fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
+        let instrument = sequencer.get_instrument(surface.instrument_shown());
+        instrument.get_pattern(self.pattern_shown(surface.instrument_shown()))
+    }
+
+    fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
 
@@ -221,8 +330,6 @@ impl APC for APC40 {
             output: MidiOut::new(output),
 
             identified_cycles: 0,
-            // Offset the faders & sequence knobs by this value
-            instrument_offset: 8,
             // Offset knobs by this value to support multiple groups
             knob_offset: 0,
 
@@ -245,185 +352,115 @@ impl APC for APC40 {
     }
 
     /*
-     * Process input from controller jackport
+     * Process APC40 specific midi input, shared input is handled by APC trait
      */
-    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
-        for event in self.input_events(cycle.scope) {
-            let instrument = sequencer.get_instrument(surface.instrument_shown());
-            let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
+    fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+        let instrument = sequencer.get_instrument(surface.instrument_shown());
+        let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
-            //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-            // Only process channel note messages
-            match event.event_type {
-                InputEventType::InquiryResponse(local_id, device_id) => {
-                    // Introduce ourselves to controller
-                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
-                    // 0x42 is ableton alternate mode (all leds controlled from host)
-                    let message = Message::Introduction([0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
-                    // Make sure we stop inquiring
-                    // TODO - Make sure every grid is re-initialized after identifying
-                    self.identified_cycles = 1;
+        // Only process channel note messages
+        match event.event_type {
+            InputEventType::FaderMoved { value, fader_type: FaderType::Master } => {
+                mixer.master_adjusted(event.time, value);
+            },
+            InputEventType::KnobTurned { value, knob_type: KnobType::Effect(index) } => {
+                sequencer.knob_turned(event.time, index + self.knob_offset, value);
+            },
+            InputEventType::ButtonPressed(button_type) => {
+                // Get modifier (other currently pressed key)
+                let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
+                let global_modifier = surface.button_memory.global_modifier(button_type);
 
-                    self.output.output_message(TimedMessage::new(0, message));
-                },
-                InputEventType::KnobTurned { value, knob_type } => {
-                    match knob_type {
-                        // TODO - This can live in trait
-                        KnobType::Cue => {
-                            // TODO - this time can live somewhere in a CONST
-                            let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
-                            let is_first_turn = surface.event_memory
-                                .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
-                                .is_none();
+                match surface.view {
+                    View::Instrument => {
+                        match button_type {
+                            ButtonType::Grid(x, y) => {
+                                // We subtract y from 4 as we want lower notes to be lower on
+                                // the grid, the grid counts from the top
+                                let offset = self.offset(surface.instrument_shown());
+                                // We put base note in center of grid
+                                let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
 
-                            let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
-                            let offset = self.adjusted_offset(surface.instrument_shown(), self.max_offset(pattern.length()), delta_buttons);
-                            self.offsets[surface.instrument_shown()] = offset;
-                        },
-                        KnobType::Effect(index) => sequencer.knob_turned(event.time, index + self.knob_offset, value),
-                    };
-                },
-                InputEventType::FaderMoved { value, fader_type } => {
-                    match fader_type {
-                        FaderType::Track(index) => mixer.fader_adjusted(event.time, index + self.instrument_offset, value),
-                        FaderType::Master => mixer.master_adjusted(event.time, value),
-                    };
-                },
-                InputEventType::ButtonPressed(button_type) => {
-                    // Register press in memory to keep track of modifing buttons
-                    surface.button_memory.press(Self::CONTROLLER_ID, button_type);
-                    // Get modifier (other currently pressed key)
-                    let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
-                    let global_modifier = surface.button_memory.global_modifier(button_type);
+                                if let Some((start_tick, stop_tick)) = self.should_add_event(pattern, modifier, x, y, offset, note) {
+                                    pattern.try_add_starting_event(NoteEvent::new(start_tick, note, 127));
+                                    let mut event = pattern.get_last_event_on_row(note);
+                                    event.set_stop(stop_tick);
+                                    event.stop_velocity = Some(127);
 
-                    match surface.view {
-                        View::Instrument => {
-                            match button_type {
-                                ButtonType::Grid(x, y) => {
-                                    // We subtract y from 4 as we want lower notes to be lower on
-                                    // the grid, the grid counts from the top
-                                    let offset = self.offset(surface.instrument_shown());
-                                    // We put base note in center of grid
-                                    let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
-
-                                    if let Some((start_tick, stop_tick)) = self.should_add_event(pattern, modifier, x, y, offset, note) {
-                                        pattern.try_add_starting_event(NoteEvent::new(start_tick, note, 127));
-                                        let mut event = pattern.get_last_event_on_row(note);
-                                        event.set_stop(stop_tick);
-                                        event.stop_velocity = Some(127);
-
-                                        pattern.add_complete_event(event);
-                                    }
-                                },
-                                ButtonType::Side(index) => {
-                                    // TODO - double press logic
-                                    if false {
-                                        instrument.get_pattern(index).switch_recording_state()
+                                    pattern.add_complete_event(event);
+                                }
+                            },
+                            ButtonType::Side(index) => {
+                                // TODO - double press logic
+                                if false {
+                                    instrument.get_pattern(index).switch_recording_state()
+                                } else {
+                                    if let Some(ButtonType::Side(modifier_index)) = modifier {
+                                        instrument.clone_pattern(modifier_index, index);
+                                    } else if let Some(ButtonType::Shift) = global_modifier {
+                                        // TODO - Reset offset aswell
+                                        instrument.get_pattern(index).clear_events();
                                     } else {
-                                        if let Some(ButtonType::Side(modifier_index)) = modifier {
-                                            instrument.clone_pattern(modifier_index, index);
-                                        } else if let Some(ButtonType::Shift) = global_modifier {
-                                            // TODO - Reset offset aswell
-                                            instrument.get_pattern(index).clear_events();
-                                        } else {
-                                            self.patterns_shown[surface.instrument_shown()] = index; 
-                                        }
+                                        self.patterns_shown[surface.instrument_shown()] = index; 
                                     }
-                                },
-                                ButtonType::Solo(index) => {
-                                    // We divide by zoom level, so don't start at 0
-                                    let zoom_level = index + 1;
-                                    if zoom_level != 7 {
-                                        self.zoom_level = zoom_level;
+                                }
+                            },
+                            ButtonType::Up => {
+                                let base_note = &mut self.base_notes[surface.instrument_shown()];
+                                let new_base_note = *base_note + 4;
 
-                                        let max_offset = self.max_offset(pattern.length());
+                                if new_base_note <= 118 { *base_note = new_base_note }
+                            },
+                            ButtonType::Down => {
+                                let base_note = &mut self.base_notes[surface.instrument_shown()];
+                                let new_base_note = *base_note - 4;
 
-                                        if self.offsets[surface.instrument_shown()] > max_offset {
-                                            self.offsets[surface.instrument_shown()] = max_offset;
-                                        }
-                                    }
-                                },
-                                ButtonType::Up => {
-                                    let base_note = &mut self.base_notes[surface.instrument_shown()];
-                                    let new_base_note = *base_note + 4;
+                                if new_base_note >= 22 { *base_note = new_base_note }
+                            },
+                            ButtonType::Right => {
+                                let ticks_per_button = self.ticks_per_button();
+                                let offset = &mut self.offsets[surface.instrument_shown()];
+                                // There's 8 buttons, shift view one gridwidth to the right
+                                *offset = *offset + ticks_per_button * 8;
+                            },
+                            ButtonType::Left => {
+                                let ticks_per_button = self.ticks_per_button();
+                                let offset = &mut self.offsets[surface.instrument_shown()];
+                                let new_offset = *offset as i32 - (ticks_per_button * 8) as i32;
 
-                                    if new_base_note <= 118 { *base_note = new_base_note }
-                                },
-                                ButtonType::Down => {
-                                    let base_note = &mut self.base_notes[surface.instrument_shown()];
-                                    let new_base_note = *base_note - 4;
-
-                                    if new_base_note >= 22 { *base_note = new_base_note }
-                                },
-                                ButtonType::Right => {
-                                    let ticks_per_button = self.ticks_per_button();
-                                    let offset = &mut self.offsets[surface.instrument_shown()];
-                                    // There's 8 buttons, shift view one gridwidth to the right
-                                    *offset = *offset + ticks_per_button * 8;
-                                },
-                                ButtonType::Left => {
-                                    let ticks_per_button = self.ticks_per_button();
-                                    let offset = &mut self.offsets[surface.instrument_shown()];
-                                    let new_offset = *offset as i32 - (ticks_per_button * 8) as i32;
-
-                                    *offset = if new_offset >= 0 { new_offset as u32 } else { 0 };
-                                },
-                                _ => (),
-                            }
-                        },
-                        View::Sequence => {
-                            let sequence = sequencer.get_sequence(surface.sequence_shown());
-
-                            match button_type {
-                                ButtonType::Grid(x, y) => {
-                                    sequence.toggle_phrase(x + self.instrument_offset, y);
-                                },
-                                ButtonType::Side(index) => {
-                                    sequence.toggle_row(index);
-                                },
-                                ButtonType::Activator(index) => {
-                                    sequence.toggle_active(index + self.instrument_offset);
-                                },
-                                _ => (),
-                            }
+                                *offset = if new_offset >= 0 { new_offset as u32 } else { 0 };
+                            },
+                            ButtonType::Quantization => {
+                                // TODO - Move quantizing & quantize_level to "keyboard"
+                                sequencer.switch_quantizing();
+                            },
+                            _ => (),
                         }
-                    }
+                    },
+                    _ => ()
+                }
 
-                    match button_type {
-                        ButtonType::Play => cycle.client.transport_start(),
-                        ButtonType::Stop => {
-                            // Reset to 0 when we press stop button but we're already stopped
-                            let (state, _) = cycle.client.transport_query();
-                            match state {
-                                1 => cycle.client.transport_stop(),
-                                _ => cycle.client.transport_reposition(jack::Position::default()),
-                            };
-                        },
-                        ButtonType::Sequence(index) => {
-                            if let Some(ButtonType::Shift) = modifier {
-                                sequencer.queue_sequence(index);
-                            } else {
-                                surface.toggle_sequence(index);
-                            }
-                        },
-                        ButtonType::Instrument(index) => {
-                            surface.toggle_instrument(index + self.instrument_offset);
-                        },
-                        ButtonType::Quantization => {
-                            // TODO - Move quantizing & quantize_level to "keyboard"
-                            sequencer.switch_quantizing();
-                        },
-                        _ => (),
-                    }
-                },
-                InputEventType::ButtonReleased(button_type) => {
-                    surface.button_memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
-                },
-                _ => (),
-            }
-
-            // Keep track of event so we can use it to calculate double presses etc.
-            surface.event_memory.register_event(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), event.event_type);
+                match button_type {
+                    ButtonType::Play => cycle.client.transport_start(),
+                    ButtonType::Stop => {
+                        // Reset to 0 when we press stop button but we're already stopped
+                        let (state, _) = cycle.client.transport_query();
+                        match state {
+                            1 => cycle.client.transport_stop(),
+                            _ => cycle.client.transport_reposition(jack::Position::default()),
+                        };
+                    },
+                    ButtonType::Sequence(index) => {
+                        if let Some(ButtonType::Shift) = modifier {
+                            sequencer.queue_sequence(index);
+                        } else {
+                            surface.toggle_sequence(index);
+                        }
+                    },
+                    _ => (),
+                }
+            },
+            _ => (),
         }
     }
 
@@ -452,8 +489,8 @@ impl APC for APC40 {
             let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
             self.output_indicator(cycle, &filters, surface, pattern.length());
 
-            if surface.instrument_shown() >= self.instrument_offset as usize {
-                let instrument = surface.instrument_shown() - self.instrument_offset as usize;
+            if surface.instrument_shown() >= Self::INSTRUMENT_OFFSET as usize {
+                let instrument = surface.instrument_shown() - Self::INSTRUMENT_OFFSET as usize;
                 self.instrument.draw(instrument as u8, 1);
             }
 
@@ -474,47 +511,6 @@ impl APC for APC40 {
 
         self.output().write_midi(cycle.scope);
     }
-
-        /*
-    // Process incoming control change messages from plugins of which parameters were changed
-    pub fn process_plugin_control_change_messages<'a, I>(&mut self, input: I) -> Vec<TimedMessage>
-        where
-            I: Iterator<Item = jack::RawMidi<'a>>,
-    {
-        input
-            .filter_map(|message| {
-                // Only process channel note messages
-                match message.bytes[0] {
-                    0xB0..=0xBF => self.sequencer.plugin_parameter_changed(message),
-                    _ => None,
-                }
-            })
-            .collect()
-    }
-
-    // TODO - Move this to "keyboard"
-    pub fn process_instrument_messages<'a, I>(&mut self, cycle: &Cycle, input: I) -> Vec<TimedMessage>
-        where
-            I: Iterator<Item = jack::RawMidi<'a>>,
-    {
-        input
-            .filter_map(|message| {
-                let option = match message.bytes[0] {
-                    0x90 | 0x80 => Some((self.sequencer.keyboard_target, 0)),
-                    0x99 | 0x89 => Some((self.sequencer.drumpad_target, 9)),
-                    _ => None,
-                };
-
-                // Only process channel note messages
-                if let Some((index, offset)) = option {
-                    Some(self.sequencer.recording_key_played(index + self.sequencer.instrument_group * 8, message.bytes[0] - offset, cycle, message))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-    */
 }
 
 
@@ -548,7 +544,10 @@ impl APC20 {
 }
 
 impl APC for APC20 {
+    type Loopable = Phrase;
+
     const CONTROLLER_ID: u8 = 1;
+    const INSTRUMENT_OFFSET: u8 = 0;
     const HEAD_COLOR: u8 = 3;
     const TAIL_COLOR: u8 = 5;
 
@@ -556,12 +555,22 @@ impl APC for APC20 {
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 16 / self.zoom_level() as u32 }
+
     fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn set_zoom_level(&mut self, level: u8) { self.zoom_level = level }
+
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
+    fn set_offset(&mut self, index: usize, ticks: u32) { self.offsets[index] = ticks }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
+    fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
+        let instrument = sequencer.get_instrument(surface.instrument_shown());
+        instrument.get_phrase(self.phrase_shown(surface.instrument_shown()))
+    }
+
+    fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
 
@@ -591,133 +600,55 @@ impl APC for APC20 {
         }
     }
 
-    /*
-     * Process input from controller jackport
-     */
-    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
-        for event in self.input_events(cycle.scope) {
-            let instrument = sequencer.get_instrument(surface.instrument_shown());
-            let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
+    fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+        let instrument = sequencer.get_instrument(surface.instrument_shown());
+        let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
 
-            //println!("0x{:X}, 0x{:X}, 0x{:X}", message.bytes[0], message.bytes[1], message.bytes[2]);
-            // Only process channel note messages
-            match event.event_type {
-                InputEventType::InquiryResponse(local_id, device_id) => {
-                    // Introduce ourselves to controller
-                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
-                    // 0x42 is ableton alternate mode (all leds controlled from host)
-                    let message = Message::Introduction([0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
-                    // Make sure we stop inquiring
-                    // TODO - Make sure every grid is re-initialized after identifying
-                    self.identified_cycles = 1;
+        // Only process channel note messages
+        match event.event_type {
+            // TODO - Use indicator row as fast movement
+            InputEventType::ButtonPressed(button_type) => {
+                // Get modifier (other currently pressed key)
+                let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
 
-                    self.output.output_message(TimedMessage::new(0, message));
-                },
-                InputEventType::FaderMoved { value, fader_type } => {
-                    // TODO - Pass these to "mixer"
-                    match fader_type {
-                        FaderType::Track(index) => mixer.fader_adjusted(event.time, index, value),
-                        _ => (),
-                    };
-                },
-                InputEventType::KnobTurned { value, knob_type } => {
-                    match knob_type {
-                        // TODO - This can live in trait, i don't know how to borrow mutable as the
-                        // self.input.iter is borrowing immutable, so i can't do mutable things to
-                        // references, only to owned data it seems
-                        KnobType::Cue => {
-                            let usecs = cycle.time_at_frame(0) - LENGTH_INDICATOR_USECS;
-                            let is_first_turn = surface.event_memory
-                                .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
-                                .is_none();
+                match surface.view {
+                    View::Instrument => {
+                        match button_type {
+                            ButtonType::Grid(x, y) => {
+                                let offset = self.offset(surface.instrument_shown());
+                                // We draw grids from bottom to top
+                                let pattern = 4 - y;
 
-                            let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
-                            let offset = self.adjusted_offset(surface.instrument_shown(), self.max_offset(phrase.length()), delta_buttons);
-                            self.offsets[surface.instrument_shown()] = offset;
-                        },
-                        _ => (),
-                    }
-                },
-                // TODO - Use indicator row as fast movement
-                InputEventType::ButtonPressed(button_type) => {
-                    // Register press in memory to see if we double pressed
-                    //  cycle.time_at_frame(event.time),
-                    surface.button_memory.press(Self::CONTROLLER_ID, button_type);
-                    // Get modifier (other currently pressed key)
-                    let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
-                    let global_modifier = surface.button_memory.global_modifier(button_type);
+                                if let Some((start_tick, stop_tick)) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
+                                    phrase.try_add_starting_event(PatternEvent::new(start_tick, pattern));
+                                    let mut event = phrase.get_last_event_on_row(pattern);
+                                    event.set_stop(stop_tick);
 
-                    match surface.view {
-                        View::Instrument => {
-                            match button_type {
-                                ButtonType::Grid(x, y) => {
-                                    let offset = self.offset(surface.instrument_shown());
-                                    // We draw grids from bottom to top
-                                    let pattern = 4 - y;
+                                    phrase.add_complete_event(event);
+                                }
 
-                                    if let Some((start_tick, stop_tick)) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
-                                        phrase.try_add_starting_event(PatternEvent::new(start_tick, pattern));
-                                        let mut event = phrase.get_last_event_on_row(pattern);
-                                        event.set_stop(stop_tick);
+                            },
+                            ButtonType::Side(index) => {
+                                let global_modifier = surface.button_memory.global_modifier(button_type);
 
-                                        phrase.add_complete_event(event);
-                                    }
-
-                                },
-                                ButtonType::Side(index) => {
-                                    if let Some(ButtonType::Side(modifier_index)) = modifier {
-                                        instrument.clone_phrase(modifier_index, index);
-                                    } else if let Some(ButtonType::Shift) = global_modifier {
-                                        instrument.get_phrase(index).clear_events();
-                                    } else {
-                                        self.phrases_shown[surface.instrument_shown()] = index;
-                                    }
-                                },
-                                ButtonType::Activator(index) => {
-                                    phrase.set_length(Phrase::default_length() * (index as u32 + 1));
-                                },
-                                ButtonType::Solo(index) => {
-                                    // We divide by zoom level, so don't start at 0
-                                    let zoom_level = index + 1;
-                                    if zoom_level != 7 {
-                                        self.zoom_level = zoom_level;
-
-                                        let max_offset = self.max_offset(phrase.length());
-
-                                        if self.offsets[surface.instrument_shown()] > max_offset {
-                                            self.offsets[surface.instrument_shown()] = max_offset;
-                                        }
-                                    }
-                                },
-                                _ => (),
-                            }
-                        },
-                        View::Sequence => {
-                            let sequence = sequencer.get_sequence(surface.sequence_shown());
-                        
-                            match button_type {
-                                ButtonType::Grid(x, y) => sequence.toggle_phrase(x, y),
-                                // TODO - Only switch rows on APC20
-                                ButtonType::Side(index) => sequence.toggle_row(index),
-                                ButtonType::Activator(index) => sequence.toggle_active(index),
-                                _ => (),
-                            }
+                                if let Some(ButtonType::Side(modifier_index)) = modifier {
+                                    instrument.clone_phrase(modifier_index, index);
+                                } else if let Some(ButtonType::Shift) = global_modifier {
+                                    instrument.get_phrase(index).clear_events();
+                                } else {
+                                    self.phrases_shown[surface.instrument_shown()] = index;
+                                }
+                            },
+                            ButtonType::Activator(index) => {
+                                phrase.set_length(Phrase::default_length() * (index as u32 + 1));
+                            },
+                            _ => (),
                         }
-                    }
-
-                    match button_type {
-                        ButtonType::Instrument(index) => surface.toggle_instrument(index),
-                        _ => (),
-                    }
-                },
-                InputEventType::ButtonReleased(button_type) => {
-                    surface.button_memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
-                },
-                _ => (),
-            }
-
-            // Keep track of event so we can use it to double press etc
-            surface.event_memory.register_event(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), event.event_type);
+                    },
+                    _ => (),
+                }
+            },
+            _ => (),
         }
     }
 
