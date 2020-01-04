@@ -108,6 +108,7 @@ pub struct Pattern {
 impl Loopable for Pattern {
     type Event = NoteEvent;
 
+    // Pattern will adjust it's length based on the maximum tick it contains
     fn length(&self) -> u32 {
         // Get max tick, stop || start
         let max_tick = self.note_events.iter().map(|event| event.start).max().and_then(|max_start| {
@@ -119,7 +120,7 @@ impl Loopable for Pattern {
         let mut length = Self::minimum_length();
 
         if let Some(tick) = max_tick { 
-            while length / 2 <= tick {
+            while length / 2 < tick {
                 length = length * 2;
             }
         }
