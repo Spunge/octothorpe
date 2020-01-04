@@ -58,7 +58,9 @@ pub trait APC {
 
     fn cue_knob(&mut self) -> &mut CueKnob;
     fn grid(&mut self) -> &mut Grid;
+    fn instrument(&mut self) -> &mut WideRow;
     fn indicator(&mut self) -> &mut WideRow;
+    fn solo(&mut self) -> &mut WideRow;
 
     /*
      * Remove existing events when there's starting events in tick range, otherwise, remove tick
@@ -85,7 +87,7 @@ pub trait APC {
     }
 
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
-    fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) where F: Fn(&InputEventType) -> bool {
+    fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) -> Vec<TimedMessage> where F: Fn(&InputEventType) -> bool {
         let usecs = cycle.time_at_stop() - LENGTH_INDICATOR_USECS;
         let mut frame = 0;
 
@@ -109,9 +111,7 @@ pub trait APC {
             }
         }
 
-        for (channel, note, velocity) in self.indicator().output() {
-            self.output().output_message(TimedMessage::new(frame, Message::Note([channel, note, velocity])));
-        }
+        Self::grid_output_to_timed_messages(frame, self.indicator().output())
     }
 
     /*
@@ -248,7 +248,42 @@ pub trait APC {
         }
     }
 
-    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
+    fn grid_output_to_timed_messages(frame: u32, events: Vec<(u8, u8, u8)>) -> Vec<TimedMessage> {
+        events.into_iter()
+            .map(|(channel, note, velocity)| TimedMessage::new(frame, Message::Note([channel, note, velocity])))
+            .collect()
+    }
+
+    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+        // Identify when no controller found yet
+        if self.identified_cycles() == 0 {
+            self.output().output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
+        } else if self.identified_cycles() < IDENTIFY_CYCLES {
+            self.set_identified_cycles(self.identified_cycles() + 1);
+        } else {
+            // Draw instrument grid
+            if surface.instrument_shown() >= Self::INSTRUMENT_OFFSET as usize {
+                let instrument = surface.instrument_shown() - Self::INSTRUMENT_OFFSET as usize;
+                self.instrument().draw(instrument as u8, 1);
+            }
+
+            // Draw zoom grid
+            for index in 0 .. self.zoom_level() { self.solo().draw(index, 1); }
+
+            // APC specific messages
+            let mut messages = self.output_messages(cycle, sequencer, surface);
+            // Shared stuff
+            messages.append(&mut Self::grid_output_to_timed_messages(0, self.instrument().output()));
+            messages.append(&mut Self::grid_output_to_timed_messages(0, self.solo().output()));
+
+            // TODO - As all messages are here as one vec, we don't have to use the sorting struct
+            // MidiOut anymore
+            self.output().output_messages(&mut messages);
+        }
+
+        // from this function
+        self.output().write_midi(cycle.scope);
+    }
 
     fn output(&mut self) -> &mut MidiOut;
     fn input(&self) -> &jack::Port<jack::MidiIn>;
@@ -258,10 +293,9 @@ pub trait APC {
     }
 
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
+    fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage>;
 }
 
-// TODO - THis is not dry, seems like only way to clear this up at the moment is to create a nested "apc" struct,
-// i don't really want to type "apc" after every access of self, so meh...
 pub struct APC40 {
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
@@ -319,7 +353,9 @@ impl APC for APC40 {
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
+    fn instrument(&mut self) -> &mut WideRow { &mut self.instrument }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
+    fn solo(&mut self) -> &mut WideRow { &mut self.solo }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
@@ -464,52 +500,26 @@ impl APC for APC40 {
         }
     }
 
-    /*
-     * Output to jack
-     */
-    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
-        // Identify when no controller found yet
-        if self.identified_cycles == 0 {
-            self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
-        } else if self.identified_cycles < IDENTIFY_CYCLES {
-            self.identified_cycles = self.identified_cycles + 1;
-        } else {
-            let instrument = sequencer.get_instrument(surface.instrument_shown());
-            let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
+    fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
+        let loopable = self.shown_loopable(sequencer, surface);
 
-            // Get base note of instrument, as we draw the grid with base note in vertical center
-            let base_note = self.base_notes[surface.instrument_shown()];
-            let events = pattern.events().iter()
-                .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
-            self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
+        // Get base note of instrument, as we draw the grid with base note in vertical center
+        let base_note = self.base_notes[surface.instrument_shown()];
+        let events = loopable.events().iter()
+            .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
+        self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
 
-            self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
+        self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
 
-            // Indicator
-            let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
-            self.output_indicator(cycle, &filters, surface, pattern.length());
+        // Indicator
+        let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
+        let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
 
-            if surface.instrument_shown() >= Self::INSTRUMENT_OFFSET as usize {
-                let instrument = surface.instrument_shown() - Self::INSTRUMENT_OFFSET as usize;
-                self.instrument.draw(instrument as u8, 1);
-            }
+        messages.append(&mut Self::grid_output_to_timed_messages(0, self.grid.output()));
+        messages.append(&mut Self::grid_output_to_timed_messages(0, self.side.output()));
+        messages.append(&mut Self::grid_output_to_timed_messages(0, self.activator.output()));
 
-            //for index in 0 .. self.indicator
-            for index in 0 .. self.zoom_level { self.solo.draw(index, 1); }
-
-            let mut output = vec![];
-            output.append(&mut self.grid.output());
-            output.append(&mut self.side.output());
-            output.append(&mut self.instrument.output());
-            output.append(&mut self.solo.output());
-
-            for (channel, note, velocity) in output {
-                self.output().output_message(TimedMessage::new(0, Message::Note([channel, note, velocity])));
-            }
-
-        }
-
-        self.output().write_midi(cycle.scope);
+        messages
     }
 }
 
@@ -548,6 +558,7 @@ impl APC for APC20 {
 
     const CONTROLLER_ID: u8 = 1;
     const INSTRUMENT_OFFSET: u8 = 0;
+
     const HEAD_COLOR: u8 = 3;
     const TAIL_COLOR: u8 = 5;
 
@@ -572,7 +583,9 @@ impl APC for APC20 {
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
+    fn instrument(&mut self) -> &mut WideRow { &mut self.instrument }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
+    fn solo(&mut self) -> &mut WideRow { &mut self.solo }
 
     fn new(client: &jack::Client) -> Self {
         let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
@@ -652,49 +665,28 @@ impl APC for APC20 {
         }
     }
 
-    /*
-     * Output to jack
-     */
-    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
-        // Identify when no controller found yet
-        if self.identified_cycles == 0 {
-            self.output.output_message(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
-        } else if self.identified_cycles < IDENTIFY_CYCLES {
-            self.identified_cycles = self.identified_cycles + 1;
-        } else {
-            let instrument = sequencer.get_instrument(surface.instrument_shown());
-            let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
+    fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
+        let loopable = self.shown_loopable(sequencer, surface);
 
-            self.draw_events(phrase.events().iter(), self.offset(surface.instrument_shown()), 0);
+        // Draw main grid
+        let events = loopable.events().iter();
+        self.draw_events(events, self.offset(surface.instrument_shown()), 0);
 
-            self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
+        // Playable selector
+        self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
 
-            // Indicator
-            let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
-            self.output_indicator(cycle, &filters, surface, phrase.length());
-
-            self.instrument.draw(surface.instrument_shown() as u8, 1);
-
-            //for index in 0 .. self.indicator
-            for index in 0 .. (phrase.length() / Phrase::default_length()) {
-                self.activator.draw(index as u8, 1);
-            }
-            for index in 0 .. self.zoom_level { self.solo.draw(index, 1); }
-
-            let mut output = vec![];
-            output.append(&mut self.grid.output());
-            output.append(&mut self.side.output());
-            output.append(&mut self.instrument.output());
-            output.append(&mut self.activator.output());
-            output.append(&mut self.solo.output());
-
-            for (channel, note, velocity) in output {
-                self.output.output_message(TimedMessage::new(0, Message::Note([channel, note, velocity])));
-            }
+        // Length selector
+        for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {
+            self.activator.draw(index as u8, 1);
         }
 
-        // TODO - We probably don't have to cache messages in vec anymore, as they only originate
-        // from this function
-        self.output.write_midi(cycle.scope);
+        // Indicator
+        let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+        let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
+
+        messages.append(&mut Self::grid_output_to_timed_messages(0, self.grid.output()));
+        messages.append(&mut Self::grid_output_to_timed_messages(0, self.side.output()));
+        messages.append(&mut Self::grid_output_to_timed_messages(0, self.activator.output()));
+        messages
     }
 }
