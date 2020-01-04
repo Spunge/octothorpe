@@ -4,65 +4,58 @@ use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
 use super::sequence::Sequence;
 
+struct PlayingSequence {
+    // Start tick
+    start: u32,
+    index: usize,
+}
+
 pub struct Sequencer {
-    sequence_note_offs: Vec<(u32, Message)>,
-    indicator_note_offs: Vec<(u32, Message)>,
-
     pub instruments: [Instrument; 16],
-    pub instrument_group: u8,
-    instrument: u8,
-
-    pub keyboard_target: u8,
-    pub drumpad_target: u8,
-    is_quantizing: bool,
-
     pub sequences: [Sequence; 4],
-    sequence: u8,
 
     // What is playing?
-    sequence_playing: usize,
+    sequence_playing: PlayingSequence,
     sequence_queued: Option<usize>,
 }
 
 impl Sequencer {
     pub fn new(client: &jack::Client) -> Self {
-        // Build instruments for each midi channel
+        // Build instruments array, shame there's no way to do this elegantly as far as i can tell
         let instruments = [
-            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
-            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
-            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
-            Instrument::new(), Instrument::new(), Instrument::new(), Instrument::new(),
+            Instrument::new(client, 1),
+            Instrument::new(client, 2),
+            Instrument::new(client, 3),
+            Instrument::new(client, 4),
+            Instrument::new(client, 5),
+            Instrument::new(client, 6),
+            Instrument::new(client, 7),
+            Instrument::new(client, 8),
+            Instrument::new(client, 9),
+            Instrument::new(client, 10),
+            Instrument::new(client, 11),
+            Instrument::new(client, 12),
+            Instrument::new(client, 13), 
+            Instrument::new(client, 14),
+            Instrument::new(client, 15),
+            Instrument::new(client, 16),
         ];
     
         // Build sequence we can trigger
-        let sequences = [ Sequence::new(), Sequence::new(), Sequence::new(), Sequence::new(), ];
+        let sequences = [ 
+            Sequence::new(),
+            Sequence::new(),
+            Sequence::new(),
+            Sequence::new(), 
+        ];
 
         Sequencer {
             instruments,
-            instrument_group: 0,
-            instrument: 0,
-
-            keyboard_target: 0,
-            drumpad_target: 0,
-            is_quantizing: true,
-
-            sequence_note_offs: vec![],
-            indicator_note_offs: vec![],
-
             sequences,
-            sequence: 0,
 
-            sequence_playing: 0,
-            sequence_queued: Some(0),
+            sequence_playing: PlayingSequence { start: 0, index: 0 },
+            sequence_queued: None,
         }
-    }
-
-    fn instrument_index(&self) -> usize {
-        (self.instrument_group * 8 + self.instrument) as usize
-    }
-
-    pub fn instrument(&mut self) -> &mut Instrument {
-        &mut self.instruments[self.instrument_index()]
     }
 
     pub fn get_instrument(&mut self, index: usize) -> &mut Instrument {
@@ -71,10 +64,6 @@ impl Sequencer {
 
     pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
         &mut self.sequences[index]
-    }
-
-    fn sequence(&mut self) -> &mut Sequence {
-        &mut self.sequences[self.sequence as usize]
     }
 
     // One of the control knobs on the APC was turned
@@ -201,10 +190,6 @@ impl Sequencer {
 
     pub fn queue_sequence(&mut self, sequence: u8) {
         self.sequence_queued = Some(sequence as usize);
-    }
-
-    pub fn switch_quantizing(&mut self) {
-        self.is_quantizing = ! self.is_quantizing;
     }
 
     /*

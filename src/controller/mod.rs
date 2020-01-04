@@ -462,7 +462,7 @@ impl APC for APC40 {
                             },
                             ButtonType::Quantization => {
                                 // TODO - Move quantizing & quantize_level to "keyboard"
-                                sequencer.switch_quantizing();
+                                //sequencer.switch_quantizing();
                             },
                             _ => (),
                         }

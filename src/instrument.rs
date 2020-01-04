@@ -1,4 +1,5 @@
 
+use super::port::*;
 use super::loopable::*;
 
 pub struct Instrument {
@@ -6,22 +7,29 @@ pub struct Instrument {
     pub patterns: [Pattern; 5],
     pub phrases: [Phrase; 5],
 
-    pub knob_group: u8,
-    knob_values: [u8; 128],
+    //pub knob_group: u8,
+    //knob_values: [u8; 128],
+
+    output: MidiOut,
 }
 
 impl Instrument {
-    pub fn new() -> Self {
+    pub fn new(client: &jack::Client, id: u8) -> Self {
         let patterns = [Pattern::new(), Pattern::new(), Pattern::new(), Pattern::new(), Pattern::new()];
         let phrases = [Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new()];
+
+        //let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
+        let output = client.register_port(format!("Instrument {}", id).as_str(), jack::MidiOut::default()).unwrap();
 
         Instrument {
             phrases,
             patterns,
 
             // There's 4 knob groups, this way we can have knobs * 4 !
-            knob_group: 0,
-            knob_values: [0; 128],
+            //knob_group: 0,
+            //knob_values: [0; 128],
+
+            output: MidiOut::new(output),
         }
     }
 
