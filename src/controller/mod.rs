@@ -35,19 +35,19 @@ pub trait APC {
 
     fn zoom_level(&self) -> u8;
     fn offset(&self, index: usize) -> u32;
-    fn adjusted_offset(&self, instrument: usize, length: u32, delta_buttons: i8) -> u32 {
-        let max_offset = length as i32 - self.ticks_in_grid() as i32;
-
+    fn max_offset(&self, length: u32) -> u32 {
+        let max = length as i32 - self.ticks_in_grid() as i32;
+        if max > 0 { max as u32 } else { 0 }
+    }
+    fn adjusted_offset(&self, instrument: usize, max_offset: u32, delta_buttons: i8) -> u32 {
         let delta_ticks = delta_buttons as i32 * self.ticks_per_button() as i32;
         let new_offset = self.offset(instrument) as i32 + delta_ticks;
 
-        if max_offset > 0 && new_offset >= 0 {
-            if new_offset < max_offset { new_offset as u32 } else { max_offset as u32 }
+        if new_offset >= 0 {
+            if new_offset < max_offset as i32 { new_offset as u32 } else { max_offset }
         } else { 0 }
     }
 
-    fn output(&mut self) -> &mut MidiOut;
-    
     fn grid(&mut self) -> &mut Grid;
     fn indicator(&mut self) -> &mut WideRow;
 
@@ -105,6 +105,9 @@ pub trait APC {
         }
     }
 
+    /*
+     * Draw note or pattern events into main grid of controller
+     */
     fn draw_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, offset_x: u32, offset_y: u8) {
         let grid_stop = offset_x + self.ticks_in_grid();
 
@@ -151,6 +154,13 @@ pub trait APC {
 
     fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
     fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
+
+    fn output(&mut self) -> &mut MidiOut;
+    fn input(&self) -> &jack::Port<jack::MidiIn>;
+
+    fn input_events(&self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
+        self.input().iter(scope).map(|message| InputEvent::new(message.time, message.bytes)).collect()
+    }
 }
 
 // TODO - THis is not dry, seems like only way to clear this up at the moment is to create a nested "apc" struct,
@@ -197,6 +207,7 @@ impl APC for APC40 {
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
+    fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
@@ -237,9 +248,7 @@ impl APC for APC40 {
      * Process input from controller jackport
      */
     fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
-        for message in self.input.iter(cycle.scope) {
-            let event = InputEvent::new(message.time, message.bytes);
-
+        for event in self.input_events(cycle.scope) {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
 
@@ -268,7 +277,7 @@ impl APC for APC40 {
                                 .is_none();
 
                             let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
-                            let offset = self.adjusted_offset(surface.instrument_shown(), pattern.length(), delta_buttons);
+                            let offset = self.adjusted_offset(surface.instrument_shown(), self.max_offset(pattern.length()), delta_buttons);
                             self.offsets[surface.instrument_shown()] = offset;
                         },
                         KnobType::Effect(index) => sequencer.knob_turned(event.time, index + self.knob_offset, value),
@@ -326,6 +335,12 @@ impl APC for APC40 {
                                     let zoom_level = index + 1;
                                     if zoom_level != 7 {
                                         self.zoom_level = zoom_level;
+
+                                        let max_offset = self.max_offset(pattern.length());
+
+                                        if self.offsets[surface.instrument_shown()] > max_offset {
+                                            self.offsets[surface.instrument_shown()] = max_offset;
+                                        }
                                     }
                                 },
                                 ButtonType::Up => {
@@ -528,6 +543,8 @@ pub struct APC20 {
 
 impl APC20 {
     fn phrase_shown(&self, index: usize) -> u8 { self.phrases_shown[index] }
+
+    fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
 }
 
 impl APC for APC20 {
@@ -543,6 +560,7 @@ impl APC for APC20 {
     fn offset(&self, index: usize) -> u32 { self.offsets[index] }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
+    fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
@@ -577,9 +595,7 @@ impl APC for APC20 {
      * Process input from controller jackport
      */
     fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
-        for message in self.input.iter(cycle.scope) {
-            let event = InputEvent::new(message.time, message.bytes);
-
+        for event in self.input_events(cycle.scope) {
             let instrument = sequencer.get_instrument(surface.instrument_shown());
             let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
 
@@ -606,16 +622,17 @@ impl APC for APC20 {
                 },
                 InputEventType::KnobTurned { value, knob_type } => {
                     match knob_type {
-                        // TODO - This can live in trait
+                        // TODO - This can live in trait, i don't know how to borrow mutable as the
+                        // self.input.iter is borrowing immutable, so i can't do mutable things to
+                        // references, only to owned data it seems
                         KnobType::Cue => {
-                            // TODO - Move this time to somewhere configgy
                             let usecs = cycle.time_at_frame(0) - LENGTH_INDICATOR_USECS;
                             let is_first_turn = surface.event_memory
                                 .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
                                 .is_none();
 
-                            let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
-                            let offset = self.adjusted_offset(surface.instrument_shown(), phrase.length(), delta_buttons);
+                            let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
+                            let offset = self.adjusted_offset(surface.instrument_shown(), self.max_offset(phrase.length()), delta_buttons);
                             self.offsets[surface.instrument_shown()] = offset;
                         },
                         _ => (),
@@ -664,6 +681,12 @@ impl APC for APC20 {
                                     let zoom_level = index + 1;
                                     if zoom_level != 7 {
                                         self.zoom_level = zoom_level;
+
+                                        let max_offset = self.max_offset(phrase.length());
+
+                                        if self.offsets[surface.instrument_shown()] > max_offset {
+                                            self.offsets[surface.instrument_shown()] = max_offset;
+                                        }
                                     }
                                 },
                                 _ => (),
