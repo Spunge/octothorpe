@@ -121,6 +121,7 @@ impl Instrument {
             .collect()
     }
 
+    // TODO - Don't pass cycle directly, handle changing phrases etc in sequencer
     pub fn output_midi(&mut self, cycle: &ProcessCycle, sequence_start: u32, playing_phrase: Option<u8>) {
         if let (Some(phrase), true) = (playing_phrase, cycle.is_rolling) {
             let starting_notes = self.starting_notes(cycle, sequence_start, phrase);

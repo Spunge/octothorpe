@@ -44,6 +44,7 @@ impl<'a> ProcessCycle<'a> {
     }
 }
 
+/*
 #[derive(Clone, Debug)]
 pub struct Cycle {
     pub start: u32,
@@ -135,3 +136,4 @@ impl Cycle {
         }
     }
 }
+*/

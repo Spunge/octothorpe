@@ -26,7 +26,7 @@ use controller::*;
 use mixer::*;
 use surface::Surface;
 use message::{TimedMessage, Message};
-use cycle::{ProcessCycle, Cycle};
+use cycle::*;
 
 pub struct TimebaseHandler {
     beats_per_minute: f64,
