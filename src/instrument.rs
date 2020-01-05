@@ -82,6 +82,7 @@ impl Instrument {
         // bounds, i'm not sure if that's the behaviour we want though
         phrase.pattern_events.iter()
             // First check for simple overlap
+            // TODO Check if pattern_event is within phrases length ( we can draw after phrase length)
             .filter(|pattern_event| pattern_event.overlaps_tick_range(phrase_start_tick, phrase_stop_tick))
             .flat_map(|pattern_event| {
                 // Looping patterns consist of 2 ranges

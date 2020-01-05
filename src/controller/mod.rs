@@ -429,7 +429,7 @@ impl APC for APC40 {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         instrument.clone_pattern(modifier_index, index);
                                     } else if let Some(ButtonType::Shift) = global_modifier {
-                                        // TODO - Reset offset aswell
+                                        self.set_offset(surface.instrument_shown(), 0);
                                         instrument.get_pattern(index).clear_events();
                                     } else {
                                         self.patterns_shown[surface.instrument_shown()] = index; 

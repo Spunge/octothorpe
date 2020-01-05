@@ -66,6 +66,7 @@ impl Sequencer {
         &mut self.sequences[index]
     }
 
+    // TODO - handle queud / repeating phrases, make instruments play end & start seperately
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
         for (index, instrument) in self.instruments.iter_mut().enumerate() {
             let playing_sequence = &self.sequences[self.sequence_playing.index];
