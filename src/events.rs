@@ -27,6 +27,19 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
         stop - self.start()
     }
 
+    fn overlaps_tick_range(&self, start: u32, stop: u32) -> bool {
+        if let Some(self_stop) = self.stop() {
+            if self.is_looping() {
+                // is not not contained
+                ! (start >= self_stop && stop <= self.start())
+            } else {
+                self.start() < stop && self_stop > start
+            }
+        } else {
+            false
+        }
+    }
+
     fn starts_between(&self, start: u32, stop: u32) -> bool {
          self.start() >= start && self.start() < stop
     }

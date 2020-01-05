@@ -81,35 +81,14 @@ impl Instrument {
             // based on the references. This will make it possible to play patterns over phrase
             // bounds, i'm not sure if that's the behaviour we want though
             let starting_notes: Vec<PlayingNoteEvent> = phrase.pattern_events.iter()
-                .filter(|pattern_event| pattern_event.stop().is_some())
-                .filter(|pattern_event| {
-                    // Simple overlap
-                    pattern_event.stop().unwrap() < stop_tick && pattern_event.start() > start_tick
-                })
-                // Convert to play ranges to also be able to play the start of looping patterns
+                .filter(|pattern_event| pattern_event.overlaps_tick_range(start_tick, stop_tick))
                 .flat_map(|pattern_event| {
-                    // Looping patterns consist of 2 ranges
-                    let pattern_event_length = pattern_event.length(phrase.length());
-
-                    if pattern_event.is_looping() {
-                        let second_range_start = phrase.length() - pattern_event.start();
-                        let second_range_end = pattern_event_length - second_range_start;
-
-                        vec![
-                            (second_range_start, second_range_end, pattern_event), 
-                            (0, second_range_start, pattern_event)
-                        ]
-                    } else {
-                        vec![(0, pattern_event_length, pattern_event)]
-                    }
-                })
-                .flat_map(|(range_start, range_stop, pattern_event)| {
                     // Looping patterns consist of 2 ranges
                     let pattern_event_length = pattern_event.length(phrase.length());
 
                     self.patterns[pattern_event.pattern as usize].note_events.iter()
                         .filter(|note_event| note_event.stop().is_some())
-                        .filter(move |note_event| note_event.starts_between(start_tick + range_start, stop_tick + range_start))
+                        .filter(move |note_event| note_event.starts_between(start_tick, stop_tick))
                         .map(move |note_event| {
                             let mut stop = note_event.stop().unwrap();
                             if note_event.is_looping() { stop += pattern_event_length }
