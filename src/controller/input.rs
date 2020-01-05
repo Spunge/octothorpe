@@ -59,8 +59,9 @@ impl ButtonType {
             0x33 => ButtonType::Instrument(channel),
             0x3F => ButtonType::Quantization,
             0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
-            // Side grid
-            0x52 ..= 0x56 => ButtonType::Side(note - 0x52),
+            // Side grid is turned upside down as we draw the phrases upside down as we draw notes
+            // updside down due to lower midi nodes having lower numbers, therefore the 4 -
+            0x52 ..= 0x56 => ButtonType::Side(4 - (note - 0x52)),
             0x51 => ButtonType::Shift,
             // Grid should add notes & add phrases
             0x35 ..= 0x39 => ButtonType::Grid(channel, note - 0x35),

@@ -3,7 +3,7 @@ use super::instrument::Instrument;
 
 pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
-    phrases: [Option<usize>; 16],
+    phrases: [Option<u8>; 16],
     pub active: [bool; 16],
 
     pub knob_group: u8,
@@ -35,7 +35,7 @@ impl Sequence {
             .collect()
     }
 
-    pub fn active_phrases<'a>(&'a self) -> impl Iterator<Item=(usize, usize)> + 'a {
+    pub fn phrases<'a>(&'a self) -> impl Iterator<Item=(usize, usize)> + 'a {
         self.phrases.iter()
             .enumerate()
             .filter(|(_, phrase)| phrase.is_some())
@@ -46,7 +46,7 @@ impl Sequence {
 
     // Get length in ticks of sequence based on the longest phrase it's playing
     pub fn length(&self, instruments: &[Instrument]) -> Option<u32> {
-        self.active_phrases()
+        self.phrases()
             .map(|(instrument, phrase)| {
                 instruments[instrument].phrases[phrase].playable.length
             })
@@ -54,20 +54,19 @@ impl Sequence {
     }
     */
 
+    pub fn active_phrase(&self, index: usize) -> Option<u8> {
+        self.phrases[index].and_then(|phrase| if self.active[index] { Some(phrase) } else { None })
+    }
+
     pub fn toggle_row(&mut self, phrase: u8) {
-        self.phrases = [Some(phrase as usize); 16];
+        self.phrases = [Some(phrase); 16];
     }
 
     pub fn toggle_phrase(&mut self, instrument: u8, phrase: u8) {
-        self.phrases[instrument as usize] = if let Some(old_phrase) = self.phrases[instrument as usize] {
-            if old_phrase == phrase as usize {
-                None
-            } else {
-                Some(phrase as usize)
-            }
-        } else {
-            Some(phrase as usize)
-        }
+        self.phrases[instrument as usize] = self.phrases[instrument as usize]
+            // Select different phrase or disable phrase
+            .and_then(|previous| if previous == phrase { None } else { Some(phrase) })
+            .or(Some(phrase))
     }
 
     pub fn toggle_active(&mut self, instrument: u8) {
@@ -79,7 +78,7 @@ impl Sequence {
     pub fn playing_phrases(&self, instruments: &[Instrument], sequence_start: u32) -> Vec<PlayingPhrase> {
         // Could be this is a 0 length sequence
         if let Some(sequence_length) = self.length(instruments) {
-            self.active_phrases()
+            self.phrases()
                 .filter(|(instrument, _)| self.active[*instrument])
                 .flat_map(|(instrument, phrase)| {
                     let phrase_length = instruments[instrument].phrases[phrase].playable.length;

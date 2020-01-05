@@ -1,30 +1,46 @@
 
 
 pub struct ProcessCycle<'a> {
-    pub scope: &'a jack::ProcessScope,
     pub client: &'a jack::Client,
+    pub scope: &'a jack::ProcessScope,
+    pub tick_start: u32,
+    pub tick_stop: u32,
+    pub time_start: u64,
+    pub time_stop: u64,
+    pub is_rolling: bool,
 }
 
 impl<'a> ProcessCycle<'a> {
-    pub fn time_at_start(&self) -> u64 {
-        let cycle_times = self.scope.cycle_times().unwrap();
-        cycle_times.current_usecs
+    pub fn frame_to_tick(pos: jack::Position, frame: u32) -> f64 {
+        let second = frame as f64 / pos.frame_rate as f64;
+        second / 60.0 * pos.beats_per_minute * pos.ticks_per_beat
     }
 
-    pub fn time_at_stop(&self) -> u64 {
-        let cycle_times = self.scope.cycle_times().unwrap();
-        cycle_times.next_usecs
+    // Save client as we pass this cycle thing everywhere
+    pub fn new(client: &'a jack::Client, scope: &'a jack::ProcessScope) -> Self {
+        let cycle_times = scope.cycle_times().unwrap();
+        let (state, pos) = client.transport_query();
+
+        Self {
+            client,
+            scope,
+            time_start: cycle_times.current_usecs,
+            time_stop: cycle_times.next_usecs,
+            tick_start: Self::frame_to_tick(pos, pos.frame) as u32,
+            tick_stop: Self::frame_to_tick(pos, pos.frame + scope.n_frames()) as u32,
+            is_rolling: state == 1,
+        }
     }
 
     pub fn usecs(&self) -> u64 {
-        self.time_at_stop() - self.time_at_start()
+        self.time_stop - self.time_start
     }
 
     pub fn time_at_frame(&self, frame: u32) -> u64 {
         // TODO - When can this error?
         let usecs_per_frame = self.usecs() as f32 / self.scope.n_frames() as f32;
         let usecs_since_period_start = frame as f32 * usecs_per_frame;
-        self.time_at_start() + usecs_since_period_start as u64
+        self.time_start + usecs_since_period_start as u64
     }
 }
 

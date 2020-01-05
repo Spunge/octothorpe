@@ -69,11 +69,11 @@ pub trait Loopable {
 pub struct Phrase {
     // Length in ticks
     length: u32,
-    pub pattern_events: Vec<PatternEvent>,
+    pub pattern_events: Vec<LoopablePatternEvent>,
 }
 
 impl Loopable for Phrase {
-    type Event = PatternEvent;
+    type Event = LoopablePatternEvent;
 
     fn length(&self) -> u32 { self.length } 
     fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.pattern_events }
@@ -84,7 +84,7 @@ impl Phrase {
         Phrase { length: Self::default_length(), pattern_events: vec![] }
     }
 
-    pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 4 }
+    pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4 }
     pub fn set_length(&mut self, length: u32) { 
         self.length = length; 
 
@@ -101,11 +101,11 @@ impl Phrase {
 
 #[derive(Clone)]
 pub struct Pattern {
-    note_events: Vec<NoteEvent>,
+    pub note_events: Vec<LoopableNoteEvent>,
 }
 
 impl Loopable for Pattern {
-    type Event = NoteEvent;
+    type Event = LoopableNoteEvent;
 
     // Pattern will adjust it's length based on the maximum tick it contains
     fn length(&self) -> u32 {
@@ -131,7 +131,7 @@ impl Loopable for Pattern {
 }
 
 impl Pattern {
-    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 }
+    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 }
 
     pub fn new() -> Self {
         Pattern { note_events: vec![] }
@@ -142,8 +142,8 @@ impl Pattern {
 mod tests {
     use super::*;
 
-    fn new(start: u32, stop: Option<u32>) -> PatternEvent {
-        PatternEvent { start, stop, pattern: 0 }
+    fn new(start: u32, stop: Option<u32>) -> LoopablePatternEvent {
+        LoopablePatternEvent { start, stop, pattern: 0 }
     }
 
     #[test]
@@ -153,13 +153,13 @@ mod tests {
         let length = Pattern::minimum_length();
         let half_length = length / 2;
 
-        let mut event = NoteEvent::new(half_length, 1, 1);
+        let mut event = LoopableNoteEvent::new(half_length, 1, 1);
         event.set_stop(half_length + 10);
 
         pattern.add_complete_event(event);
         assert_eq!(pattern.length(), length * 2);
 
-        let mut event = NoteEvent::new(length, 1, 1);
+        let mut event = LoopableNoteEvent::new(length, 1, 1);
         event.set_stop(length + 10);
 
         pattern.add_complete_event(event);

@@ -1,5 +1,5 @@
 
-use super::cycle::Cycle;
+use super::cycle::*;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
 use super::sequence::Sequence;
@@ -64,6 +64,13 @@ impl Sequencer {
 
     pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
         &mut self.sequences[index]
+    }
+
+    pub fn output_midi(&mut self, cycle: &ProcessCycle) {
+        for (index, instrument) in self.instruments.iter_mut().enumerate() {
+            let playing_sequence = &self.sequences[self.sequence_playing.index];
+            instrument.output_midi(cycle, self.sequence_playing.start, playing_sequence.active_phrase(index));
+        }
     }
 
     // One of the control knobs on the APC was turned

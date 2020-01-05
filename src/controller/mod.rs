@@ -88,13 +88,13 @@ pub trait APC {
 
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
     fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) -> Vec<TimedMessage> where F: Fn(&InputEventType) -> bool {
-        let usecs = cycle.time_at_stop() - LENGTH_INDICATOR_USECS;
+        let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
         let mut frame = 0;
 
         // TODO - move this timing logic to seperate function when we need it for other things
         // Do we need to draw length indicator, and when?
         if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, filters, usecs) {
-            let usecs_ago = cycle.time_at_stop() - usecs;
+            let usecs_ago = cycle.time_stop - usecs;
             let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
 
             if hide_in_usecs < cycle.usecs() {
@@ -183,6 +183,7 @@ pub trait APC {
                 InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
                     mixer.fader_adjusted(event.time, index + Self::INSTRUMENT_OFFSET, value);
                 },
+                // TODO - Shift events in loopable to right/left when holding shift
                 InputEventType::KnobTurned { value, knob_type: KnobType::Cue } => {
                     let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
                     let is_first_turn = surface.event_memory
@@ -329,7 +330,7 @@ impl APC for APC40 {
     fn identified_cycles(&self) -> u8 { self.identified_cycles }
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
 
-    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 16 / self.zoom_level() as u32 }
+    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 16 / self.zoom_level() as u32 }
 
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn set_zoom_level(&mut self, level: u8) { self.zoom_level = level }
@@ -376,7 +377,7 @@ impl APC for APC40 {
             instrument: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
-            // TODO - Put length indicator here, get length from longest PatternEvent in phrases?
+            // TODO - Put length indicator here, get length from longest LoopablePatternEvent in phrases?
             arm: WideRow::new(0x30),
         }
     }
@@ -412,7 +413,7 @@ impl APC for APC40 {
                                 let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
 
                                 if let Some((start_tick, stop_tick)) = self.should_add_event(pattern, modifier, x, y, offset, note) {
-                                    pattern.try_add_starting_event(NoteEvent::new(start_tick, note, 127));
+                                    pattern.try_add_starting_event(LoopableNoteEvent::new(start_tick, note, 127));
                                     let mut event = pattern.get_last_event_on_row(note);
                                     event.set_stop(stop_tick);
                                     event.stop_velocity = Some(127);
@@ -503,7 +504,7 @@ impl APC for APC40 {
             .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
         self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
 
-        self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
+        self.side.draw(4 - self.pattern_shown(surface.instrument_shown()), 1);
 
         // Indicator
         let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
@@ -559,7 +560,7 @@ impl APC for APC20 {
     fn identified_cycles(&self) -> u8 { self.identified_cycles }
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
 
-    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT * 4 * 16 / self.zoom_level() as u32 }
+    fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 16 / self.zoom_level() as u32 }
 
     fn zoom_level(&self) -> u8 { self.zoom_level }
     fn set_zoom_level(&mut self, level: u8) { self.zoom_level = level }
@@ -627,7 +628,7 @@ impl APC for APC20 {
                                 let pattern = 4 - y;
 
                                 if let Some((start_tick, stop_tick)) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
-                                    phrase.try_add_starting_event(PatternEvent::new(start_tick, pattern));
+                                    phrase.try_add_starting_event(LoopablePatternEvent::new(start_tick, pattern));
                                     let mut event = phrase.get_last_event_on_row(pattern);
                                     event.set_stop(stop_tick);
 
@@ -667,7 +668,7 @@ impl APC for APC20 {
         self.draw_events(events, self.offset(surface.instrument_shown()), 0);
 
         // Playable selector
-        self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
+        self.side.draw(4 - self.phrase_shown(surface.instrument_shown()), 1);
 
         // Length selector
         for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {

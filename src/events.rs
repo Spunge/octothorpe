@@ -17,6 +17,16 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
         }
     }
     
+    fn length(&self, phrase_length: u32) -> u32 {
+        let mut stop = self.stop().unwrap();
+
+        if self.is_looping() {
+            stop += phrase_length;
+        }
+
+        stop - self.start()
+    }
+
     fn starts_between(&self, start: u32, stop: u32) -> bool {
          self.start() >= start && self.start() < stop
     }
@@ -70,7 +80,6 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
                             // Create split pattern event
                             let mut split = self.clone();
                             split.set_start(other_stop);
-                            //let event = PatternEvent::new(other_stop, self.stop, self.pattern);
                             // Adjust own event
                             self.set_stop(other.start());
                             //self.stop = Some(other.start);
@@ -88,7 +97,7 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
 
 // note, velocity
 #[derive(Debug, Clone)]
-pub struct NoteEvent {
+pub struct LoopableNoteEvent {
     pub note: u8,
     pub start: u32,
     pub start_velocity: u8,
@@ -96,7 +105,7 @@ pub struct NoteEvent {
     pub stop_velocity: Option<u8>,
 }
 
-impl LoopableEvent for NoteEvent {
+impl LoopableEvent for LoopableNoteEvent {
     fn start(&self) -> u32 { self.start }
     fn stop(&self) -> Option<u32> { self.stop }
     fn set_start(&mut self, tick: u32) { self.start = tick }
@@ -106,20 +115,20 @@ impl LoopableEvent for NoteEvent {
     fn row(&self, offset: u8) -> u8 { self.note - offset }
 }
 
-impl NoteEvent {
+impl LoopableNoteEvent {
     pub fn new(start: u32, note: u8, start_velocity: u8) -> Self {
         Self { start, note, start_velocity, stop: None, stop_velocity: None }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct PatternEvent {
+pub struct LoopablePatternEvent {
     pub start: u32,
     pub stop: Option<u32>,
     pub pattern: u8,
 }
 
-impl LoopableEvent for PatternEvent {
+impl LoopableEvent for LoopablePatternEvent {
     fn start(&self) -> u32 { self.start }
     fn stop(&self) -> Option<u32> { self.stop }
     fn set_start(&mut self, tick: u32) { self.start = tick }
@@ -129,9 +138,9 @@ impl LoopableEvent for PatternEvent {
     fn row(&self, offset: u8) -> u8 { self.pattern - offset }
 }
 
-impl PatternEvent {
+impl LoopablePatternEvent {
     pub fn new(start: u32, pattern: u8) -> Self {
-        PatternEvent { start, stop: None, pattern, }
+        LoopablePatternEvent { start, stop: None, pattern, }
     }
 }
 
@@ -139,8 +148,8 @@ impl PatternEvent {
 mod tests {
     use super::*;
 
-    fn new(start: u32, stop: Option<u32>) -> PatternEvent {
-        PatternEvent { start, stop, pattern: 0 }
+    fn new(start: u32, stop: Option<u32>) -> LoopablePatternEvent {
+        LoopablePatternEvent { start, stop, pattern: 0 }
     }
 
     #[test]

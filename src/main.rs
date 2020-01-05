@@ -30,35 +30,22 @@ use cycle::{ProcessCycle, Cycle};
 
 pub struct TimebaseHandler {
     beats_per_minute: f64,
-    beats_per_bar: isize,
-    beat_type: isize,
+    beats_per_bar: f32,
+    beat_type: f32,
     is_up_to_date: bool,
 
     receiver: Receiver<f64>,
 }
 
 impl TimebaseHandler {
-    pub const TICKS_PER_BEAT: u32 = 1920;
-    const BEATS_PER_BAR: u32 = 4;
-
-    pub fn beats_to_ticks(beats: f64) -> u32 {
-        (beats * Self::TICKS_PER_BEAT as f64) as u32
-    }
-
-    pub fn bars_to_beats(bars: u32) -> u32 {
-        bars * Self::BEATS_PER_BAR
-    }
-
-    pub fn bars_to_ticks(bars: u32) -> u32 {
-        Self::bars_to_beats(bars) * Self::TICKS_PER_BEAT
-    }
+    pub const TICKS_PER_BEAT: f64 = 1920.0;
 
     pub fn new(receiver: Receiver<f64>) -> Self {
         TimebaseHandler {
             beats_per_minute: 156.0,
             is_up_to_date: false,
-            beats_per_bar: 4,
-            beat_type: 4,
+            beats_per_bar: 4.0,
+            beat_type: 4.0,
             receiver,
         }
     }
@@ -77,16 +64,15 @@ impl jack::TimebaseHandler for TimebaseHandler {
 
             // Only update timebase when we are asked for it, or when our state changed
             if is_new_pos || ! self.is_up_to_date {
-                (*pos).beats_per_bar = self.beats_per_bar as f32;
-                (*pos).ticks_per_beat = Self::TICKS_PER_BEAT as f64;
-                (*pos).beat_type = self.beat_type as f32;
+                (*pos).beats_per_bar = self.beats_per_bar;
+                (*pos).ticks_per_beat = Self::TICKS_PER_BEAT;
+                (*pos).beat_type = self.beat_type;
                 (*pos).beats_per_minute = self.beats_per_minute;
 
                 self.is_up_to_date = true;
             }
 
-            let second = (*pos).frame as f64 / (*pos).frame_rate as f64;
-            let abs_tick = second / 60.0 * self.beats_per_minute * Self::TICKS_PER_BEAT as f64;
+            let abs_tick = ProcessCycle::frame_to_tick((*pos), (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
             // Plus 1 as humans tend not to count from 0
@@ -164,7 +150,10 @@ impl jack::ProcessHandler for ProcessHandler {
         // cycle.absolute_start indicates this is first cycle program runs for
         //self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
 
-        let cycle = ProcessCycle { scope, client };
+        let cycle = ProcessCycle::new(client, scope);
+
+        // Sequencer first at it will cache playing notes, these we can use for sequence visualization
+        self.sequencer.output_midi(&cycle);
 
         self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
         self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);

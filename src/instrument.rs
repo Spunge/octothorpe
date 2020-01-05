@@ -1,16 +1,30 @@
 
 use super::port::*;
 use super::loopable::*;
+use super::cycle::*;
+use super::events::*;
 
 pub struct Instrument {
     // TODO - these are public as we're testing with premade patterns
     pub patterns: [Pattern; 5],
     pub phrases: [Phrase; 5],
 
+    playing_notes: Vec<PlayingNoteEvent>,
+
     //pub knob_group: u8,
     //knob_values: [u8; 128],
 
     output: MidiOut,
+}
+
+// We also keep start around so we can use this for different note visualizations aswell
+#[derive(Debug)]
+struct PlayingNoteEvent {
+    start: u32,
+    stop: u32,
+    note: u8,
+    start_velocity: u8,
+    stop_velocity: u8,
 }
 
 impl Instrument {
@@ -25,6 +39,8 @@ impl Instrument {
             phrases,
             patterns,
 
+            playing_notes: vec![],
+
             // There's 4 knob groups, this way we can have knobs * 4 !
             //knob_group: 0,
             //knob_values: [0; 128],
@@ -37,6 +53,7 @@ impl Instrument {
         &mut self.patterns[index as usize]
     }
 
+    // TODO - phrase && phrase_mut
     pub fn get_phrase(&mut self, index: u8) -> &mut Phrase {
         &mut self.phrases[index as usize]
     }
@@ -47,6 +64,76 @@ impl Instrument {
 
     pub fn clone_phrase(&mut self, from: u8, to: u8) {
         self.phrases[to as usize] = self.phrases[from as usize].clone();
+    }
+
+    pub fn output_midi(&self, cycle: &ProcessCycle, sequence_start: u32, playing_phrase: Option<u8>) {
+        if let Some(phrase) = playing_phrase {
+            let phrase = &self.phrases[phrase as usize];
+            let iteration = (cycle.tick_start - sequence_start) / phrase.length();
+            let start_tick = (cycle.tick_start - sequence_start) % phrase.length();
+            let stop_tick = (cycle.tick_stop - sequence_start) % phrase.length();
+            
+            // TODO - This is the simple way of doing things, by not keeping track of playing
+            // patterns, which means we can't play parts of patterns over phrase boundaries
+            // TODO - There is another way, which involves keeping track of playing events for
+            // notes & patterns which keep a reference to loopable event, and adding /removing 
+            // these from loopable container together with adding / removing loopable events 
+            // based on the references. This will make it possible to play patterns over phrase
+            // bounds, i'm not sure if that's the behaviour we want though
+            let starting_notes: Vec<PlayingNoteEvent> = phrase.pattern_events.iter()
+                .filter(|pattern_event| pattern_event.stop().is_some())
+                .filter(|pattern_event| {
+                    // Simple overlap
+                    pattern_event.stop().unwrap() < stop_tick && pattern_event.start() > start_tick
+                })
+                // Convert to play ranges to also be able to play the start of looping patterns
+                .flat_map(|pattern_event| {
+                    // Looping patterns consist of 2 ranges
+                    let pattern_event_length = pattern_event.length(phrase.length());
+
+                    if pattern_event.is_looping() {
+                        let second_range_start = phrase.length() - pattern_event.start();
+                        let second_range_end = pattern_event_length - second_range_start;
+
+                        vec![
+                            (second_range_start, second_range_end, pattern_event), 
+                            (0, second_range_start, pattern_event)
+                        ]
+                    } else {
+                        vec![(0, pattern_event_length, pattern_event)]
+                    }
+                })
+                .flat_map(|(range_start, range_stop, pattern_event)| {
+                    // Looping patterns consist of 2 ranges
+                    let pattern_event_length = pattern_event.length(phrase.length());
+
+                    self.patterns[pattern_event.pattern as usize].note_events.iter()
+                        .filter(|note_event| note_event.stop().is_some())
+                        .filter(move |note_event| note_event.starts_between(start_tick + range_start, stop_tick + range_start))
+                        .map(move |note_event| {
+                            let mut stop = note_event.stop().unwrap();
+                            if note_event.is_looping() { stop += pattern_event_length }
+
+                            PlayingNoteEvent {
+                                start: sequence_start + note_event.start(),
+                                stop: sequence_start + stop,
+                                note: note_event.note,
+                                start_velocity: note_event.start_velocity,
+                                stop_velocity: note_event.stop_velocity.unwrap(),
+                            }
+                        })
+                })
+                .collect();
+
+
+            if starting_notes.len() > 0 {
+                dbg!(starting_notes);
+            }
+            // TODO - Get playing patterns
+            // TODO - Save playing patterns
+        }
+
+        // TODO - play actual patterns
     }
 
     /*
