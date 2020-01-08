@@ -70,7 +70,7 @@ impl Sequencer {
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
         for (index, instrument) in self.instruments.iter_mut().enumerate() {
             let playing_sequence = &self.sequences[self.sequence_playing.index];
-            instrument.output_midi(cycle, self.sequence_playing.start, playing_sequence.active_phrase(index));
+            instrument.output_midi(cycle, self.sequence_playing.start, &cycle.tick_range, playing_sequence.active_phrase(index));
         }
     }
 

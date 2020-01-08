@@ -71,8 +71,8 @@ pub trait APC {
         let stop_tick = self.button_to_ticks(x + 1, offset);
 
         // Should we delete the event we're clicking?
-        if let (None, true) = (modifier, loopable.contains_events_starting_between(start_tick, stop_tick, row)) {
-            loopable.remove_events_starting_between(start_tick, stop_tick, row);
+        if let (None, true) = (modifier, loopable.contains_events_starting_in(start_tick .. stop_tick, row)) {
+            loopable.remove_events_starting_in(start_tick .. stop_tick, row);
             None
         } else {
             // Add event get x from modifier when its a grid button in the same row
@@ -88,13 +88,13 @@ pub trait APC {
 
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
     fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) -> Vec<TimedMessage> where F: Fn(&InputEventType) -> bool {
-        let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
+        let usecs = cycle.time_range.end - LENGTH_INDICATOR_USECS;
         let mut frame = 0;
 
         // TODO - move this timing logic to seperate function when we need it for other things
         // Do we need to draw length indicator, and when?
         if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, filters, usecs) {
-            let usecs_ago = cycle.time_stop - usecs;
+            let usecs_ago = cycle.time_range.end - usecs;
             let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
 
             if hide_in_usecs < cycle.usecs() {

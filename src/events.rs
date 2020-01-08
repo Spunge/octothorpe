@@ -40,10 +40,6 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
         }
     }
 
-    fn starts_between(&self, start: u32, stop: u32) -> bool {
-         self.start() >= start && self.start() < stop
-    }
-
     // Does this event contain another event wholly?
     fn contains(&self, other: &impl LoopableEvent, max_length: u32) -> bool {
         match (self.stop(), other.stop()) {
@@ -155,6 +151,16 @@ impl LoopablePatternEvent {
     pub fn new(start: u32, pattern: u8) -> Self {
         LoopablePatternEvent { start, stop: None, pattern, }
     }
+}
+
+// We also keep start around so we can use this for different note visualizations aswell
+#[derive(Debug)]
+pub struct PlayingNoteEvent {
+    pub start: u32,
+    pub stop: u32,
+    pub note: u8,
+    pub start_velocity: u8,
+    pub stop_velocity: u8,
 }
 
 #[cfg(test)]

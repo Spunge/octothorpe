@@ -1,4 +1,5 @@
 
+use std::ops::Range;
 use super::events::*;
 use super::TimebaseHandler;
 
@@ -49,15 +50,15 @@ pub trait Loopable {
         self.events().push(event);
     }
 
-    fn contains_events_starting_between(&mut self, start: u32, stop: u32, index: u8) -> bool {
+    fn contains_events_starting_in(&mut self, range: Range<u32>, index: u8) -> bool {
         self.events().iter()
-            .find(|event| event.is_on_row(index) && event.starts_between(start, stop))
+            .find(|event| event.is_on_row(index) && range.contains(&event.start()))
             .is_some()
     }
 
-    fn remove_events_starting_between(&mut self, start: u32, stop: u32, index: u8) {
+    fn remove_events_starting_in(&mut self, range: Range<u32>, index: u8) {
         let indexes: Vec<usize> = self.events().iter().enumerate()
-            .filter(|(_, event)| event.is_on_row(index) && event.starts_between(start, stop))
+            .filter(|(_, event)| event.is_on_row(index) && range.contains(&event.start()))
             .map(|(index, _)| index)
             .collect();
 

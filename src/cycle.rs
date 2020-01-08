@@ -1,12 +1,11 @@
 
+use std::ops::Range;
 
 pub struct ProcessCycle<'a> {
     pub client: &'a jack::Client,
     pub scope: &'a jack::ProcessScope,
-    pub tick_start: u32,
-    pub tick_stop: u32,
-    pub time_start: u64,
-    pub time_stop: u64,
+    pub tick_range: Range<u32>,
+    pub time_range: Range<u64>,
     pub is_rolling: bool,
 }
 
@@ -21,26 +20,38 @@ impl<'a> ProcessCycle<'a> {
         let cycle_times = scope.cycle_times().unwrap();
         let (state, pos) = client.transport_query();
 
+        let tick_start = Self::frame_to_tick(pos, pos.frame) as u32;
+        let tick_stop = Self::frame_to_tick(pos, pos.frame + scope.n_frames()) as u32;
+
         Self {
             client,
             scope,
-            time_start: cycle_times.current_usecs,
-            time_stop: cycle_times.next_usecs,
-            tick_start: Self::frame_to_tick(pos, pos.frame) as u32,
-            tick_stop: Self::frame_to_tick(pos, pos.frame + scope.n_frames()) as u32,
+            time_range: cycle_times.current_usecs .. cycle_times.next_usecs,
+            tick_range: tick_start .. tick_stop,
             is_rolling: state == 1,
         }
     }
 
     pub fn usecs(&self) -> u64 {
-        self.time_stop - self.time_start
+        self.time_range.end - self.time_range.start
+    }
+
+    pub fn ticks(&self) -> u32 {
+        self.tick_range.end - self.tick_range.start
     }
 
     pub fn time_at_frame(&self, frame: u32) -> u64 {
         // TODO - When can this error?
         let usecs_per_frame = self.usecs() as f32 / self.scope.n_frames() as f32;
         let usecs_since_period_start = frame as f32 * usecs_per_frame;
-        self.time_start + usecs_since_period_start as u64
+        self.time_range.start + usecs_since_period_start as u64
+    }
+
+    // TODO - This can panic, is that what we want?
+    pub fn tick_to_frame(&self, tick: u32) -> u32 {
+        let tick_in_cycle = tick - self.tick_range.start;
+        let frame_in_cycle = tick_in_cycle as f64 / self.ticks() as f64 * self.scope.n_frames() as f64;
+        frame_in_cycle as u32
     }
 }
 
