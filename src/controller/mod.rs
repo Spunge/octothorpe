@@ -223,9 +223,18 @@ pub trait APC {
                             let sequence = sequencer.get_sequence(surface.sequence_shown());
 
                             match button_type {
-                                ButtonType::Grid(x, y) => sequence.toggle_phrase(x + Self::INSTRUMENT_OFFSET, y),
-                                ButtonType::Side(index) => sequence.toggle_row(index),
-                                ButtonType::Activator(index) => sequence.toggle_active(index + Self::INSTRUMENT_OFFSET),
+                                ButtonType::Grid(x, phrase) => {
+                                    let instrument = (x + Self::INSTRUMENT_OFFSET) as usize;
+                                    if let None = sequence.get_phrase(instrument) {
+                                        sequence.set_phrase(instrument, phrase);
+                                    } else {
+                                        sequence.unset_phrase(instrument)
+                                    }
+                                },
+                                ButtonType::Side(phrase) => sequence.set_phrases(phrase),
+                                ButtonType::Activator(instrument) => {
+                                    sequence.toggle_active((instrument + Self::INSTRUMENT_OFFSET) as usize)
+                                },
                                 _ => (),
                             }
                         }

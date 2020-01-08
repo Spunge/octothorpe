@@ -3,6 +3,7 @@ use super::cycle::*;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
 use super::sequence::Sequence;
+use super::loopable::*;
 
 struct PlayingSequence {
     // Start tick
@@ -68,8 +69,27 @@ impl Sequencer {
 
     // TODO - handle queud / repeating phrases, make instruments play end & start seperately
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
+        // TODO - Direct queueing
+
+        // Get length of currenly playing sequence
+        let playing_sequence = &self.sequences[self.sequence_playing.index];
+        let length = playing_sequence.phrases().iter().enumerate()
+            .filter_map(|(instrument, phrase_option)| {
+                phrase_option.and_then(|phrase| {
+                    Some(self.instruments[instrument].phrases[phrase as usize].length())
+                })
+            })
+            .max();
+
+
+        // TODO - Check if sequence_start + sequence_length falls into cycle
+        // play end of current & start of next seperately when it does
+
+        //if let Some(index) = self.sequence_queued {
+        
+        //}
+
         for (index, instrument) in self.instruments.iter_mut().enumerate() {
-            let playing_sequence = &self.sequences[self.sequence_playing.index];
             instrument.output_midi(cycle, self.sequence_playing.start, &cycle.tick_range, playing_sequence.active_phrase(index));
         }
     }
@@ -201,108 +221,6 @@ impl Sequencer {
     }
 
     /*
-    // Get playing phrases that fall in this cycle
-    fn playing_phrases(&mut self, cycle: &Cycle) -> Option<Vec<PlayingPhrase>> {
-        let playing_sequence = &self.sequences[self.sequence_playing];
-
-        if let Some(sequence_length) = playing_sequence.length(&self.instruments) {
-            // A sequence with length above 0 is playing
-            let sequence_start = (cycle.start / sequence_length) * sequence_length;
-            let sequence_end = sequence_start + sequence_length;
-
-            let mut phrases = playing_sequence.playing_phrases(&self.instruments, sequence_start);
-
-            // Cycle is passing sequence, end, add next playing sequence
-            if sequence_end < cycle.end {
-                let next_sequence_start = sequence_start + sequence_length;
-
-                if let Some(index) = self.sequence_queued {
-                    phrases.extend(self.sequences[index].playing_phrases(&self.instruments, next_sequence_start))
-                } else {
-                    phrases.extend(playing_sequence.playing_phrases(&self.instruments, next_sequence_start))
-                }
-            }
-
-            // Activate next sequence
-            if sequence_end <= cycle.end {
-                if let Some(index) = self.sequence_queued {
-                    // Mark sequence as switched
-                    self.sequence_playing = index;
-                    self.sequence_queued = None;
-                }
-            }
-
-            Some(phrases)
-        } else {
-            // 0 length sequence, so nothing is playing
-            // TODO - Check quueued here?
-            None
-        }
-    }
-
-    fn playing_patterns(&self, cycle: &Cycle, playing_phrases: &Vec<PlayingPhrase>) -> Vec<PlayingPattern> {
-        playing_phrases.iter()
-            // Get patterns that are playing for Instrument & played pattern
-            .flat_map(|playing_phrases| {
-                self.instruments[playing_phrases.instrument].phrases[playing_phrases.phrase]
-                    .playing_patterns(&self.instruments[playing_phrases.instrument].patterns, &playing_phrases)
-            })
-            .filter(|playing_pattern| playing_pattern.start < cycle.end && playing_pattern.end > cycle.start)
-            .collect()
-    }
-
-    // Get notes that should be triggered in currently playing sequences
-    fn playing_notes(&self, cycle: &Cycle, playing_patterns: &Vec<PlayingPattern>) -> Vec<(u32, &Note)> {
-        // Get phrases that are playing in sequence
-        // ( instrument, phrase )
-        playing_patterns.into_iter()
-            // Next, get notes for each instrument / played pattern
-            .flat_map(|playing_pattern| {
-                self.instruments[playing_pattern.instrument].patterns[playing_pattern.pattern]
-                    .playing_notes(cycle, playing_pattern.start, playing_pattern.end)
-            })
-            .collect()
-    }
-
-    // Get messages for noteoffs that fall in this frame
-    fn note_off_messages(cycle: &Cycle, buffer: &mut Vec<(u32, Message)>) -> Vec<TimedMessage> {
-        let mut messages = vec![];
-
-        // Get noteoffs that occur in this cycle
-        for index in (0..buffer.len()).rev() {
-            let (absolute_tick, _) = buffer[index];
-
-            if let Some(frame) = cycle.delta_frames_absolute(absolute_tick) {
-                let (_, message) = buffer.swap_remove(index);
-                messages.push(TimedMessage::new(frame, message));
-            }
-        }
-
-        messages
-    }
-
-    fn sequence_note_events(cycle: &Cycle, notes: &Vec<(u32, &Note)>, modifier: u32, channel_modifier: u8, key: Option<u8>, velocity_on: Option<u8>, velocity_off: Option<u8>) 
-        -> (Vec<(u32, Message)>, Vec<TimedMessage>) 
-    {
-        let note_offs: Vec<_> = notes.iter()
-            .map(|(delta_ticks, note)| {
-                let length = note.end - note.start;
-                let tick = cycle.absolute_start + delta_ticks;
-
-                (tick + length / modifier, note.off_message(0x80 - channel_modifier, key, velocity_off))
-            })
-            .collect();
-
-        let note_ons: Vec<_> = notes.iter()
-            .map(|(delta_ticks, note)| {
-                let delta_frames = (*delta_ticks as f64 / cycle.ticks as f64 * cycle.frames as f64) as u32;
-                TimedMessage::new(delta_frames, note.on_message(0x90 - channel_modifier, key, velocity_on))
-            })
-            .collect();
-
-        (note_offs, note_ons)
-    }
-
     // Show playing, queued and selected sequence
     fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {
         let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
