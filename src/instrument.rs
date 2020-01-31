@@ -58,14 +58,14 @@ impl Instrument {
         self.phrases[to as usize] = self.phrases[from as usize].clone();
     }
 
-    fn starting_notes(&self, cycle: &ProcessCycle, sequence_start: u32, phrase: u8) -> Vec<PlayingNoteEvent> {
+    fn starting_notes(&self, range: &Range<u32>, sequence_start: u32, phrase: u8) -> Vec<PlayingNoteEvent> {
         let phrase = &self.phrases[phrase as usize];
-        let iteration = (cycle.tick_range.start - sequence_start) / phrase.length();
+        let iteration = (range.start - sequence_start) / phrase.length();
         // TODO Not every iteration comes down to 0 as phrase_tick_start
         // handle this in seuqencer, asking notes from correct phrases
-        let phrase_start_tick = (cycle.tick_range.start - sequence_start) % phrase.length();
-        let phrase_stop_tick = (cycle.tick_range.end - sequence_start) % phrase.length();
-        
+        let phrase_start_tick = (range.start - sequence_start) % phrase.length();
+        let phrase_stop_tick = (range.end - sequence_start) % phrase.length();
+
         // TODO - This is the simple way of doing things, by not keeping track of playing
         // patterns, which means we can't play parts of patterns over phrase boundaries
         // TODO - There is another way, which involves keeping track of playing events for
@@ -96,6 +96,7 @@ impl Instrument {
                         // Offset by calculated start tick to grab correct notes from looping patterns
                         note_start_tick += start_tick;
                         note_stop_tick += start_tick;
+                        // TODO - Looping patterns with length set explicitly
                         //dbg!(note_start_tick, note_stop_tick, start_tick);
                         (note_start_tick .. note_stop_tick).contains(&note_event.start())
                     })
@@ -119,10 +120,10 @@ impl Instrument {
     }
 
     // TODO - Don't pass cycle directly, handle changing phrases etc in sequencer
-    pub fn output_midi(&mut self, cycle: &ProcessCycle, sequence_start: u32, range: &Range<u32>, playing_phrase: Option<u8>) {
+    pub fn output_midi(&mut self, cycle: &ProcessCycle, range: &Range<u32>, sequence_start: u32, playing_phrase: Option<u8>) {
         // Only play new notes when cycle is rolling & there's a phrase playing
         if let (Some(phrase), true) = (playing_phrase, cycle.is_rolling) {
-            let mut starting_notes = self.starting_notes(cycle, sequence_start, phrase);
+            let mut starting_notes = self.starting_notes(&range, sequence_start, phrase);
 
             // Create actual midi from note representations
             let mut messages = starting_notes.iter()
