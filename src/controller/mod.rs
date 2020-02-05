@@ -404,7 +404,8 @@ impl APC for APC40 {
                 mixer.master_adjusted(event.time, value);
             },
             InputEventType::KnobTurned { value, knob_type: KnobType::Effect(index) } => {
-                sequencer.knob_turned(event.time, index + self.knob_offset, value);
+                // TODO 
+                //sequencer.knob_turned(event.time, index + self.knob_offset, value);
             },
             InputEventType::ButtonPressed(button_type) => {
                 // Get modifier (other currently pressed key)
@@ -492,7 +493,8 @@ impl APC for APC40 {
                     },
                     ButtonType::Sequence(index) => {
                         if let Some(ButtonType::Shift) = modifier {
-                            sequencer.queue_sequence(index);
+                            // TODO timeline
+                            //sequencer.queue_sequence(index);
                         } else {
                             surface.toggle_sequence(index);
                         }
