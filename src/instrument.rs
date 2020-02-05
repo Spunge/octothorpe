@@ -58,6 +58,7 @@ impl Instrument {
         self.phrases[to as usize] = self.phrases[from as usize].clone();
     }
 
+    /*
     fn starting_notes(&self, range: &Range<u32>, sequence_start: u32, phrase: u8) -> Vec<PlayingNoteEvent> {
         let phrase = &self.phrases[phrase as usize];
         let iteration = (range.start - sequence_start) / phrase.length();
@@ -118,11 +119,13 @@ impl Instrument {
             })
             .collect()
     }
+    */
 
     // TODO - Don't pass cycle directly, handle changing phrases etc in sequencer
     pub fn output_midi(&mut self, cycle: &ProcessCycle, range: &Range<u32>, sequence_start: u32, playing_phrase: Option<u8>) {
         // Only play new notes when cycle is rolling & there's a phrase playing
         if let (Some(phrase), true) = (playing_phrase, cycle.is_rolling) {
+            /*
             let mut starting_notes = self.starting_notes(&range, sequence_start, phrase);
 
             // Create actual midi from note representations
@@ -136,6 +139,7 @@ impl Instrument {
             // Remember playing notes to later trigger note off message & output note on messages
             self.playing_notes.append(&mut starting_notes);
             self.output.output_messages(&mut messages);
+            */
         }
 
         // Always play note off messages

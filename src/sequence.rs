@@ -1,5 +1,6 @@
 
 use super::instrument::Instrument;
+use super::loopable::*;
 
 pub struct Sequence {
     // Phrase that's playing for instrument, array index = instrument
@@ -47,5 +48,18 @@ impl Sequence {
 
     pub fn toggle_active(&mut self, instrument: usize) {
         self.active[instrument as usize] = ! self.active[instrument as usize];
+    }
+
+    pub fn length(&self, instruments: &[Instrument]) -> u32 {
+        self.phrases().iter().enumerate()
+            .filter_map(|(instrument_index, phrase_option)| {
+                phrase_option.and_then(|phrase_index| {
+                    Some(instruments[instrument_index].phrases[phrase_index as usize].length())
+                })
+            })
+            .max()
+            // When nothing is playing, we still need some kind of length to calculate when to queue next sequence
+            .or(Some(Phrase::default_length()))
+            .unwrap()
     }
 }

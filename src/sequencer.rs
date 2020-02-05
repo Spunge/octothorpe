@@ -71,18 +71,48 @@ impl Sequencer {
 
     // TODO - Direct queueing
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
-        // Get length of currenly playing sequence
-        let sequence_length = &self.sequences[self.sequence_playing.index].phrases().iter().enumerate()
-            .filter_map(|(instrument, phrase_option)| {
-                phrase_option.and_then(|phrase| {
-                    Some(self.instruments[instrument].phrases[phrase as usize].length())
-                })
-            })
-            .max()
-            // When nothing is playing, we still need some kind of length to calculate when to queue next sequence
-            .or(Some(Phrase::default_length()))
-            .unwrap();
 
+        let playing_sequence = &self.sequences[self.sequence_playing.index];
+        let sequence_length = playing_sequence.length(&self.instruments);
+        let sequence_end = self.sequence_playing.start + sequence_length;
+
+        for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
+            let mut starting_notes = vec![];
+            let patterns = &mut instrument.patterns;
+
+            if let Some(phrase_index) = playing_sequence.get_phrase(instrument_index) {
+                let phrase = instrument.get_phrase(phrase_index);
+                let phrase_iteration = (cycle.tick_range.start - self.sequence_playing.start) / phrase.length();
+                let phrase_start = self.sequence_playing.start + (phrase_iteration * phrase.length());
+                let phrase_end = phrase_start + phrase.length();
+
+                let relative_phrase_start = cycle.tick_range.start - self.sequence_playing.start;
+
+                if cycle.tick_range.contains(&phrase_end) {
+                    let relative_start = cycle.tick_range.start - phrase_start;
+                    // range from cycle start to phrase end
+                    let notes = phrase.get_starting_notes(relative_start .. phrase.length(), patterns);
+                    starting_notes.append(&mut notes);
+                    
+                    // Only queue currently playing phrase if there's no other sequence queued
+                    if phrase.length() < sequence_length || (phrase.length() == sequence_length && self.sequence_queued.is_none()) {
+                        // range from phrase_end to cycle_end on playing phrase in playing sequence
+                    }
+                } else {
+                    // range from cycle start to cycle end
+                }
+            }
+
+            if let (Some(phrase_index), true) = (self.sequence_queued, cycle.tick_range.contains(&sequence_end)) {
+                let phrase = instrument.get_phrase(phrase_index as u8);
+                // range from sequnece_end to cycle_end on playing phrase in queued sequennce
+            }
+        }
+
+        // switch sequence
+
+
+        /*
         let mut ranges = vec![];
 
         // Could be no phrases are playing, in that case, chill
@@ -115,6 +145,7 @@ impl Sequencer {
         }
 
         // TODO - Check if we need to move queued to active
+        */
     }
 
     // One of the control knobs on the APC was turned
