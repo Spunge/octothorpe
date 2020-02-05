@@ -45,10 +45,8 @@ impl Instrument {
         &mut self.patterns[index as usize]
     }
 
-    // TODO - phrase && phrase_mut
-    pub fn get_phrase(&mut self, index: u8) -> &mut Phrase {
-        &mut self.phrases[index as usize]
-    }
+    pub fn phrase(&self, index: u8) -> &Phrase { &self.phrases[index as usize] }
+    pub fn phrase_mut(&mut self, index: u8) -> &mut Phrase { &mut self.phrases[index as usize] }
 
     pub fn clone_pattern(&mut self, from: u8, to: u8) {
         self.patterns[to as usize] = self.patterns[from as usize].clone();
@@ -56,6 +54,60 @@ impl Instrument {
 
     pub fn clone_phrase(&mut self, from: u8, to: u8) {
         self.phrases[to as usize] = self.phrases[from as usize].clone();
+    }
+
+    pub fn starting_notes(&self, range: Range<u32>, sequence_start: u32, phrase_index: u8) -> Vec<PlayingNoteEvent> {
+        let phrase = self.phrase(phrase_index);
+
+        let phrase_start_tick = (range.start - sequence_start) % phrase.length();
+        let iteration = (range.start - sequence_start) / phrase.length();
+        let mut phrase_stop_tick = (range.end - sequence_start) % phrase.length();
+        if phrase_stop_tick == 0 { 
+            phrase_stop_tick = phrase.length();
+        }
+
+        phrase.pattern_events.iter()
+            .filter(|pattern_event| pattern_event.overlaps_tick_range(phrase_start_tick, phrase_stop_tick))
+            .flat_map(|pattern_event| {
+                // Looping patterns consist of 2 ranges
+                let pattern_event_length = pattern_event.length(phrase.length());
+                // Convert from phrase ticks to note event ticks
+                let start_tick = if pattern_event.is_looping() && phrase_start_tick < pattern_event.start() {
+                    pattern_event_length - pattern_event.stop().unwrap()
+                } else {
+                    0
+                };
+
+                self.patterns[pattern_event.pattern as usize].note_events.iter()
+                    .filter(|note_event| note_event.stop().is_some())
+                    .filter(move |note_event| {
+                        // Is pattern event just starting?
+                        let mut note_start_tick = if pattern_event.start() > phrase_start_tick { 0 } else { phrase_start_tick - pattern_event.start() };
+                        let mut note_stop_tick = phrase_stop_tick - pattern_event.start();
+                        // Offset by calculated start tick to grab correct notes from looping patterns
+                        note_start_tick += start_tick;
+                        note_stop_tick += start_tick;
+                        // TODO - Looping patterns with length set explicitly
+                        //dbg!(note_start_tick, note_stop_tick, start_tick);
+                        (note_start_tick .. note_stop_tick).contains(&note_event.start())
+                    })
+                    .map(move |note_event| {
+                        let base_tick = sequence_start + iteration * phrase.length() + pattern_event.start();
+                        let mut stop = note_event.stop().unwrap();
+                        if note_event.is_looping() { stop += pattern_event_length }
+
+                        PlayingNoteEvent {
+                            // subtract start_tick here to make up for the shift in start due
+                            // to looping pattern
+                            start: base_tick + note_event.start() - start_tick,
+                            stop: base_tick + stop - start_tick,
+                            note: note_event.note,
+                            start_velocity: note_event.start_velocity,
+                            stop_velocity: note_event.stop_velocity.unwrap(),
+                        }
+                    })
+            })
+            .collect()
     }
 
     /*
@@ -122,26 +174,7 @@ impl Instrument {
     */
 
     // TODO - Don't pass cycle directly, handle changing phrases etc in sequencer
-    pub fn output_midi(&mut self, cycle: &ProcessCycle, range: &Range<u32>, sequence_start: u32, playing_phrase: Option<u8>) {
-        // Only play new notes when cycle is rolling & there's a phrase playing
-        if let (Some(phrase), true) = (playing_phrase, cycle.is_rolling) {
-            /*
-            let mut starting_notes = self.starting_notes(&range, sequence_start, phrase);
-
-            // Create actual midi from note representations
-            let mut messages = starting_notes.iter()
-                .map(|note| {
-                    let frame = cycle.tick_to_frame(note.start);
-                    TimedMessage::new(frame, Message::Note([0x90, note.note, note.start_velocity]))
-                })
-                .collect();
-
-            // Remember playing notes to later trigger note off message & output note on messages
-            self.playing_notes.append(&mut starting_notes);
-            self.output.output_messages(&mut messages);
-            */
-        }
-
+    pub fn output_midi(&mut self, cycle: &ProcessCycle, starting_notes: Vec<PlayingNoteEvent>) {
         // Always play note off messages
         let mut messages = vec![];
 
@@ -155,7 +188,19 @@ impl Instrument {
                 true
             }
         });
-        
+
+        // Create actual midi from note representations
+        let note_on = starting_notes.iter()
+            .map(|note| {
+                let frame = cycle.tick_to_frame(note.start);
+                TimedMessage::new(frame, Message::Note([0x90, note.note, note.start_velocity]))
+            });
+
+        messages.extend(note_on);
+
+        // Remember playing notes to later trigger note off message & output note on messages
+        self.playing_notes.extend(starting_notes);
+
         // Output note off mesassages && write midi
         self.output.output_messages(&mut messages);
         self.output.write_midi(cycle.scope);

@@ -85,6 +85,7 @@ impl Phrase {
         Phrase { length: Self::default_length(), pattern_events: vec![] }
     }
 
+    // Default phrase length = 4 bars
     pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4 }
     pub fn set_length(&mut self, length: u32) { 
         self.length = length; 
@@ -97,6 +98,14 @@ impl Phrase {
                 }
             }
         });
+    }
+
+    // Accept absolute tick_range, get playing notes for that when looping from sequence_start
+    pub fn starting_notes(&self, range: Range<u32>, sequence_start: u32, patterns: &[Pattern]) 
+        -> impl Iterator<Item = PlayingNoteEvent> 
+    {
+        println!("{:?} {:?}", sequence_start, range);
+        vec![].into_iter()
     }
 
     // u8 = pattern, u32 = pattern_event length, range = pattern range

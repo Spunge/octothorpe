@@ -6,19 +6,58 @@ use super::instrument::Instrument;
 use super::sequence::Sequence;
 use super::loopable::*;
 
+#[derive(Debug, PartialEq, Copy, Clone)]
 struct PlayingSequence {
     // Start tick
     start: u32,
     index: usize,
 }
 
+impl PlayingSequence {
+    fn new(start: u32, index: usize) -> Self { 
+        Self { start, index }
+    }
+}
+
+pub struct TimeLine {
+    playing_sequences: Vec<PlayingSequence>,
+}
+
+impl TimeLine {
+    fn new()  -> Self {
+        Self { 
+            playing_sequences: vec![PlayingSequence::new(0, 0)] 
+        }
+    }
+
+    fn playing_sequence(&self, start: u32) -> &PlayingSequence {
+        self.playing_sequences.iter()
+            .filter(|playing_sequence| playing_sequence.start <= start)
+            .max_by_key(|playing_sequence| playing_sequence.start)
+            .unwrap()
+    }
+
+    fn next_sequence(&mut self, playing_sequence: &PlayingSequence, sequence_length: u32) -> PlayingSequence {
+        let next_sequence_tick = playing_sequence.start + sequence_length;
+        let sequence = self.playing_sequence(next_sequence_tick);
+
+        // Is next sequence still this one?
+        if sequence.start == playing_sequence.start {
+            let next_sequence = PlayingSequence::new(next_sequence_tick, playing_sequence.index);
+            println!("{:?}", next_sequence);
+            self.playing_sequences.push(next_sequence);
+            next_sequence
+        } else {
+            *sequence
+        }
+    }
+}
+
 pub struct Sequencer {
     pub instruments: [Instrument; 16],
     pub sequences: [Sequence; 4],
-
-    // What is playing?
-    sequence_playing: PlayingSequence,
-    sequence_queued: Option<usize>,
+    
+    pub timeline: TimeLine,
 }
 
 impl Sequencer {
@@ -54,10 +93,7 @@ impl Sequencer {
         Sequencer {
             instruments,
             sequences,
-
-            // TODO - Use timeline for this
-            sequence_playing: PlayingSequence { start: 0, index: 0 },
-            sequence_queued: None,
+            timeline: TimeLine::new(),
         }
     }
 
@@ -78,15 +114,44 @@ impl Sequencer {
 
     // TODO - Direct queueing
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
+        let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start);
+        let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.instruments);
+        let sequence_end = playing_sequence.start + playing_sequence_length;
 
-        let playing_sequence = &self.sequences[self.sequence_playing.index];
-        let sequence_length = playing_sequence.length(&self.instruments);
-        let sequence_end = self.sequence_playing.start + sequence_length;
+        if ! cycle.is_rolling {
+            return
+        }
 
         for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
-            let mut play_pattern_ranges = vec![];
+            let mut starting_notes = vec![];
 
-            if let Some(phrase_index) = playing_sequence.get_phrase(instrument_index) {
+            let sequence_playing = &self.sequences[playing_sequence.index];
+            let playing_phrase = sequence_playing.get_phrase(instrument_index);
+
+            if cycle.tick_range.contains(&sequence_end) {
+                if let (Some(index), true) = (playing_phrase, cycle.tick_range.start < sequence_end) {
+                    // Add from start to sequence_end
+                    starting_notes.extend(instrument.starting_notes(cycle.tick_range.start .. sequence_end, playing_sequence.start, index));
+                }
+
+                // Insert currenly playing cycle into timeline when there's no next cycle queued
+                let next_sequence = self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
+                if let Some(index) = self.sequences[next_sequence.index].get_phrase(instrument_index) {
+                    // Only queue more of this when nothing is queued
+                    starting_notes.extend(instrument.starting_notes(sequence_end .. cycle.tick_range.end, sequence_end, index));
+                }
+            } else {
+                if let Some(index) = playing_phrase {
+                    starting_notes.extend(instrument.starting_notes(cycle.tick_range.clone(), playing_sequence.start, index))
+                }
+            }
+
+            if starting_notes.len() > 0 {
+                println!("{:?}", starting_notes);
+            }
+            instrument.output_midi(cycle, starting_notes);
+
+            /*
                 let phrase = instrument.get_phrase(phrase_index);
                 let phrase_iteration = (cycle.tick_range.start - self.sequence_playing.start) / phrase.length();
                 let phrase_start = self.sequence_playing.start + (phrase_iteration * phrase.length());
@@ -131,12 +196,7 @@ impl Sequencer {
             if play_pattern_ranges.len() > 0 {
                 println!("{:?}", play_pattern_ranges);
             }
-        }
-
-        // After we've processed the actual patterns and notes, switch the sequence when it has to
-        // be switched
-        if let (Some(index), true) = (self.sequence_queued, cycle.tick_range.contains(&sequence_end)) {
-            self.sequence_playing = PlayingSequence { start: sequence_end, index: index };
+            */
         }
     }
 
@@ -263,7 +323,8 @@ TimedMessage::new(message.time, Message::Note([instrument_channel, message.bytes
 */
 
 pub fn queue_sequence(&mut self, sequence: u8) {
-    self.sequence_queued = Some(sequence as usize);
+    // TODO 
+    //self.sequence_queued = Some(sequence as usize);
 }
 
 /*

@@ -582,7 +582,7 @@ impl APC for APC20 {
 
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
         let instrument = sequencer.get_instrument(surface.instrument_shown());
-        instrument.get_phrase(self.phrase_shown(surface.instrument_shown()))
+        instrument.phrase_mut(self.phrase_shown(surface.instrument_shown()))
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
@@ -619,7 +619,7 @@ impl APC for APC20 {
 
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         let instrument = sequencer.get_instrument(surface.instrument_shown());
-        let phrase = instrument.get_phrase(self.phrase_shown(surface.instrument_shown()));
+        let phrase = instrument.phrase_mut(self.phrase_shown(surface.instrument_shown()));
 
         // Only process channel note messages
         match event.event_type {
@@ -651,7 +651,7 @@ impl APC for APC20 {
                                 if let Some(ButtonType::Side(modifier_index)) = modifier {
                                     instrument.clone_phrase(modifier_index, index);
                                 } else if let Some(ButtonType::Shift) = global_modifier {
-                                    instrument.get_phrase(index).clear_events();
+                                    instrument.phrase_mut(index).clear_events();
                                 } else {
                                     self.phrases_shown[surface.instrument_shown()] = index;
                                 }
