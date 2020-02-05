@@ -17,11 +17,11 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
         }
     }
     
-    fn length(&self, phrase_length: u32) -> u32 {
+    fn length(&self, container_length: u32) -> u32 {
         let mut stop = self.stop().unwrap();
 
         if self.is_looping() {
-            stop += phrase_length;
+            stop += container_length;
         }
 
         stop - self.start()
@@ -105,7 +105,7 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
 }
 
 // note, velocity
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct LoopableNoteEvent {
     pub note: u8,
     pub start: u32,
@@ -130,7 +130,7 @@ impl LoopableNoteEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct LoopablePatternEvent {
     pub start: u32,
     pub stop: Option<u32>,

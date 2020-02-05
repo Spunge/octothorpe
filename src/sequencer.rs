@@ -69,6 +69,13 @@ impl Sequencer {
         &mut self.sequences[index]
     }
 
+    fn add_start_to_pattern_ranges(pattern_ranges: Vec<(u8, u32, Range<u32>)>, absolute_start: u32) -> impl Iterator<Item = (u8, u32, u32, Range<u32>)> {
+        pattern_ranges.into_iter()
+            .map(move |(pattern, pattern_length, pattern_range)| {
+                (pattern, absolute_start, pattern_length, pattern_range)
+            })
+    }
+
     // TODO - Direct queueing
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
 
@@ -77,8 +84,7 @@ impl Sequencer {
         let sequence_end = self.sequence_playing.start + sequence_length;
 
         for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
-            let mut starting_notes = vec![];
-            let patterns = &mut instrument.patterns;
+            let mut play_pattern_ranges = vec![];
 
             if let Some(phrase_index) = playing_sequence.get_phrase(instrument_index) {
                 let phrase = instrument.get_phrase(phrase_index);
@@ -88,64 +94,50 @@ impl Sequencer {
 
                 let relative_phrase_start = cycle.tick_range.start - self.sequence_playing.start;
 
-                if cycle.tick_range.contains(&phrase_end) {
+                if cycle.tick_range.contains(&(phrase_end - 1)) {
                     let relative_start = cycle.tick_range.start - phrase_start;
                     // range from cycle start to phrase end
-                    let notes = phrase.get_starting_notes(relative_start .. phrase.length(), patterns);
-                    starting_notes.append(&mut notes);
+                    let mut ranges = phrase.get_pattern_ranges(relative_start .. phrase.length());
+                    play_pattern_ranges.extend(&mut Self::add_start_to_pattern_ranges(ranges, phrase_start));
                     
                     // Only queue currently playing phrase if there's no other sequence queued
                     if phrase.length() < sequence_length || (phrase.length() == sequence_length && self.sequence_queued.is_none()) {
                         // range from phrase_end to cycle_end on playing phrase in playing sequence
+                        let relative_end = (cycle.tick_range.end - self.sequence_playing.start) % phrase.length();
+                        let mut ranges = phrase.get_pattern_ranges(0 .. relative_end);
+                        play_pattern_ranges.extend(&mut Self::add_start_to_pattern_ranges(ranges, phrase_end))
                     }
                 } else {
                     // range from cycle start to cycle end
+                    let relative_start = cycle.tick_range.start % phrase.length();
+                    let relative_end = cycle.tick_range.end % phrase.length();
+                    let ranges = phrase.get_pattern_ranges(relative_start .. relative_end);
+                    play_pattern_ranges.extend(&mut Self::add_start_to_pattern_ranges(ranges, phrase_start))
                 }
             }
 
-            if let (Some(phrase_index), true) = (self.sequence_queued, cycle.tick_range.contains(&sequence_end)) {
-                let phrase = instrument.get_phrase(phrase_index as u8);
-                // range from sequnece_end to cycle_end on playing phrase in queued sequennce
+            if let (Some(sequence_index), true) = (self.sequence_queued, cycle.tick_range.contains(&sequence_end)) {
+                let queued_sequence = &self.sequences[sequence_index];
+
+                if let Some(phrase_index) = queued_sequence.get_phrase(instrument_index) {
+                    // range from sequnece_end to cycle_end on playing phrase in queued sequennce
+                    let phrase = instrument.get_phrase(phrase_index as u8);
+                    let ranges = phrase.get_pattern_ranges(0 .. cycle.tick_range.end - sequence_end);
+                    play_pattern_ranges.extend(&mut Self::add_start_to_pattern_ranges(ranges, sequence_end));
+                }
+            }
+
+            // Get starting notes from patterns
+            if play_pattern_ranges.len() > 0 {
+                println!("{:?}", play_pattern_ranges);
             }
         }
 
-        // switch sequence
-
-
-        /*
-        let mut ranges = vec![];
-
-        // Could be no phrases are playing, in that case, chill
-        // Get relative cycle to see if end or start fall in current cycle
-        let end = self.sequence_playing.start + sequence_length;
-
-        if cycle.tick_range.contains(&end) {
-            // Play currently playing sequence for first part of cycle till sequence ends
-            ranges.push((self.sequence_playing.index, self.sequence_playing.start, cycle.tick_range.start .. end));
-
-            // Update playing sequence
-            if let Some(index) = self.sequence_queued {
-                self.sequence_playing = PlayingSequence { start: end, index: index };
-                self.sequence_queued = None;
-            }
-
-            // TODO - When there's cycle left, play second part of cycle with newly played sequence
-            ranges.push((self.sequence_playing.index, self.sequence_playing.start, end .. cycle.tick_range.end));
-            println!("{:?}", ranges);
-        } else {
-            // Play currently playing sequence for first part of cycle till sequence ends
-            ranges.push((self.sequence_playing.index, self.sequence_playing.start, cycle.tick_range.clone()));
+        // After we've processed the actual patterns and notes, switch the sequence when it has to
+        // be switched
+        if let (Some(index), true) = (self.sequence_queued, cycle.tick_range.contains(&sequence_end)) {
+            self.sequence_playing = PlayingSequence { start: sequence_end, index: index };
         }
-
-        for (sequence_index, sequence_start, range) in ranges.iter() {
-            for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
-                let sequence = &self.sequences[*sequence_index];
-                instrument.output_midi(cycle, range, *sequence_start, sequence.active_phrase(instrument_index));
-            }
-        }
-
-        // TODO - Check if we need to move queued to active
-        */
     }
 
     // One of the control knobs on the APC was turned

@@ -99,55 +99,38 @@ impl Phrase {
         });
     }
 
-    // TODO - This is the simple way of doing things, by not keeping track of playing
-    // patterns, which means we can't play parts of patterns over phrase boundaries
-    // TODO - There is another way, which involves keeping track of playing events for
-    // notes & patterns which keep a reference to loopable event, and adding /removing 
-    // these from loopable container together with adding / removing loopable events 
-    // based on the references. This will make it possible to play patterns over phrase
-    // bounds, i'm not sure if that's the behaviour we want though
-    pub fn get_starting_notes(&self, range: Range<u32>, patterns: &[Pattern]) -> Vec<PlayingNoteEvent> {
+    // u8 = pattern, u32 = pattern_event length, range = pattern range
+    pub fn get_pattern_ranges(&self, range: Range<u32>) -> Vec<(u8, u32, Range<u32>)> {
         self.pattern_events.iter()
             // First check for simple overlap
             // TODO Check if pattern_event is within phrases length ( we can draw after phrase length)
             .filter(|pattern_event| pattern_event.overlaps_tick_range(range.start, range.end))
-            .flat_map(|pattern_event| {
-                // Looping patterns consist of 2 ranges
+            .map(|pattern_event| {
                 let pattern_event_length = pattern_event.length(self.length());
-                // Convert from phrase ticks to note event ticks
-                let start_tick = if pattern_event.is_looping() && range.start < pattern_event.start() {
-                    pattern_event_length - pattern_event.stop().unwrap()
-                } else {
-                    0
+                // Convert from phrase ticks to pattern ticks
+                let pattern_offset = pattern_event_length - pattern_event.stop().unwrap();
+
+                let pattern_start_tick = if pattern_event.start() > range.start { 
+                    0 
+                } else { 
+                    range.start - pattern_event.start() 
                 };
 
-                patterns[pattern_event.pattern as usize].note_events.iter()
-                    .filter(|note_event| note_event.stop().is_some())
-                    .filter(move |note_event| {
-                        // Is pattern event just starting?
-                        let mut note_start_tick = if pattern_event.start() > range.start { 0 } else { range.start - pattern_event.start() };
-                        let mut note_stop_tick = range.end - pattern_event.start();
-                        // Offset by calculated start tick to grab correct notes from looping patterns
-                        note_start_tick += start_tick;
-                        note_stop_tick += start_tick;
-                        // TODO - Looping patterns with length set explicitly
-                        //dbg!(note_start_tick, note_stop_tick, start_tick);
-                        (note_start_tick .. note_stop_tick).contains(&note_event.start())
-                    })
-                    .map(move |note_event| {
-                        let mut stop = note_event.stop().unwrap();
-                        if note_event.is_looping() { stop += pattern_event_length }
+                let pattern_stop_tick = if pattern_event.stop().unwrap() <= range.end {
+                    pattern_event_length
+                } else {
+                    range.end % pattern_event_length
+                };
 
-                        PlayingNoteEvent {
-                            // subtract start_tick here to make up for the shift in start due
-                            // to looping pattern
-                            start: pattern_event.start() + note_event.start() - start_tick,
-                            stop: pattern_event.start() + stop - start_tick,
-                            note: note_event.note,
-                            start_velocity: note_event.start_velocity,
-                            stop_velocity: note_event.stop_velocity.unwrap(),
-                        }
-                    })
+                
+
+                // Offset by calculated start tick to grab correct notes from looping patterns
+                //let pattern_start_tick = (range.start + offset_start_tick) % pattern_event_length;
+                //let pattern_stop_tick = (range.end + offset_start_tick) % pattern_event_length;
+
+                // TODO - Looping patterns with length set explicitly
+                
+                (pattern_event.pattern, pattern_event_length, pattern_start_tick .. pattern_stop_tick)
             })
             .collect()
     }
@@ -189,6 +172,10 @@ impl Pattern {
 
     pub fn new() -> Self {
         Pattern { note_events: vec![] }
+    }
+
+    fn get_starting_notes(range: &Range<u32>) -> Vec<PlayingNoteEvent> {
+        vec![]
     }
 }
 
