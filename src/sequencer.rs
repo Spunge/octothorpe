@@ -105,13 +105,6 @@ impl Sequencer {
         &mut self.sequences[index]
     }
 
-    fn add_start_to_pattern_ranges(pattern_ranges: Vec<(u8, u32, Range<u32>)>, absolute_start: u32) -> impl Iterator<Item = (u8, u32, u32, Range<u32>)> {
-        pattern_ranges.into_iter()
-            .map(move |(pattern, pattern_length, pattern_range)| {
-                (pattern, absolute_start, pattern_length, pattern_range)
-            })
-    }
-
     // TODO - Direct queueing
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
         let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start);
