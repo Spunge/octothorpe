@@ -128,13 +128,17 @@ impl Sequencer {
             let sequence_playing = &self.sequences[playing_sequence.index];
             let playing_phrase = sequence_playing.get_phrase(instrument_index);
 
+            // Insert currenly playing cycle into timeline when there's no next cycle queued
+            if cycle.tick_range.contains(&sequence_end) || sequence_end < cycle.tick_range.start {
+                self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
+            }
+
             if cycle.tick_range.contains(&sequence_end) {
                 if let (Some(index), true) = (playing_phrase, cycle.tick_range.start < sequence_end) {
                     // Add from start to sequence_end
                     starting_notes.extend(instrument.starting_notes(cycle.tick_range.start .. sequence_end, playing_sequence.start, index));
                 }
 
-                // Insert currenly playing cycle into timeline when there's no next cycle queued
                 let next_sequence = self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
                 if let Some(index) = self.sequences[next_sequence.index].get_phrase(instrument_index) {
                     // Only queue more of this when nothing is queued
