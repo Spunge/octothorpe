@@ -64,6 +64,25 @@ pub trait Loopable {
 
         indexes.into_iter().for_each(|index| { self.events().remove(index); () });
     }
+
+    // Get ranges of this phrase that should be played when keeping looping in mind
+    fn relative_ranges(&self, range: &Range<u32>) -> Vec<(Range<u32>, u32)> {
+        let iteration = range.start / self.length();
+        let offset = iteration * self.length();
+        let start = range.start % self.length();
+
+        // Range will stop exactly at phrase length
+        let mut stop = range.end % self.length();
+        if stop == 0 {
+            stop = self.length();
+        }
+
+        if start > stop {
+            vec![(start .. self.length(), offset), (0 .. stop, offset)]
+        } else {
+            vec![(start .. stop, offset)]
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -135,6 +154,15 @@ impl Loopable for Pattern {
     }
 
     fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
+
+    // Only return relative ranges when this is a looping pattern
+    fn relative_ranges(&self, range: &Range<u32>) -> Vec<(Range<u32>, u32)> {
+        if self.has_explicit_length() {
+            Loopable::relative_ranges(self, range)
+        } else {
+            vec![(range.clone(), 0)]
+        }
+    }
 }
 
 impl Pattern {

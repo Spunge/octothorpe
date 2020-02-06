@@ -41,9 +41,8 @@ impl Instrument {
         }
     }
 
-    pub fn get_pattern(&mut self, index: u8) -> &mut Pattern {
-        &mut self.patterns[index as usize]
-    }
+    pub fn pattern(&self, index: u8) -> &Pattern { &self.patterns[index as usize] }
+    pub fn pattern_mut(&mut self, index: u8) -> &mut Pattern { &mut self.patterns[index as usize] }
 
     pub fn phrase(&self, index: u8) -> &Phrase { &self.phrases[index as usize] }
     pub fn phrase_mut(&mut self, index: u8) -> &mut Phrase { &mut self.phrases[index as usize] }
@@ -59,13 +58,53 @@ impl Instrument {
     pub fn starting_notes(&self, range: Range<u32>, sequence_start: u32, phrase_index: u8) -> Vec<PlayingNoteEvent> {
         let phrase = self.phrase(phrase_index);
 
-        let phrase_start_tick = (range.start - sequence_start) % phrase.length();
-        let iteration = (range.start - sequence_start) / phrase.length();
-        let mut phrase_stop_tick = (range.end - sequence_start) % phrase.length();
-        if phrase_stop_tick == 0 { 
-            phrase_stop_tick = phrase.length();
+        //let phrase_start_tick = (range.start - sequence_start) % phrase.length();
+        //let phrase_iteration = (range.start - sequence_start) / phrase.length();
+        //let mut phrase_stop_tick = (range.end - sequence_start) % phrase.length();
+        //if phrase_stop_tick == 0 { 
+            //phrase_stop_tick = phrase.length();
+        //}
+
+        let phrase_range = (range.start - sequence_start) .. (range.end - sequence_start);
+
+        //println!("{:?} {:?} {:?}", phrase_start_tick, phrase_stop_tick, phrase_iteration);
+
+        let phrase_ranges = phrase.relative_ranges(&phrase_range);
+
+        let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.iter()
+            .flat_map(|(phrase_range, phrase_offset)| {
+                phrase.pattern_events.iter()
+                    .flat_map(move |pattern_event| {
+                        let pattern = self.pattern(pattern_event.pattern);
+                        let pattern_ranges = pattern.relative_ranges(phrase_range);
+
+                        pattern_ranges.into_iter()
+                            .flat_map(move |(pattern_range, pattern_offset)| {
+                                pattern.note_events.iter()
+                                    .filter(move |note_event| {
+                                        phrase_range.contains(&(note_event.start() + pattern_event.start()))
+                                    })
+                                    .map(move |note_event| {
+                                         PlayingNoteEvent {
+                                            start: sequence_start + phrase_offset + pattern_offset + pattern_event.start() + note_event.start(),
+                                            stop: sequence_start + phrase_offset + pattern_offset + pattern_event.start() + note_event.stop().unwrap(),
+                                            note: note_event.note,
+                                            start_velocity: note_event.start_velocity,
+                                            stop_velocity: note_event.stop_velocity.unwrap(),
+                                        }
+                                    })
+                            })
+                    })
+            })
+            .collect();
+
+        if starting_notes.len() > 0 {
+            println!("{:?}", starting_notes);
         }
 
+        starting_notes
+
+        /*
         phrase.pattern_events.iter()
             // Create seperate end & start ranges for looping patterns,
             .flat_map(|pattern_event| {
@@ -81,32 +120,73 @@ impl Instrument {
             })
             // Check if range overlaps with phrase range
             .filter(|(pattern_range, _, _)| {
-                pattern_range.start < phrase_stop_tick && pattern_range.end > phrase_stop_tick
+                pattern_range.start < phrase_stop_tick && pattern_range.end > phrase_start_tick
             })
             // Check if notes falls in current cycle, offset by note_offset to get correct part of
             // looping patterns
             .flat_map(|(pattern_range, note_offset, pattern_event)| {
-                self.patterns[pattern_event.pattern as usize].note_events.iter()
+                let pattern = &self.patterns[pattern_event.pattern as usize];
+
+                println!("{:?}", pattern_range);
+
+                // Adjust to only search for notes within pattern range
+                let relative_phrase_start_tick = if phrase_start_tick < pattern_range.start { pattern_range.start } else { phrase_start_tick };
+                let relative_phrase_stop_tick = if phrase_stop_tick > pattern_range.end { pattern_range.end } else { phrase_stop_tick };
+
+                //println!("{:?} {:?} {:?} {:?}", phrase_start_tick, phrase_stop_tick, note_event.start(), pattern_range.start);
+                //println!("{:?} {:?}", relative_phrase_start_tick, relative_phrase_stop_tick);
+
+                let mut pattern_start_tick = relative_phrase_start_tick + note_offset - pattern_range.start;
+                let mut pattern_stop_tick = relative_phrase_stop_tick + note_offset - pattern_range.start;
+                let mut pattern_iteration = 0;
+
+                // When pattern has explicit length set, we want to loop it
+
+                if pattern.has_explicit_length() {
+                    pattern_iteration = pattern_start_tick / pattern.length();
+                    pattern_start_tick = pattern_start_tick % pattern.length();
+                    pattern_stop_tick = pattern_stop_tick % pattern.length();
+
+                    if pattern_stop_tick < pattern_start_tick {
+                        vec![
+                            (pattern_range.start, note_offset, pattern_start_tick, pattern.length(), pattern_iteration, pattern_event),
+                            (pattern_range.start, note_offset, 0, pattern_stop_tick, pattern_iteration, pattern_event),
+                        ]
+                    } else {
+                        vec![(pattern_range.start, note_offset, pattern_start_tick, pattern_stop_tick, pattern_iteration, pattern_event)]
+                    }
+                } else {
+                    vec![(pattern_range.start, note_offset, pattern_start_tick, pattern_stop_tick, pattern_iteration, pattern_event)]
+                }
+            })
+            .flat_map(|(pattern_range_start, note_offset, pattern_start_tick, pattern_stop_tick, pattern_iteration, pattern_event)| {
+                let pattern = &self.patterns[pattern_event.pattern as usize];
+
+                println!("{:?} {:?}", pattern_start_tick, pattern_stop_tick);
+
+                pattern.note_events.iter()
                     .filter(|note_event| note_event.stop().is_some())
                     .filter_map(move |note_event| {
-                        // TODO - Looping patterns with length set explicitly
-                        let note_start_tick = phrase_start_tick + note_offset;
-                        let note_stop_tick = phrase_stop_tick + note_offset;
 
-                        if (note_start_tick .. note_stop_tick).contains(&(note_event.start() + pattern_range.start)) {
-                            let base_tick = sequence_start + iteration * phrase.length();
+                        //println!("{:?} {:?} {:?} {:?} {:?} {:?}", phrase_start_tick, pattern_start_tick, phrase_stop_tick, pattern_stop_tick, note_offset, pattern_iteration);
+
+                        if (pattern_start_tick .. pattern_stop_tick).contains(&(note_event.start())) {
+
+                            let base_tick = sequence_start + phrase_iteration * phrase.length() + pattern_iteration * pattern.length();
                             let mut stop = note_event.stop().unwrap();
                             if note_event.is_looping() { stop += pattern_event.length(phrase.length()) }
 
                             let event = PlayingNoteEvent {
                                 // subtract start_tick here to make up for the shift in start due
                                 // to looping pattern
-                                start: base_tick + note_event.start() + pattern_range.start - note_offset,
-                                stop: base_tick + stop + pattern_range.start - note_offset,
+                                start: base_tick + note_event.start() + pattern_range_start - note_offset,
+                                stop: base_tick + stop + pattern_range_start - note_offset,
                                 note: note_event.note,
                                 start_velocity: note_event.start_velocity,
                                 stop_velocity: note_event.stop_velocity.unwrap(),
                             };
+
+                            println!("{:?}",  &event);
 
                             Some(event)
                         } else {
@@ -115,6 +195,7 @@ impl Instrument {
                     })
             })
             .collect()
+                */
     }
 
     pub fn output_midi(&mut self, cycle: &ProcessCycle, starting_notes: Vec<PlayingNoteEvent>) {

@@ -44,7 +44,6 @@ impl TimeLine {
         // Is next sequence still this one?
         if sequence.start == playing_sequence.start {
             let next_sequence = PlayingSequence::new(next_sequence_tick, playing_sequence.index);
-            println!("{:?}", next_sequence);
             self.playing_sequences.push(next_sequence);
             next_sequence
         } else {

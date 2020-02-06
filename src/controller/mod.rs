@@ -352,7 +352,7 @@ impl APC for APC40 {
 
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
         let instrument = sequencer.get_instrument(surface.instrument_shown());
-        instrument.get_pattern(self.pattern_shown(surface.instrument_shown()))
+        instrument.pattern_mut(self.pattern_shown(surface.instrument_shown()))
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
@@ -396,7 +396,7 @@ impl APC for APC40 {
      */
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
         let instrument = sequencer.get_instrument(surface.instrument_shown());
-        let pattern = instrument.get_pattern(self.pattern_shown(surface.instrument_shown()));
+        let pattern = instrument.pattern_mut(self.pattern_shown(surface.instrument_shown()));
 
         // Only process channel note messages
         match event.event_type {
@@ -434,13 +434,13 @@ impl APC for APC40 {
                             ButtonType::Side(index) => {
                                 // TODO - double press logic && recording logic
                                 if false {
-                                    //instrument.get_pattern(index).switch_recording_state()
+                                    //instrument.pattern_mut(index).switch_recording_state()
                                 } else {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         instrument.clone_pattern(modifier_index, index);
                                     } else if let Some(ButtonType::Shift) = global_modifier {
                                         self.set_offset(surface.instrument_shown(), 0);
-                                        instrument.get_pattern(index).clear_events();
+                                        instrument.pattern_mut(index).clear_events();
                                     } else {
                                         self.patterns_shown[surface.instrument_shown()] = index; 
                                     }
