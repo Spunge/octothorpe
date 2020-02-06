@@ -446,6 +446,15 @@ impl APC for APC40 {
                                     }
                                 }
                             },
+                            ButtonType::Activator(index) => {
+                                let length = Pattern::minimum_length() * (index as u32 + 1);
+
+                                if pattern.has_explicit_length() && pattern.length() == length {
+                                    pattern.unset_length();
+                                } else {
+                                    pattern.set_length(length);
+                                }
+                            },
                             ButtonType::Up => {
                                 let base_note = &mut self.base_notes[surface.instrument_shown()];
                                 let new_base_note = *base_note + 4;
@@ -517,8 +526,15 @@ impl APC for APC40 {
 
         self.side.draw(4 - self.pattern_shown(surface.instrument_shown()), 1);
 
+        // pattern length selector
+        if loopable.has_explicit_length() {
+            for index in 0 .. (loopable.length() / Self::Loopable::minimum_length()) {
+                self.activator.draw(index as u8, 1);
+            }
+        }
+
         // Indicator
-        let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button];
+        let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
         let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
 
         messages.append(&mut self.grid.output_messages(0));

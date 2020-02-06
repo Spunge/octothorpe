@@ -83,25 +83,20 @@ impl Instrument {
             .filter(|(pattern_range, _, _)| {
                 pattern_range.start < phrase_stop_tick && pattern_range.end > phrase_stop_tick
             })
+            // Check if notes falls in current cycle, offset by note_offset to get correct part of
+            // looping patterns
             .flat_map(|(pattern_range, note_offset, pattern_event)| {
-                // Looping patterns consist of 2 ranges
-                let pattern_event_length = pattern_event.length(phrase.length());
-                println!("{:?} {:?}", pattern_range, note_offset);
-
                 self.patterns[pattern_event.pattern as usize].note_events.iter()
                     .filter(|note_event| note_event.stop().is_some())
                     .filter_map(move |note_event| {
-                        // Is pattern event just starting?
-                        // Offset by calculated start tick to grab correct notes from looping patterns
                         // TODO - Looping patterns with length set explicitly
                         let note_start_tick = phrase_start_tick + note_offset;
                         let note_stop_tick = phrase_stop_tick + note_offset;
 
                         if (note_start_tick .. note_stop_tick).contains(&(note_event.start() + pattern_range.start)) {
-                            println!("{:?} {:?}", note_event, note_offset);
                             let base_tick = sequence_start + iteration * phrase.length();
                             let mut stop = note_event.stop().unwrap();
-                            if note_event.is_looping() { stop += pattern_event_length }
+                            if note_event.is_looping() { stop += pattern_event.length(phrase.length()) }
 
                             let event = PlayingNoteEvent {
                                 // subtract start_tick here to make up for the shift in start due

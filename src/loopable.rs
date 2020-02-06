@@ -104,6 +104,7 @@ impl Phrase {
 #[derive(Clone)]
 pub struct Pattern {
     pub note_events: Vec<LoopableNoteEvent>,
+    pub length: Option<u32>,
 }
 
 impl Loopable for Pattern {
@@ -111,36 +112,48 @@ impl Loopable for Pattern {
 
     // Pattern will adjust it's length based on the maximum tick it contains
     fn length(&self) -> u32 {
-        // Get max tick, stop || start
-        let max_tick = self.note_events.iter().map(|event| event.start).max().and_then(|max_start| {
-             self.note_events.iter().filter(|event| event.stop.is_some()).map(|event| event.stop.unwrap()).max()
-                .and_then(|max_stop| Some(if max_stop > max_start { max_stop } else { max_start }))
-                .or_else(|| Some(max_start))
-        });
+        // When length is not set explicitely, calculate it based on notes in pattern so that we
+        // have an indication
+        self.length.unwrap_or_else(|| {
+            // Get max tick, stop || start
+            let max_tick = self.note_events.iter().map(|event| event.start).max().and_then(|max_start| {
+                 self.note_events.iter().filter(|event| event.stop.is_some()).map(|event| event.stop.unwrap()).max()
+                    .and_then(|max_stop| Some(if max_stop > max_start { max_stop } else { max_start }))
+                    .or_else(|| Some(max_start))
+            });
 
-        let mut length = Self::minimum_length();
+            let mut length = Self::minimum_length();
 
-        if let Some(tick) = max_tick { 
-            while length / 2 < tick {
-                length = length * 2;
+            if let Some(tick) = max_tick { 
+                while length / 2 < tick {
+                    length = length * 2;
+                }
             }
-        }
 
-        length
+            length
+        })
     }
 
     fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
 }
 
 impl Pattern {
-    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 }
+    pub fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 }
 
     pub fn new() -> Self {
-        Pattern { note_events: vec![] }
+        Pattern { note_events: vec![], length: None }
     }
 
-    fn get_starting_notes(range: &Range<u32>) -> Vec<PlayingNoteEvent> {
-        vec![]
+    pub fn has_explicit_length(&self) -> bool {
+        self.length.is_some()
+    }
+
+    pub fn unset_length(&mut self) {
+        self.length = None;
+    }
+
+    pub fn set_length(&mut self, length: u32) {
+        self.length = Some(length);
     }
 }
 
