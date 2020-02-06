@@ -42,7 +42,7 @@ impl TimebaseHandler {
 
     pub fn new(receiver: Receiver<f64>) -> Self {
         TimebaseHandler {
-            beats_per_minute: 156.0,
+            beats_per_minute: 120.0,
             is_up_to_date: false,
             beats_per_bar: 4.0,
             beat_type: 4.0,

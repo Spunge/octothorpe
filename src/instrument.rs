@@ -67,43 +67,55 @@ impl Instrument {
         }
 
         phrase.pattern_events.iter()
-            .filter(|pattern_event| pattern_event.overlaps_tick_range(phrase_start_tick, phrase_stop_tick))
+            // Create seperate end & start ranges for looping patterns,
             .flat_map(|pattern_event| {
+                if pattern_event.is_looping() {
+                    let offset = phrase.length() - pattern_event.stop().unwrap();
+                    vec![
+                        (0 .. pattern_event.stop().unwrap(), offset, pattern_event), 
+                        (pattern_event.start() .. phrase.length(), 0, pattern_event)
+                    ]
+                } else {
+                    vec![(pattern_event.start() .. pattern_event.stop().unwrap(), 0, pattern_event)]
+                }
+            })
+            // Check if range overlaps with phrase range
+            .filter(|(pattern_range, _, _)| {
+                pattern_range.start < phrase_stop_tick && pattern_range.end > phrase_stop_tick
+            })
+            .flat_map(|(pattern_range, note_offset, pattern_event)| {
                 // Looping patterns consist of 2 ranges
                 let pattern_event_length = pattern_event.length(phrase.length());
-                // Convert from phrase ticks to note event ticks
-                let start_tick = if pattern_event.is_looping() && phrase_start_tick < pattern_event.start() {
-                    pattern_event_length - pattern_event.stop().unwrap()
-                } else {
-                    0
-                };
+                println!("{:?} {:?}", pattern_range, note_offset);
 
                 self.patterns[pattern_event.pattern as usize].note_events.iter()
                     .filter(|note_event| note_event.stop().is_some())
-                    .filter(move |note_event| {
+                    .filter_map(move |note_event| {
                         // Is pattern event just starting?
-                        let mut note_start_tick = if pattern_event.start() > phrase_start_tick { 0 } else { phrase_start_tick - pattern_event.start() };
-                        let mut note_stop_tick = phrase_stop_tick - pattern_event.start();
                         // Offset by calculated start tick to grab correct notes from looping patterns
-                        note_start_tick += start_tick;
-                        note_stop_tick += start_tick;
                         // TODO - Looping patterns with length set explicitly
-                        //dbg!(note_start_tick, note_stop_tick, start_tick);
-                        (note_start_tick .. note_stop_tick).contains(&note_event.start())
-                    })
-                    .map(move |note_event| {
-                        let base_tick = sequence_start + iteration * phrase.length() + pattern_event.start();
-                        let mut stop = note_event.stop().unwrap();
-                        if note_event.is_looping() { stop += pattern_event_length }
+                        let note_start_tick = phrase_start_tick + note_offset;
+                        let note_stop_tick = phrase_stop_tick + note_offset;
 
-                        PlayingNoteEvent {
-                            // subtract start_tick here to make up for the shift in start due
-                            // to looping pattern
-                            start: base_tick + note_event.start() - start_tick,
-                            stop: base_tick + stop - start_tick,
-                            note: note_event.note,
-                            start_velocity: note_event.start_velocity,
-                            stop_velocity: note_event.stop_velocity.unwrap(),
+                        if (note_start_tick .. note_stop_tick).contains(&(note_event.start() + pattern_range.start)) {
+                            println!("{:?} {:?}", note_event, note_offset);
+                            let base_tick = sequence_start + iteration * phrase.length();
+                            let mut stop = note_event.stop().unwrap();
+                            if note_event.is_looping() { stop += pattern_event_length }
+
+                            let event = PlayingNoteEvent {
+                                // subtract start_tick here to make up for the shift in start due
+                                // to looping pattern
+                                start: base_tick + note_event.start() + pattern_range.start - note_offset,
+                                stop: base_tick + stop + pattern_range.start - note_offset,
+                                note: note_event.note,
+                                start_velocity: note_event.start_velocity,
+                                stop_velocity: note_event.stop_velocity.unwrap(),
+                            };
+
+                            Some(event)
+                        } else {
+                            None
                         }
                     })
             })
