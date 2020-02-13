@@ -55,34 +55,24 @@ impl Instrument {
         self.phrases[to as usize] = self.phrases[from as usize].clone();
     }
 
-    pub fn starting_notes(&self, range: Range<u32>, sequence_start: u32, phrase_index: u8) -> Vec<PlayingNoteEvent> {
+    pub fn starting_notes(&self, absolute_range: Range<u32>, sequence_start: u32, phrase_index: u8) -> Vec<PlayingNoteEvent> {
         let phrase = self.phrase(phrase_index);
 
-        //let phrase_start_tick = (range.start - sequence_start) % phrase.length();
-        //let phrase_iteration = (range.start - sequence_start) / phrase.length();
-        //let mut phrase_stop_tick = (range.end - sequence_start) % phrase.length();
-        //if phrase_stop_tick == 0 { 
-            //phrase_stop_tick = phrase.length();
-        //}
-
-        let phrase_range = (range.start - sequence_start) .. (range.end - sequence_start);
-
-        //println!("{:?} {:?} {:?}", phrase_start_tick, phrase_stop_tick, phrase_iteration);
-
-        let phrase_ranges = phrase.relative_ranges(&phrase_range);
+        let sequence_range = (absolute_range.start - sequence_start) .. (absolute_range.end - sequence_start);
+        let phrase_ranges = phrase.looping_ranges(&sequence_range);
 
         let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.iter()
-            .flat_map(|(phrase_range, phrase_offset)| {
+            .flat_map(move |(phrase_range, phrase_offset)| {
                 phrase.pattern_events.iter()
                     .flat_map(move |pattern_event| {
                         let pattern = self.pattern(pattern_event.pattern);
-                        let pattern_ranges = pattern.relative_ranges(phrase_range);
+                        let pattern_ranges = pattern.looping_ranges(phrase_range);
 
                         pattern_ranges.into_iter()
                             .flat_map(move |(pattern_range, pattern_offset)| {
                                 pattern.note_events.iter()
                                     .filter(move |note_event| {
-                                        phrase_range.contains(&(note_event.start() + pattern_event.start()))
+                                        sequence_range.contains(&(note_event.start() + pattern_event.start() + pattern_offset))
                                     })
                                     .map(move |note_event| {
                                          PlayingNoteEvent {
