@@ -1,5 +1,5 @@
 
-use std::ops::Range;
+use super::TickRange;
 use super::events::*;
 use super::TimebaseHandler;
 
@@ -50,41 +50,43 @@ pub trait Loopable {
         self.events().push(event);
     }
 
-    fn contains_events_starting_in(&mut self, range: Range<u32>, index: u8) -> bool {
+    fn contains_events_starting_in(&mut self, range: TickRange, index: u8) -> bool {
         self.events().iter()
-            .find(|event| event.is_on_row(index) && range.contains(&event.start()))
+            .find(|event| event.is_on_row(index) && range.contains(event.start()))
             .is_some()
     }
 
-    fn remove_events_starting_in(&mut self, range: Range<u32>, index: u8) {
+    fn remove_events_starting_in(&mut self, range: TickRange, index: u8) {
         let indexes: Vec<usize> = self.events().iter().enumerate()
-            .filter(|(_, event)| event.is_on_row(index) && range.contains(&event.start()))
+            .filter(|(_, event)| event.is_on_row(index) && range.contains(event.start()))
             .map(|(index, _)| index)
             .collect();
 
         indexes.into_iter().for_each(|index| { self.events().remove(index); () });
     }
 
-    fn looping_ranges(&self, range: &Range<u32>) -> Vec<(Range<u32>, u32)> {
+    fn looping_ranges(&self, range: TickRange) -> Vec<(TickRange, u32)> {
         self.default_looping_ranges(range)
     }
 
     // Get ranges of this phrase that should be played when keeping looping in mind
-    fn default_looping_ranges(&self, range: &Range<u32>) -> Vec<(Range<u32>, u32)> {
+    fn default_looping_ranges(&self, range: TickRange) -> Vec<(TickRange, u32)> {
         let iteration = range.start / self.length();
-        let offset = iteration * self.length();
         let start = range.start % self.length();
 
         // Range will stop exactly at phrase length
-        let mut stop = range.end % self.length();
+        let mut stop = range.stop % self.length();
         if stop == 0 {
             stop = self.length();
         }
 
         if start > stop {
-            vec![(start .. self.length(), offset), (0 .. stop, offset)]
+            vec![
+                (TickRange::new(start, self.length()), iteration * self.length()), 
+                (TickRange::new(0, stop), (iteration + 1) * self.length())
+            ]
         } else {
-            vec![(start .. stop, offset)]
+            vec![(TickRange::new(start, stop), iteration * self.length())]
         }
     }
 }
@@ -160,11 +162,11 @@ impl Loopable for Pattern {
     fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
 
     // Only return relative ranges when this is a looping pattern
-    fn looping_ranges(&self, range: &Range<u32>) -> Vec<(Range<u32>, u32)> {
+    fn looping_ranges(&self, range: TickRange) -> Vec<(TickRange, u32)> {
         if self.has_explicit_length() {
             self.default_looping_ranges(range)
         } else {
-            vec![(range.clone(), 0)]
+            vec![(range, 0)]
         }
     }
 }

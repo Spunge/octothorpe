@@ -1,5 +1,5 @@
 
-use std::ops::Range;
+use super::TickRange;
 use super::port::*;
 use super::loopable::*;
 use super::cycle::*;
@@ -55,24 +55,34 @@ impl Instrument {
         self.phrases[to as usize] = self.phrases[from as usize].clone();
     }
 
-    pub fn starting_notes(&self, absolute_range: Range<u32>, sequence_start: u32, phrase_index: u8) -> Vec<PlayingNoteEvent> {
+    pub fn starting_notes(&self, absolute_range: TickRange, sequence_start: u32, phrase_index: u8) -> Vec<PlayingNoteEvent> {
         let phrase = self.phrase(phrase_index);
 
-        let sequence_range = (absolute_range.start - sequence_start) .. (absolute_range.end - sequence_start);
-        let phrase_ranges = phrase.looping_ranges(&sequence_range);
+        let sequence_range = TickRange::new(absolute_range.start - sequence_start, absolute_range.stop - sequence_start);
+        let phrase_ranges = phrase.looping_ranges(sequence_range);
+        //println!("{:?}", &phrase_ranges);
 
-        let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.iter()
-            .flat_map(move |(phrase_range, phrase_offset)| {
+        let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.into_iter()
+            .flat_map(|(phrase_range, phrase_offset)| {
                 phrase.pattern_events.iter()
+                    // Only patterns that stop
+                    .filter(|pattern_event| pattern_event.stop().is_some())
+                    // Only pattern events that overlap with phrase_range
+                    .filter(move |pattern_event| {
+                        pattern_event.start() < phrase_range.stop && pattern_event.stop().unwrap() > phrase_range.start
+                    })
                     .flat_map(move |pattern_event| {
                         let pattern = self.pattern(pattern_event.pattern);
-                        let pattern_ranges = pattern.looping_ranges(phrase_range);
+                        let pattern_ranges = pattern.looping_ranges(phrase_range).into_iter().filter(|(pattern_range, pattern_offset)| {
+                            // TODO - overlaps
+                        })
+                        println!("{:?}", &pattern_ranges);
 
                         pattern_ranges.into_iter()
-                            .flat_map(move |(pattern_range, pattern_offset)| {
+                            .flat_map(move |(_, pattern_offset)| {
                                 pattern.note_events.iter()
                                     .filter(move |note_event| {
-                                        sequence_range.contains(&(note_event.start() + pattern_event.start() + pattern_offset))
+                                        sequence_range.contains(phrase_offset + pattern_offset + pattern_event.start() + note_event.start())
                                     })
                                     .map(move |note_event| {
                                          PlayingNoteEvent {
@@ -194,7 +204,7 @@ impl Instrument {
 
         self.playing_notes.retain(|note| {
             // Play & remove notes that fall in cycle
-            if cycle.tick_range.contains(&note.stop) {
+            if cycle.tick_range.contains(note.stop) {
                 let frame = cycle.tick_to_frame(note.stop);
                 messages.push(TimedMessage::new(frame, Message::Note([0x80, note.note, note.stop_velocity])));
                 false

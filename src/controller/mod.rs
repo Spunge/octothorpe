@@ -3,6 +3,7 @@ pub mod input;
 mod lights;
 
 use std::ops::Range;
+use super::TickRange;
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
 use super::loopable::*;
@@ -66,35 +67,34 @@ pub trait APC {
      * Remove existing events when there's starting events in tick range, otherwise, remove tick
      * range so we can add new event
      */
-    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<(u32, u32)> {
-        let mut start_tick = self.button_to_ticks(x, offset);
-        let stop_tick = self.button_to_ticks(x + 1, offset);
+    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<TickRange> {
+        let mut tick_range = TickRange::new(self.button_to_ticks(x, offset), self.button_to_ticks(x + 1, offset));
 
         // Should we delete the event we're clicking?
-        if let (None, true) = (modifier, loopable.contains_events_starting_in(start_tick .. stop_tick, row)) {
-            loopable.remove_events_starting_in(start_tick .. stop_tick, row);
+        if let (None, true) = (modifier, loopable.contains_events_starting_in(tick_range, row)) {
+            loopable.remove_events_starting_in(tick_range, row);
             None
         } else {
             // Add event get x from modifier when its a grid button in the same row
             if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
                 if mod_y == y { 
-                    start_tick = self.button_to_ticks(mod_x, offset);
+                    tick_range.start = self.button_to_ticks(mod_x, offset);
                 }
             }
 
-            Some((start_tick, stop_tick))
+            Some(tick_range)
         }
     }
 
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
     fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) -> Vec<TimedMessage> where F: Fn(&InputEventType) -> bool {
-        let usecs = cycle.time_range.end - LENGTH_INDICATOR_USECS;
+        let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
         let mut frame = 0;
 
         // TODO - move this timing logic to seperate function when we need it for other things
         // Do we need to draw length indicator, and when?
         if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, filters, usecs) {
-            let usecs_ago = cycle.time_range.end - usecs;
+            let usecs_ago = cycle.time_stop - usecs;
             let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
 
             if hide_in_usecs < cycle.usecs() {
@@ -422,10 +422,10 @@ impl APC for APC40 {
                                 // We put base note in center of grid
                                 let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
 
-                                if let Some((start_tick, stop_tick)) = self.should_add_event(pattern, modifier, x, y, offset, note) {
-                                    pattern.try_add_starting_event(LoopableNoteEvent::new(start_tick, note, 127));
+                                if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, offset, note) {
+                                    pattern.try_add_starting_event(LoopableNoteEvent::new(tick_range.start, note, 127));
                                     let mut event = pattern.get_last_event_on_row(note);
-                                    event.set_stop(stop_tick);
+                                    event.set_stop(tick_range.stop);
                                     event.stop_velocity = Some(127);
 
                                     pattern.add_complete_event(event);
@@ -654,10 +654,10 @@ impl APC for APC20 {
                                 // We draw grids from bottom to top
                                 let pattern = 4 - y;
 
-                                if let Some((start_tick, stop_tick)) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
-                                    phrase.try_add_starting_event(LoopablePatternEvent::new(start_tick, pattern));
+                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
+                                    phrase.try_add_starting_event(LoopablePatternEvent::new(tick_range.start, pattern));
                                     let mut event = phrase.get_last_event_on_row(pattern);
-                                    event.set_stop(stop_tick);
+                                    event.set_stop(tick_range.stop);
 
                                     phrase.add_complete_event(event);
                                 }

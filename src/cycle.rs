@@ -1,11 +1,12 @@
 
-use std::ops::Range;
+use super::TickRange;
 
 pub struct ProcessCycle<'a> {
     pub client: &'a jack::Client,
     pub scope: &'a jack::ProcessScope,
-    pub tick_range: Range<u32>,
-    pub time_range: Range<u64>,
+    pub tick_range: TickRange,
+    pub time_stop: u64,
+    pub time_start: u64,
     pub is_rolling: bool,
 }
 
@@ -20,31 +21,32 @@ impl<'a> ProcessCycle<'a> {
         let cycle_times = scope.cycle_times().unwrap();
         let (state, pos) = client.transport_query();
 
-        let tick_start = Self::frame_to_tick(pos, pos.frame) as u32;
-        let tick_stop = Self::frame_to_tick(pos, pos.frame + scope.n_frames()) as u32;
-
         Self {
             client,
             scope,
-            time_range: cycle_times.current_usecs .. cycle_times.next_usecs,
-            tick_range: tick_start .. tick_stop,
+            time_start: cycle_times.current_usecs,
+            time_stop: cycle_times.next_usecs,
+            tick_range: TickRange { 
+                start: Self::frame_to_tick(pos, pos.frame) as u32,
+                stop: Self::frame_to_tick(pos, pos.frame + scope.n_frames()) as u32,
+            },
             is_rolling: state == 1,
         }
     }
 
     pub fn usecs(&self) -> u64 {
-        self.time_range.end - self.time_range.start
+        self.time_stop - self.time_start
     }
 
     pub fn ticks(&self) -> u32 {
-        self.tick_range.end - self.tick_range.start
+        self.tick_range.stop - self.tick_range.start
     }
 
     pub fn time_at_frame(&self, frame: u32) -> u64 {
         // TODO - When can this error?
         let usecs_per_frame = self.usecs() as f32 / self.scope.n_frames() as f32;
         let usecs_since_period_start = frame as f32 * usecs_per_frame;
-        self.time_range.start + usecs_since_period_start as u64
+        self.time_start + usecs_since_period_start as u64
     }
 
     // TODO - This can panic, is that what we want?

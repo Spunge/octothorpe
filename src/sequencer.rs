@@ -1,5 +1,5 @@
 
-use std::ops::Range;
+use super::TickRange;
 use super::cycle::*;
 use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
@@ -108,37 +108,38 @@ impl Sequencer {
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
         let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start);
         let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.instruments);
-        let sequence_end = playing_sequence.start + playing_sequence_length;
+        let sequence_stop = playing_sequence.start + playing_sequence_length;
 
         if ! cycle.is_rolling {
             return
         }
 
-        for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
+        //for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
+        if let Some((instrument_index, instrument)) = self.instruments.iter_mut().enumerate().next() {
             let mut starting_notes = vec![];
 
             let sequence_playing = &self.sequences[playing_sequence.index];
             let playing_phrase = sequence_playing.get_phrase(instrument_index);
 
             // Insert currenly playing cycle into timeline when there's no next cycle queued
-            if cycle.tick_range.contains(&sequence_end) || sequence_end < cycle.tick_range.start {
+            if cycle.tick_range.contains(sequence_stop) || sequence_stop < cycle.tick_range.start {
                 self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
             }
 
-            if cycle.tick_range.contains(&sequence_end) {
-                if let (Some(index), true) = (playing_phrase, cycle.tick_range.start < sequence_end) {
-                    // Add from start to sequence_end
-                    starting_notes.extend(instrument.starting_notes(cycle.tick_range.start .. sequence_end, playing_sequence.start, index));
+            if cycle.tick_range.contains(sequence_stop) {
+                if let (Some(index), true) = (playing_phrase, cycle.tick_range.start < sequence_stop) {
+                    // Add from start to sequence_stop
+                    starting_notes.extend(instrument.starting_notes(TickRange::new(cycle.tick_range.start, sequence_stop), playing_sequence.start, index));
                 }
 
                 let next_sequence = self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
                 if let Some(index) = self.sequences[next_sequence.index].get_phrase(instrument_index) {
                     // Only queue more of this when nothing is queued
-                    starting_notes.extend(instrument.starting_notes(sequence_end .. cycle.tick_range.end, sequence_end, index));
+                    starting_notes.extend(instrument.starting_notes(TickRange::new(sequence_stop, cycle.tick_range.stop), sequence_stop, index));
                 }
             } else {
                 if let Some(index) = playing_phrase {
-                    starting_notes.extend(instrument.starting_notes(cycle.tick_range.clone(), playing_sequence.start, index))
+                    starting_notes.extend(instrument.starting_notes(cycle.tick_range, playing_sequence.start, index))
                 }
             }
 

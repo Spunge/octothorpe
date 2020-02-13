@@ -28,6 +28,22 @@ use surface::Surface;
 use message::{TimedMessage, Message};
 use cycle::*;
 
+#[derive(Copy, Clone, Debug)]
+pub struct TickRange {
+    pub start: u32,
+    pub stop: u32,
+}
+
+impl TickRange {
+    fn new(start: u32, stop: u32) -> Self {
+        Self { start, stop }
+    }
+
+    pub fn contains(&self, tick: u32) -> bool {
+        tick >= self.start && tick < self.stop
+    }
+}
+
 pub struct TimebaseHandler {
     beats_per_minute: f64,
     beats_per_bar: f32,
