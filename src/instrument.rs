@@ -65,29 +65,39 @@ impl Instrument {
         let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.into_iter()
             .flat_map(|(phrase_range, phrase_offset)| {
                 phrase.pattern_events.iter()
-                    // Only patterns that stop
+                    // Only pattern events that stop
                     .filter(|pattern_event| pattern_event.stop().is_some())
-                    // Only pattern events that overlap with phrase_range
-                    .filter(move |pattern_event| {
-                        pattern_event.start() < phrase_range.stop && pattern_event.stop().unwrap() > phrase_range.start
-                    })
+                    // Only pattern events that fall within relative phrase cycle
+                    // Looping ranges are 2 ranges, start & end. Get absolute ranges and their
+                    // corresponding offset in the pattern
                     .flat_map(move |pattern_event| {
-                        let pattern = self.pattern(pattern_event.pattern);
-                        let pattern_ranges = pattern.looping_ranges(phrase_range).into_iter().filter(|(pattern_range, pattern_offset)| {
-                            // TODO - overlaps
-                        })
-                        println!("{:?}", &pattern_ranges);
+                        pattern_event.absolute_tick_ranges(phrase.length())
+                    })
+                    // See if these absolute ranges overlap the range playing currently in the phrase
+                    .filter(move |(pattern_event_range, x, _)| {
+                        phrase_range.overlaps(pattern_event_range)
+                    })
+                    // Of these pattern events we want to check if notes are starting in current
+                    // phrase range
+                    .flat_map(move |(pattern_event_range, pattern_event_offset, pattern_index)| {
+                        let pattern = self.pattern(pattern_index);
 
-                        pattern_ranges.into_iter()
-                            .flat_map(move |(_, pattern_offset)| {
+                        // Calculate range playing in pattern based on absolute pattern event range
+                        let pattern_range = phrase_range.plus(pattern_event_offset);
+                        println!("{:?} {:?}", pattern_range, pattern_event_range.start);
+
+                        let ranges = pattern.looping_ranges(pattern_range);
+                        ranges.into_iter()
+                            .flat_map(move |(pattern_range, pattern_offset)| {
+                                let offset = phrase_offset + pattern_offset + pattern_event_range.start + pattern_event_offset;
                                 pattern.note_events.iter()
                                     .filter(move |note_event| {
-                                        sequence_range.contains(phrase_offset + pattern_offset + pattern_event.start() + note_event.start())
+                                        sequence_range.contains(offset + note_event.start())
                                     })
                                     .map(move |note_event| {
                                          PlayingNoteEvent {
-                                            start: sequence_start + phrase_offset + pattern_offset + pattern_event.start() + note_event.start(),
-                                            stop: sequence_start + phrase_offset + pattern_offset + pattern_event.start() + note_event.stop().unwrap(),
+                                            start: sequence_start + offset + note_event.start(),
+                                            stop: sequence_start + offset + note_event.stop().unwrap(),
                                             note: note_event.note,
                                             start_velocity: note_event.start_velocity,
                                             stop_velocity: note_event.stop_velocity.unwrap(),

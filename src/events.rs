@@ -1,4 +1,5 @@
 
+use super::TickRange;
 
 // All the things we can show in grid
 pub trait LoopableEvent: Clone + std::fmt::Debug {
@@ -150,6 +151,18 @@ impl LoopableEvent for LoopablePatternEvent {
 impl LoopablePatternEvent {
     pub fn new(start: u32, pattern: u8) -> Self {
         LoopablePatternEvent { start, stop: None, pattern, }
+    }
+
+    pub fn absolute_tick_ranges(&self, phrase_length: u32) -> Vec<(TickRange, u32, u8)> {
+        if self.is_looping() {
+            let offset = phrase_length - self.stop().unwrap();
+            vec![
+                (TickRange::new(0, self.stop().unwrap()), offset, self.pattern), 
+                (TickRange::new(self.start(), phrase_length), 0, self.pattern)
+            ]
+        } else {
+            vec![(TickRange::new(self.start(), self.stop().unwrap()), 0, self.pattern)]
+        }
     }
 }
 
