@@ -64,7 +64,7 @@ impl Instrument {
 
         let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.into_iter()
             .flat_map(|(phrase_range, phrase_offset)| {
-                let pattern_event_ranges: Vec<(TickRange, u32, u8)> = phrase.pattern_events.iter()
+                phrase.pattern_events.iter()
                     // Only pattern events that stop
                     .filter(|pattern_event| pattern_event.stop().is_some())
                     // Only pattern events that fall within relative phrase cycle
@@ -74,20 +74,21 @@ impl Instrument {
                         pattern_event.absolute_tick_ranges(phrase.length())
                     })
                     // See if these absolute ranges overlap the range playing currently in the phrase
-                    .filter(move |(pattern_event_range, x, _)| {
-                        phrase_range.overlaps(pattern_event_range)
-                    })
-                    .collect();
+                    //.filter(move |(pattern_event_range, x, _)| {
+                        //phrase_range.overlaps(pattern_event_range)
+                    //})
 
-                //println!("{:?}", pattern_event_ranges);
 
                 // Of these pattern events we want to check if notes are starting in current
                 // phrase range
-                pattern_event_ranges.into_iter()
                     .flat_map(move |(pattern_event_range, pattern_event_offset, pattern_index)| {
                         let pattern = self.pattern(pattern_index);
 
-                        let ranges = pattern.looping_ranges(&phrase_range, pattern_event_range.start, pattern_event_offset);
+                        //let ranges = pattern.looping_ranges(&phrase_range, pattern_event_range.start, pattern_event_offset);
+
+                        let starting_notes = pattern.starting_notes(&phrase_range, &pattern_event_range, pattern_event_offset);
+
+                        //println!("{:?} {:?}", pattern_event_range, starting_notes);
 
                         vec![]
 

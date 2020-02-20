@@ -180,13 +180,86 @@ impl Pattern {
         self.length = Some(length);
     }
 
+    pub fn starting_notes(&self, phrase_range: &TickRange, pattern_event_range: &TickRange, offset_into_pattern: u32) -> impl Iterator<Item = LoopableNoteEvent> {
+        // TODO - Look through note events for notes we have to play
+
+        if ! pattern_event_range.overlaps(phrase_range) {
+            return std::iter::empty();
+        }
+
+        let absolute_start = if pattern_event_range.contains(phrase_range.start) { phrase_range.start } else { pattern_event_range.start };
+        let absolute_stop = if pattern_event_range.contains(phrase_range.stop) { phrase_range.stop } else { pattern_event_range.stop };
+
+        let pattern_start = absolute_start - pattern_event_range.start + offset_into_pattern;
+        let pattern_stop = absolute_stop - pattern_event_range.start + offset_into_pattern;
+
+
+        println!("phrase ticks: {:?} pattern ticks: {:?}", TickRange::new(absolute_start, absolute_stop), TickRange::new(pattern_start, pattern_stop));
+
+        std::iter::empty()
+        /*
+        match (pattern_event_range.contains(phrase_range.start), pattern_event_range.contains(phrase_range.stop)) {
+            // Notes could be playing
+            (true, true) => {
+                println!("middle: {:?} {:?} {:?}", phrase_range.start, phrase_range.stop, offset_into_pattern);
+                std::iter::empty()
+            },
+            // Only end is playing
+            (true, false) => {
+                println!("end: {:?} {:?} {:?}", phrase_range.start, pattern_event_range.stop, offset_into_pattern);
+                std::iter::empty()
+            },
+            // Only start is playing
+            (false, true) => {
+                println!("start: {:?} {:?} {:?}", pattern_event_range.start, phrase_range.stop, offset_into_pattern);
+                std::iter::empty()
+            },
+            // Not playing
+            _ => std::iter::empty()
+        }
+        */
+
+
+        //println!("{:?}", pattern_range);
+
+        //vec![].into_iter()
+    }
+
+    /*
     pub fn looping_ranges(&self, phrase_range: &TickRange, pattern_start: u32, offset_into_pattern: u32) -> Vec<(TickRange, u32)> {
         let pattern_range = phrase_range.plus(offset_into_pattern);
 
-        println!("{:?} {:?}", pattern_range.start, pattern_start);
+        let offset_start = phrase_range.start + offset_into_pattern;
+        let offset_stop = phrase_range.stop + offset_into_pattern;
 
-        vec![]
+        // Could be we're arrived at the start of played pattern
+        if offset_start < pattern_start {
+            vec![(TickRange::new(pattern_start % self.length(), offset_stop % self.length()), 0)]
+        } else {
+            // What tick range are we looking at in pattern?
+            let relative_start = offset_start - pattern_start;
+            let relative_stop = offset_stop - pattern_start;
+
+            let iteration = relative_start / self.length();
+            let start = relative_start % self.length();
+
+            // Sequence range will stop exactly at phrase length
+            let mut stop = relative_stop % self.length();
+            if stop == 0 {
+                stop = self.length();
+            }
+
+            if start > stop {
+                vec![
+                    (TickRange::new(start, self.length()), iteration * self.length()), 
+                    (TickRange::new(0, stop), (iteration + 1) * self.length())
+                ]
+            } else {
+                vec![(TickRange::new(start, stop), iteration * self.length())]
+            }
+        }
     }
+    */
 }
 
 #[cfg(test)]
