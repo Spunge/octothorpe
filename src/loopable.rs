@@ -64,31 +64,6 @@ pub trait Loopable {
 
         indexes.into_iter().for_each(|index| { self.events().remove(index); () });
     }
-
-    fn looping_ranges(&self, range: TickRange) -> Vec<(TickRange, u32)> {
-        self.default_looping_ranges(range)
-    }
-
-    // Get ranges of this phrase that should be played when keeping looping in mind
-    fn default_looping_ranges(&self, range: TickRange) -> Vec<(TickRange, u32)> {
-        let iteration = range.start / self.length();
-        let start = range.start % self.length();
-
-        // Range will stop exactly at phrase length
-        let mut stop = range.stop % self.length();
-        if stop == 0 {
-            stop = self.length();
-        }
-
-        if start > stop {
-            vec![
-                (TickRange::new(start, self.length()), iteration * self.length()), 
-                (TickRange::new(0, stop), (iteration + 1) * self.length())
-            ]
-        } else {
-            vec![(TickRange::new(start, stop), iteration * self.length())]
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -123,6 +98,30 @@ impl Phrase {
                 }
             }
         });
+    }
+
+    /*
+     * Phrases can be shorter as sequences, so it could be we're playing the nth iteration
+     * It could also happen multiple ranges fall in the current sequence cycle
+     */
+    pub fn looping_ranges(&self, sequence_range: &TickRange) -> Vec<(TickRange, u32)> {
+        let iteration = sequence_range.start / self.length();
+        let start = sequence_range.start % self.length();
+
+        // Sequence range will stop exactly at phrase length
+        let mut stop = sequence_range.stop % self.length();
+        if stop == 0 {
+            stop = self.length();
+        }
+
+        if start > stop {
+            vec![
+                (TickRange::new(start, self.length()), iteration * self.length()), 
+                (TickRange::new(0, stop), (iteration + 1) * self.length())
+            ]
+        } else {
+            vec![(TickRange::new(start, stop), iteration * self.length())]
+        }
     }
 }
 
@@ -160,15 +159,6 @@ impl Loopable for Pattern {
     }
 
     fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
-
-    // Only return relative ranges when this is a looping pattern
-    fn looping_ranges(&self, range: TickRange) -> Vec<(TickRange, u32)> {
-        if self.has_explicit_length() {
-            self.default_looping_ranges(range)
-        } else {
-            vec![(range, 0)]
-        }
-    }
 }
 
 impl Pattern {
@@ -188,6 +178,14 @@ impl Pattern {
 
     pub fn set_length(&mut self, length: u32) {
         self.length = Some(length);
+    }
+
+    pub fn looping_ranges(&self, phrase_range: &TickRange, pattern_start: u32, offset_into_pattern: u32) -> Vec<(TickRange, u32)> {
+        let pattern_range = phrase_range.plus(offset_into_pattern);
+
+        println!("{:?} {:?}", pattern_range.start, pattern_start);
+
+        vec![]
     }
 }
 

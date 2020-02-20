@@ -59,12 +59,12 @@ impl Instrument {
         let phrase = self.phrase(phrase_index);
 
         let sequence_range = TickRange::new(absolute_range.start - sequence_start, absolute_range.stop - sequence_start);
-        let phrase_ranges = phrase.looping_ranges(sequence_range);
+        let phrase_ranges = phrase.looping_ranges(&sequence_range);
         //println!("{:?}", &phrase_ranges);
 
         let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.into_iter()
             .flat_map(|(phrase_range, phrase_offset)| {
-                phrase.pattern_events.iter()
+                let pattern_event_ranges: Vec<(TickRange, u32, u8)> = phrase.pattern_events.iter()
                     // Only pattern events that stop
                     .filter(|pattern_event| pattern_event.stop().is_some())
                     // Only pattern events that fall within relative phrase cycle
@@ -77,16 +77,30 @@ impl Instrument {
                     .filter(move |(pattern_event_range, x, _)| {
                         phrase_range.overlaps(pattern_event_range)
                     })
-                    // Of these pattern events we want to check if notes are starting in current
-                    // phrase range
+                    .collect();
+
+                //println!("{:?}", pattern_event_ranges);
+
+                // Of these pattern events we want to check if notes are starting in current
+                // phrase range
+                pattern_event_ranges.into_iter()
                     .flat_map(move |(pattern_event_range, pattern_event_offset, pattern_index)| {
                         let pattern = self.pattern(pattern_index);
 
-                        // Calculate range playing in pattern based on absolute pattern event range
-                        let pattern_range = phrase_range.plus(pattern_event_offset);
-                        println!("{:?} {:?}", pattern_range, pattern_event_range.start);
+                        let ranges = pattern.looping_ranges(&phrase_range, pattern_event_range.start, pattern_event_offset);
 
-                        let ranges = pattern.looping_ranges(pattern_range);
+                        vec![]
+
+                        // Calculate range playing in pattern based on absolute pattern event range
+                        /*
+                        let ranges: Vec<(TickRange, u32)> = pattern.looping_ranges(phrase_range.plus(pattern_event_offset)).into_iter()
+                            //.filter(move |(pattern_range, pattern_offset)| {
+                                //pattern_event_range.plus(pattern_event_offset).overlaps(&pattern_range.plus(*pattern_offset))
+                            //})
+                            .collect();
+
+                        println!("range: {:?}", ranges);
+
                         ranges.into_iter()
                             .flat_map(move |(pattern_range, pattern_offset)| {
                                 let offset = phrase_offset + pattern_offset + pattern_event_range.start + pattern_event_offset;
@@ -104,6 +118,7 @@ impl Instrument {
                                         }
                                     })
                             })
+                        */
                     })
             })
             .collect();

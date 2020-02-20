@@ -155,7 +155,7 @@ impl LoopablePatternEvent {
 
     pub fn absolute_tick_ranges(&self, phrase_length: u32) -> Vec<(TickRange, u32, u8)> {
         if self.is_looping() {
-            let offset = phrase_length - self.stop().unwrap();
+            let offset = phrase_length - self.start();
             vec![
                 (TickRange::new(0, self.stop().unwrap()), offset, self.pattern), 
                 (TickRange::new(self.start(), phrase_length), 0, self.pattern)
