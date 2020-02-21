@@ -64,6 +64,29 @@ pub trait Loopable {
 
         indexes.into_iter().for_each(|index| { self.events().remove(index); () });
     }
+
+    /*
+     * We want to loop phrases/patterns that are shorter as container phrase / pattern_event
+     */
+    fn looping_ranges(&self, range: &TickRange) -> Vec<(TickRange, u32)> {
+        let iteration = range.start / self.length();
+        let start = range.start % self.length();
+
+        // Sequence range will stop exactly at phrase length
+        let mut stop = range.stop % self.length();
+        if stop == 0 {
+            stop = self.length();
+        }
+
+        if start > stop {
+            vec![
+                (TickRange::new(start, self.length()), iteration * self.length()), 
+                (TickRange::new(0, stop), (iteration + 1) * self.length())
+            ]
+        } else {
+            vec![(TickRange::new(start, stop), iteration * self.length())]
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -98,30 +121,6 @@ impl Phrase {
                 }
             }
         });
-    }
-
-    /*
-     * Phrases can be shorter as sequences, so it could be we're playing the nth iteration
-     * It could also happen multiple ranges fall in the current sequence cycle
-     */
-    pub fn looping_ranges(&self, sequence_range: &TickRange) -> Vec<(TickRange, u32)> {
-        let iteration = sequence_range.start / self.length();
-        let start = sequence_range.start % self.length();
-
-        // Sequence range will stop exactly at phrase length
-        let mut stop = sequence_range.stop % self.length();
-        if stop == 0 {
-            stop = self.length();
-        }
-
-        if start > stop {
-            vec![
-                (TickRange::new(start, self.length()), iteration * self.length()), 
-                (TickRange::new(0, stop), (iteration + 1) * self.length())
-            ]
-        } else {
-            vec![(TickRange::new(start, stop), iteration * self.length())]
-        }
     }
 }
 
@@ -180,23 +179,51 @@ impl Pattern {
         self.length = Some(length);
     }
 
-    pub fn starting_notes(&self, phrase_range: &TickRange, pattern_event_range: &TickRange, offset_into_pattern: u32) -> impl Iterator<Item = LoopableNoteEvent> {
-        // TODO - Look through note events for notes we have to play
-
+    pub fn starting_notes(&self, phrase_range: &TickRange, pattern_event_range: &TickRange, offset_into_pattern: u32, pattern_event_length: u32) 
+        -> Vec<PlayingNoteEvent> 
+    {
+        // Is this pattern event being played?
         if ! pattern_event_range.overlaps(phrase_range) {
-            return std::iter::empty();
+            return vec![];
         }
 
+        // Get range of pattern_event_range that falls within phrase_range
         let absolute_start = if pattern_event_range.contains(phrase_range.start) { phrase_range.start } else { pattern_event_range.start };
         let absolute_stop = if pattern_event_range.contains(phrase_range.stop) { phrase_range.stop } else { pattern_event_range.stop };
 
-        let pattern_start = absolute_start - pattern_event_range.start + offset_into_pattern;
-        let pattern_stop = absolute_stop - pattern_event_range.start + offset_into_pattern;
+        // Get relative range of pattern that should be played
+        let pattern_range = TickRange::new(
+            absolute_start - pattern_event_range.start + offset_into_pattern,
+            absolute_stop - pattern_event_range.start + offset_into_pattern
+        );
 
+        // Get looping ranges when pattern is a looping pattern
+        let ranges = if ! self.has_explicit_length() { vec![(pattern_range, 0)] } else { self.looping_ranges(&pattern_range) };
 
-        println!("phrase ticks: {:?} pattern ticks: {:?}", TickRange::new(absolute_start, absolute_stop), TickRange::new(pattern_start, pattern_stop));
+        ranges.iter()
+            .flat_map(|(range, offset)| {
+                self.note_events.iter()
+                    .filter(move |note_event| {
+                        range.contains(note_event.start())
+                    })
+                    .map(move |note_event| {
+                        let looping_note_length = if self.has_explicit_length() { self.length() } else { pattern_event_length };
+                        let note_start = (offset + note_event.start());
+                        let note_stop = offset + note_event.stop().unwrap() + if note_event.is_looping() { looping_note_length } else { 0 };
+                        let start_tick = note_start - pattern_range.start;
+                        let stop_tick = note_stop - pattern_range.start;
 
-        std::iter::empty()
+                        PlayingNoteEvent {
+                            start: absolute_start + start_tick,
+                            stop: absolute_start + stop_tick,
+                            note: note_event.note,
+                            start_velocity: note_event.start_velocity,
+                            stop_velocity: note_event.stop_velocity.unwrap(),
+                        }
+                    })
+            })
+            .collect()
+
         /*
         match (pattern_event_range.contains(phrase_range.start), pattern_event_range.contains(phrase_range.stop)) {
             // Notes could be playing

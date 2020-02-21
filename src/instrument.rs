@@ -62,7 +62,7 @@ impl Instrument {
         let phrase_ranges = phrase.looping_ranges(&sequence_range);
         //println!("{:?}", &phrase_ranges);
 
-        let starting_notes: Vec<PlayingNoteEvent> = phrase_ranges.into_iter()
+        phrase_ranges.into_iter()
             .flat_map(|(phrase_range, phrase_offset)| {
                 phrase.pattern_events.iter()
                     // Only pattern events that stop
@@ -71,7 +71,24 @@ impl Instrument {
                     // Looping ranges are 2 ranges, start & end. Get absolute ranges and their
                     // corresponding offset in the pattern
                     .flat_map(move |pattern_event| {
-                        pattern_event.absolute_tick_ranges(phrase.length())
+                        pattern_event.absolute_tick_ranges(phrase.length()).into_iter()
+                            .flat_map(move |(pattern_event_range, pattern_event_offset)| {
+                                let pattern = self.pattern(pattern_event.pattern);
+
+                                //let ranges = pattern.looping_ranges(&phrase_range, pattern_event_range.start, pattern_event_offset);
+
+                                let pattern_event_length = pattern_event.length(phrase.length());
+                                let absolute_offset = phrase_offset + sequence_start;
+
+                                // Get pattern based starting notes, and add offset based on phrase
+                                // iteration & sequence start
+                                pattern.starting_notes(&phrase_range, &pattern_event_range, pattern_event_offset, pattern_event_length).into_iter()
+                                    .map(move |mut playing_note| {
+                                        playing_note.start += absolute_offset;
+                                        playing_note.stop += absolute_offset;
+                                        playing_note
+                                    })
+                            })
                     })
                     // See if these absolute ranges overlap the range playing currently in the phrase
                     //.filter(move |(pattern_event_range, x, _)| {
@@ -81,54 +98,10 @@ impl Instrument {
 
                 // Of these pattern events we want to check if notes are starting in current
                 // phrase range
-                    .flat_map(move |(pattern_event_range, pattern_event_offset, pattern_index)| {
-                        let pattern = self.pattern(pattern_index);
-
-                        //let ranges = pattern.looping_ranges(&phrase_range, pattern_event_range.start, pattern_event_offset);
-
-                        let starting_notes = pattern.starting_notes(&phrase_range, &pattern_event_range, pattern_event_offset);
-
-                        //println!("{:?} {:?}", pattern_event_range, starting_notes);
-
-                        vec![]
-
-                        // Calculate range playing in pattern based on absolute pattern event range
-                        /*
-                        let ranges: Vec<(TickRange, u32)> = pattern.looping_ranges(phrase_range.plus(pattern_event_offset)).into_iter()
-                            //.filter(move |(pattern_range, pattern_offset)| {
-                                //pattern_event_range.plus(pattern_event_offset).overlaps(&pattern_range.plus(*pattern_offset))
-                            //})
-                            .collect();
-
-                        println!("range: {:?}", ranges);
-
-                        ranges.into_iter()
-                            .flat_map(move |(pattern_range, pattern_offset)| {
-                                let offset = phrase_offset + pattern_offset + pattern_event_range.start + pattern_event_offset;
-                                pattern.note_events.iter()
-                                    .filter(move |note_event| {
-                                        sequence_range.contains(offset + note_event.start())
-                                    })
-                                    .map(move |note_event| {
-                                         PlayingNoteEvent {
-                                            start: sequence_start + offset + note_event.start(),
-                                            stop: sequence_start + offset + note_event.stop().unwrap(),
-                                            note: note_event.note,
-                                            start_velocity: note_event.start_velocity,
-                                            stop_velocity: note_event.stop_velocity.unwrap(),
-                                        }
-                                    })
-                            })
-                        */
-                    })
             })
-            .collect();
+            .collect()
 
-        if starting_notes.len() > 0 {
-            println!("{:?}", starting_notes);
-        }
-
-        starting_notes
+        //starting_notes
 
         /*
         phrase.pattern_events.iter()

@@ -129,6 +129,16 @@ impl LoopableNoteEvent {
     pub fn new(start: u32, note: u8, start_velocity: u8) -> Self {
         Self { start, note, start_velocity, stop: None, stop_velocity: None }
     }
+
+    pub fn playing_note_event(&self, offset: u32) -> PlayingNoteEvent {
+        PlayingNoteEvent {
+            start: offset + self.start(),
+            stop: offset + self.stop().unwrap(),
+            note: self.note,
+            start_velocity: self.start_velocity,
+            stop_velocity: self.stop_velocity.unwrap(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -153,15 +163,15 @@ impl LoopablePatternEvent {
         LoopablePatternEvent { start, stop: None, pattern, }
     }
 
-    pub fn absolute_tick_ranges(&self, phrase_length: u32) -> Vec<(TickRange, u32, u8)> {
+    pub fn absolute_tick_ranges(&self, phrase_length: u32) -> Vec<(TickRange, u32)> {
         if self.is_looping() {
             let offset = phrase_length - self.start();
             vec![
-                (TickRange::new(0, self.stop().unwrap()), offset, self.pattern), 
-                (TickRange::new(self.start(), phrase_length), 0, self.pattern)
+                (TickRange::new(0, self.stop().unwrap()), offset), 
+                (TickRange::new(self.start(), phrase_length), 0)
             ]
         } else {
-            vec![(TickRange::new(self.start(), self.stop().unwrap()), 0, self.pattern)]
+            vec![(TickRange::new(self.start(), self.stop().unwrap()), 0)]
         }
     }
 }
