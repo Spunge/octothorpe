@@ -193,3 +193,18 @@ impl Single {
         self.next_state = value;
     }
 }
+
+impl Drawable for Single {
+    fn output(&mut self) -> Vec<(u8, u8, u8)> {
+        let mut output = vec![];
+
+        if self.next_state != self.state {
+            let channel = if self.next_state == 1 { 0x90 } else { 0x80 };
+            output.push((channel, self.note, self.next_state));
+        }
+
+        self.state = self.next_state;
+        self.next_state = 0;
+        output
+    }
+}

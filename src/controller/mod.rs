@@ -58,6 +58,7 @@ pub trait APC {
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
 
     fn cue_knob(&mut self) -> &mut CueKnob;
+    fn master(&mut self) -> &mut Single;
     fn grid(&mut self) -> &mut Grid;
     fn instrument(&mut self) -> &mut WideRow;
     fn indicator(&mut self) -> &mut WideRow;
@@ -284,10 +285,11 @@ pub trait APC {
                     for index in 0 .. self.zoom_level() { self.solo().draw(index, 1); }
                 },
                 View::Sequence => {
-                
+                    self.master().draw(1);
                 }
             };
 
+            messages.append(&mut self.master().output_messages(0));
             messages.append(&mut self.solo().output_messages(0));
 
             // TODO - As all messages are here as one vec, we don't have to use the sorting struct
@@ -324,6 +326,7 @@ pub struct APC40 {
     base_notes: [u8; 16],
 
     cue_knob: CueKnob,
+    master: Single,
 
     grid: Grid,
     side: Side,
@@ -366,6 +369,7 @@ impl APC for APC40 {
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
+    fn master(&mut self) -> &mut Single { &mut self.master }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn instrument(&mut self) -> &mut WideRow { &mut self.instrument }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
@@ -389,6 +393,7 @@ impl APC for APC40 {
             base_notes: [60; 16],
 
             cue_knob: CueKnob::new(),
+            master: Single::new(0x50),
 
             grid: Grid::new(),
             side: Side::new(),
@@ -579,6 +584,7 @@ pub struct APC20 {
     offsets: [u32; 16],
 
     cue_knob: CueKnob,
+    master: Single,
 
     // Lights
     grid: Grid,
@@ -625,6 +631,7 @@ impl APC for APC20 {
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
+    fn master(&mut self) -> &mut Single { &mut self.master }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
     fn instrument(&mut self) -> &mut WideRow { &mut self.instrument }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
@@ -645,6 +652,7 @@ impl APC for APC20 {
             offsets: [0; 16],
 
             cue_knob: CueKnob::new(),
+            master: Single::new(0x50),
 
             grid: Grid::new(),
             side: Side::new(),
