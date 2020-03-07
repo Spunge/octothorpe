@@ -139,8 +139,8 @@ pub trait APC {
                     start_button + 1
                 } else { 
                     // Could be event is to short for 1 button, in that case, draw 1 button
-                    let button = (event.stop().unwrap() as i32 - offset_x as i32) / button_ticks;
-                    if button <= start_button { start_button + 1 } else { button }
+                    // TODO
+                    (event.stop().unwrap() as i32 - offset_x as i32) / button_ticks
                 };
 
                 // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
@@ -149,7 +149,7 @@ pub trait APC {
                 // Always draw first button head
                 self.grid().try_draw(start_button, row, Self::HEAD_COLOR);
                 // Draw tail depending on wether this is looping note
-                if stop_button > start_button {
+                if stop_button >= start_button {
                     self.draw_tail((start_button + 1) .. stop_button, row);
                 } else {
                     self.draw_tail((start_button + 1) .. max_button, row);
