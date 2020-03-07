@@ -1,7 +1,7 @@
 
 use super::controller::input::*;
 
-#[derive(PartialEq)]
+#[derive(Debug)]
 pub enum View {
     Instrument,
     Sequence,
@@ -35,7 +35,7 @@ impl Surface {
             // Clear as we do not want the selected instrument grid to clear
             //self.indicator_note_offs = vec![];
             View::Sequence => View::Instrument,
-        }
+        };
     }
 
     pub fn show_instrument(&mut self, index: u8) { self.instrument_shown = index; }

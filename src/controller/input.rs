@@ -21,6 +21,7 @@ pub enum ButtonType {
     Down,
     Right,
     Left,
+    Master,
     Unknown,
 }
 
@@ -63,6 +64,7 @@ impl ButtonType {
             // updside down due to lower midi nodes having lower numbers, therefore the 4 -
             0x52 ..= 0x56 => ButtonType::Side(4 - (note - 0x52)),
             0x51 => ButtonType::Shift,
+            0x50 => ButtonType::Master,
             // Grid should add notes & add phrases
             0x35 ..= 0x39 => ButtonType::Grid(channel, note - 0x35),
             0x5E => ButtonType::Up,

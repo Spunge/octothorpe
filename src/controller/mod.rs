@@ -137,7 +137,9 @@ pub trait APC {
                 let stop_button = if event.stop().is_none() { 
                     start_button + 1
                 } else { 
-                    (event.stop().unwrap() as i32 - offset_x as i32) / button_ticks
+                    // Could be event is to short for 1 button, in that case, draw 1 button
+                    let button = (event.stop().unwrap() as i32 - offset_x as i32) / button_ticks;
+                    if button <= start_button { start_button + 1 } else { button }
                 };
 
                 // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
@@ -243,6 +245,7 @@ pub trait APC {
                     // Independent of current view
                     match button_type {
                         ButtonType::Instrument(index) => surface.toggle_instrument(index + Self::INSTRUMENT_OFFSET),
+                        ButtonType::Master => surface.switch_view(),
                         _ => self.process_inputevent(&event, cycle, sequencer, surface, mixer),
                     }
                 },
@@ -265,19 +268,26 @@ pub trait APC {
         } else if self.identified_cycles() < IDENTIFY_CYCLES {
             self.set_identified_cycles(self.identified_cycles() + 1);
         } else {
-            // Draw instrument grid
+            // APC 40 / 20 specific messages
+            let mut messages = self.output_messages(cycle, sequencer, surface);
+
+            // Always draw instrument grid
             if surface.instrument_shown() >= Self::INSTRUMENT_OFFSET as usize {
                 let instrument = surface.instrument_shown() - Self::INSTRUMENT_OFFSET as usize;
                 self.instrument().draw(instrument as u8, 1);
             }
-
-            // Draw zoom grid
-            for index in 0 .. self.zoom_level() { self.solo().draw(index, 1); }
-
-            // APC specific messages
-            let mut messages = self.output_messages(cycle, sequencer, surface);
-            // Shared stuff
             messages.append(&mut self.instrument().output_messages(0));
+
+            match surface.view {
+                View::Instrument => {
+                    // Draw zoom grid
+                    for index in 0 .. self.zoom_level() { self.solo().draw(index, 1); }
+                },
+                View::Sequence => {
+                
+                }
+            };
+
             messages.append(&mut self.solo().output_messages(0));
 
             // TODO - As all messages are here as one vec, we don't have to use the sorting struct
@@ -516,26 +526,37 @@ impl APC for APC40 {
     }
 
     fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
-        let loopable = self.shown_loopable(sequencer, surface);
+        let mut messages = vec![];
 
-        // Get base note of instrument, as we draw the grid with base note in vertical center
-        let base_note = self.base_notes[surface.instrument_shown()];
-        let events = loopable.events().iter()
-            .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
-        self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
+        match surface.view {
+            View::Instrument => {
+                let loopable = self.shown_loopable(sequencer, surface);
 
-        self.side.draw(4 - self.pattern_shown(surface.instrument_shown()), 1);
+                // Get base note of instrument, as we draw the grid with base note in vertical center
+                let base_note = self.base_notes[surface.instrument_shown()];
+                let events = loopable.events().iter()
+                    .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
+                self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
 
-        // pattern length selector
-        if loopable.has_explicit_length() {
-            for index in 0 .. (loopable.length() / Self::Loopable::minimum_length()) {
-                self.activator.draw(index as u8, 1);
+                self.side.draw(4 - self.pattern_shown(surface.instrument_shown()), 1);
+
+                // pattern length selector
+                if loopable.has_explicit_length() {
+                    for index in 0 .. (loopable.length() / Self::Loopable::minimum_length()) {
+                        self.activator.draw(index as u8, 1);
+                    }
+                }
+
+                // Indicator
+                let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+                messages.append(&mut self.output_indicator(cycle, &filters, surface, loopable.length()));
+            },
+            View::Sequence => {
+                // TODO - Draw sequence stuff
+                // TODO - Output sequence indicator
+                messages.append(&mut self.indicator.output_messages(0));
             }
         }
-
-        // Indicator
-        let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
-        let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
 
         messages.append(&mut self.grid.output_messages(0));
         messages.append(&mut self.side.output_messages(0));
@@ -688,23 +709,33 @@ impl APC for APC20 {
     }
 
     fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
-        let loopable = self.shown_loopable(sequencer, surface);
+        let mut messages = vec![];
 
-        // Draw main grid
-        let events = loopable.events().iter();
-        self.draw_events(events, self.offset(surface.instrument_shown()), 0);
+        match surface.view {
+            View::Instrument => {
+                let loopable = self.shown_loopable(sequencer, surface);
 
-        // Playable selector
-        self.side.draw(4 - self.phrase_shown(surface.instrument_shown()), 1);
+                // Draw main grid
+                let events = loopable.events().iter();
+                self.draw_events(events, self.offset(surface.instrument_shown()), 0);
 
-        // Length selector
-        for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {
-            self.activator.draw(index as u8, 1);
+                // Playable selector
+                self.side.draw(4 - self.phrase_shown(surface.instrument_shown()), 1);
+
+                // Length selector
+                for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {
+                    self.activator.draw(index as u8, 1);
+                }
+
+                // Indicator
+                let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+                messages.append(&mut self.output_indicator(cycle, &filters, surface, loopable.length()));
+            },
+            View::Sequence => {
+                // TODO - sequency stuff
+                messages.append(&mut self.indicator.output_messages(0));
+            }
         }
-
-        // Indicator
-        let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
-        let mut messages = self.output_indicator(cycle, &filters, surface, loopable.length());
 
         messages.append(&mut self.grid.output_messages(0));
         messages.append(&mut self.side.output_messages(0));
