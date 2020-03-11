@@ -66,7 +66,7 @@ impl ButtonType {
             0x51 => ButtonType::Shift,
             0x50 => ButtonType::Master,
             // Grid should add notes & add phrases
-            0x35 ..= 0x39 => ButtonType::Grid(channel, note - 0x35),
+            0x35 ..= 0x39 => ButtonType::Grid(channel, 4 - (note - 0x35)),
             0x5E => ButtonType::Up,
             0x5F => ButtonType::Down,
             0x60 => ButtonType::Right,

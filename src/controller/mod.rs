@@ -148,7 +148,7 @@ pub trait APC {
                 };
 
                 // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
-                let row = 4 - event.row(offset_y);
+                let row = event.row(offset_y);
 
                 // Always draw first button head
                 self.grid().try_draw(start_button, row, Self::HEAD_COLOR);
@@ -165,8 +165,7 @@ pub trait APC {
     fn draw_phrases(&mut self, phrases: &[Option<u8>; 16]) {
         for (index, option) in phrases[Self::INSTRUMENT_OFFSET as usize .. (Self::INSTRUMENT_OFFSET + 8) as usize].iter().enumerate() {
             if let Some(phrase) = option {
-                // 4 - as grid is switched upside down
-                self.grid().try_draw(index as i32, 4 - *phrase, SEQUENCE_COLOR);
+                self.grid().try_draw(index as i32, *phrase, SEQUENCE_COLOR);
             }
         }
     }
@@ -251,7 +250,7 @@ pub trait APC {
                                 },
                                 ButtonType::Side(index) => {
                                     if let Some(ButtonType::Shift) = global_modifier {
-                                        sequence.set_phrases(4 - index);
+                                        sequence.set_phrases(index);
                                     } else {
                                         surface.show_sequence(index);
                                     }
@@ -337,7 +336,7 @@ pub trait APC {
                 View::Sequence => {
                     let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();
                     self.draw_phrases(phrases);
-                    self.side().draw(4 - surface.sequence_shown() as u8, 1);
+                    self.side().draw(surface.sequence_shown() as u8, 1);
                 },
             };
 
@@ -498,7 +497,8 @@ impl APC for APC40 {
                                 // the grid, the grid counts from the top
                                 let offset = self.offset(surface.instrument_shown());
                                 // We put base note in center of grid
-                                let note = self.base_notes[surface.instrument_shown()] - 2 + (4 - y);
+                                let note = self.base_notes[surface.instrument_shown()] - 2 + y;
+                                println!("{:?}", note);
 
                                 if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, offset, note) {
                                     pattern.try_add_starting_event(LoopableNoteEvent::new(tick_range.start, note, 127));
@@ -598,7 +598,7 @@ impl APC for APC40 {
                     .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
                 self.draw_events(events, self.offset(surface.instrument_shown()), base_note - 2);
 
-                self.side.draw(4 - self.pattern_shown(surface.instrument_shown()), 1);
+                self.side.draw(self.pattern_shown(surface.instrument_shown()), 1);
 
                 // pattern length selector
                 if loopable.has_explicit_length() {
@@ -736,11 +736,10 @@ impl APC for APC20 {
                             ButtonType::Grid(x, y) => {
                                 let offset = self.offset(surface.instrument_shown());
                                 // We draw grids from bottom to top
-                                let pattern = 4 - y;
 
-                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, offset, pattern) {
-                                    phrase.try_add_starting_event(LoopablePatternEvent::new(tick_range.start, pattern));
-                                    let mut event = phrase.get_last_event_on_row(pattern);
+                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, offset, y) {
+                                    phrase.try_add_starting_event(LoopablePatternEvent::new(tick_range.start, y));
+                                    let mut event = phrase.get_last_event_on_row(y);
                                     event.set_stop(tick_range.stop);
 
                                     phrase.add_complete_event(event);
@@ -783,7 +782,7 @@ impl APC for APC20 {
                 self.draw_events(events, self.offset(surface.instrument_shown()), 0);
 
                 // Playable selector
-                self.side.draw(4 - self.phrase_shown(surface.instrument_shown()), 1);
+                self.side.draw(self.phrase_shown(surface.instrument_shown()), 1);
 
                 // Length selector
                 for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {

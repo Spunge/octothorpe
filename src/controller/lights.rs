@@ -69,7 +69,8 @@ impl Grid {
 
     pub fn draw(&mut self, x: u8, y: u8, value: u8) {
         if x < self.width() && y < self.height() {
-            self.next_state[Self::index(x, y)] = value;
+            // 4 - as grid & side are flipped upside down to make MIDI notes go up..
+            self.next_state[Self::index(x, 4 - y)] = value;
         }
     }
 }
@@ -110,7 +111,8 @@ impl Side {
 
     pub fn draw(&mut self, index: u8, value: u8) {
         if index < self.height() {
-            self.next_state[index as usize] = value;
+            // 4 - as grid & side are flipped upside down to make MIDI notes go up..
+            self.next_state[4 - index as usize] = value;
         }
     }
 }
