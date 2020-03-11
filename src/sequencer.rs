@@ -114,8 +114,8 @@ impl Sequencer {
             return
         }
 
-        //for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
-        if let Some((instrument_index, instrument)) = self.instruments.iter_mut().enumerate().next() {
+        for (instrument_index, instrument) in self.instruments.iter_mut().enumerate() {
+        //if let Some((instrument_index, instrument)) = self.instruments.iter_mut().enumerate().next() {
             let mut starting_notes = vec![];
 
             let sequence_playing = &self.sequences[playing_sequence.index];

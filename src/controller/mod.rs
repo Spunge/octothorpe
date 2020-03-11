@@ -498,7 +498,6 @@ impl APC for APC40 {
                                 let offset = self.offset(surface.instrument_shown());
                                 // We put base note in center of grid
                                 let note = self.base_notes[surface.instrument_shown()] - 2 + y;
-                                println!("{:?}", note);
 
                                 if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, offset, note) {
                                     pattern.try_add_starting_event(LoopableNoteEvent::new(tick_range.start, note, 127));
