@@ -1,5 +1,5 @@
 
-use super::message::{TimedMessage, Message};
+use super::message::TimedMessage;
 
 pub struct MidiOut {
     pub messages: Vec<TimedMessage>,

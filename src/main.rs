@@ -25,7 +25,6 @@ use sequencer::Sequencer;
 use controller::*;
 use mixer::*;
 use surface::Surface;
-use message::{TimedMessage, Message};
 use cycle::*;
 
 #[derive(Copy, Clone, Debug)]
@@ -107,7 +106,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 self.is_up_to_date = true;
             }
 
-            let abs_tick = ProcessCycle::frame_to_tick((*pos), (*pos).frame);
+            let abs_tick = ProcessCycle::frame_to_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
 
             // Plus 1 as humans tend not to count from 0
@@ -143,7 +142,7 @@ pub struct ProcessHandler {
 
 impl ProcessHandler {
     pub fn new(
-        timebase_sender: Sender<f64>,
+        _timebase_sender: Sender<f64>,
         client: &jack::Client
     ) -> Self {
         // Create ports

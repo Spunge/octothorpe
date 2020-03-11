@@ -16,6 +16,8 @@ use super::events::*;
 use input::*;
 use lights::*;
 
+const SEQUENCE_COLOR: u8 = 1;
+const TIMELINE_COLOR: u8 = 3;
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
 const LENGTH_INDICATOR_USECS: u64 = 600000;
@@ -60,8 +62,10 @@ pub trait APC {
     fn cue_knob(&mut self) -> &mut CueKnob;
     fn master(&mut self) -> &mut Single;
     fn grid(&mut self) -> &mut Grid;
+    fn side(&mut self) -> &mut Side;
     fn instrument(&mut self) -> &mut WideRow;
     fn indicator(&mut self) -> &mut WideRow;
+    fn activator(&mut self) -> &mut WideRow;
     fn solo(&mut self) -> &mut WideRow;
 
     /*
@@ -158,6 +162,15 @@ pub trait APC {
             });
     }
 
+    fn draw_phrases(&mut self, phrases: &[Option<u8>; 16]) {
+        for (index, option) in phrases[Self::INSTRUMENT_OFFSET as usize .. (Self::INSTRUMENT_OFFSET + 8) as usize].iter().enumerate() {
+            if let Some(phrase) = option {
+                // 4 - as grid is switched upside down
+                self.grid().try_draw(index as i32, 4 - *phrase, SEQUENCE_COLOR);
+            }
+        }
+    }
+
     fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8) {
         while let Some(x) = x_range.next() { self.grid().try_draw(x, y, Self::TAIL_COLOR) }
     }
@@ -201,6 +214,7 @@ pub trait APC {
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep track of modifing buttons
                     surface.button_memory.press(Self::CONTROLLER_ID, button_type);
+                    let global_modifier = surface.button_memory.global_modifier(button_type);
 
                     // Do the right thing in the right visualization
                     match surface.view {
@@ -226,27 +240,59 @@ pub trait APC {
                             let sequence = sequencer.get_sequence(surface.sequence_shown());
 
                             match button_type {
-                                ButtonType::Grid(x, phrase) => {
+                                ButtonType::Grid(x, row) => {
                                     let instrument = (x + Self::INSTRUMENT_OFFSET) as usize;
-                                    if let None = sequence.get_phrase(instrument) {
-                                        sequence.set_phrase(instrument, phrase);
-                                    } else {
+                                    
+                                    if let Some(true) = sequence.get_phrase(instrument).and_then(|phrase| Some(phrase == row)) {
                                         sequence.unset_phrase(instrument)
+                                    } else {
+                                        sequence.set_phrase(instrument, row);
                                     }
                                 },
-                                ButtonType::Side(phrase) => sequence.set_phrases(phrase),
+                                ButtonType::Side(index) => {
+                                    if let Some(ButtonType::Shift) = global_modifier {
+                                        sequence.set_phrases(4 - index);
+                                    } else {
+                                        surface.show_sequence(index);
+                                    }
+                                },
                                 ButtonType::Activator(instrument) => {
                                     sequence.toggle_active((instrument + Self::INSTRUMENT_OFFSET) as usize)
                                 },
                                 _ => (),
                             }
+                        },
+                        View::Timeline => {
+                            match button_type {
+                                ButtonType::Side(index) => {
+                                    surface.show_sequence(index);
+                                    surface.switch_view(View::Sequence);
+                                }
+                                _ => (),
+                            }
+                            // TODO - Timeline buttons
                         }
                     }
 
                     // Independent of current view
                     match button_type {
-                        ButtonType::Instrument(index) => surface.toggle_instrument(index + Self::INSTRUMENT_OFFSET),
-                        ButtonType::Master => surface.switch_view(),
+                        ButtonType::Instrument(index) => {
+                            // Switch to sequence when we click currently shown instrument button
+                            if let (&View::Instrument, true) = (&surface.view, surface.instrument_shown() == index as usize) {
+                                surface.switch_view(View::Sequence);
+                            } else {
+                                surface.show_instrument(index + Self::INSTRUMENT_OFFSET);
+                                surface.switch_view(View::Instrument);
+                            }
+                        },
+                        // Switch to timeline, when timeline already shown, switch to instrument
+                        ButtonType::Master => {
+                            let view = match surface.view {
+                                View::Timeline => View::Instrument,
+                                _ => View::Timeline,
+                            };
+                            surface.switch_view(view);
+                        },
                         _ => self.process_inputevent(&event, cycle, sequencer, surface, mixer),
                     }
                 },
@@ -273,6 +319,7 @@ pub trait APC {
             let mut messages = self.output_messages(cycle, sequencer, surface);
 
             // Always draw instrument grid
+            // This if statement is here to see if we can subtract INSTRUMENT_OFFSET
             if surface.instrument_shown() >= Self::INSTRUMENT_OFFSET as usize {
                 let instrument = surface.instrument_shown() - Self::INSTRUMENT_OFFSET as usize;
                 self.instrument().draw(instrument as u8, 1);
@@ -284,13 +331,27 @@ pub trait APC {
                     // Draw zoom grid
                     for index in 0 .. self.zoom_level() { self.solo().draw(index, 1); }
                 },
-                View::Sequence => {
+                View::Timeline => {
                     self.master().draw(1);
-                }
+                },
+                View::Sequence => {
+                    let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();
+                    self.draw_phrases(phrases);
+                    self.side().draw(4 - surface.sequence_shown() as u8, 1);
+                },
             };
+
+            // Output indicator to clear it after instrument view has drawn to it
+            if surface.view != View::Instrument {
+                messages.append(&mut self.indicator().output_messages(0));
+            }
 
             messages.append(&mut self.master().output_messages(0));
             messages.append(&mut self.solo().output_messages(0));
+            messages.append(&mut self.grid().output_messages(0));
+            messages.append(&mut self.side().output_messages(0));
+            messages.append(&mut self.activator().output_messages(0));
+
 
             // TODO - As all messages are here as one vec, we don't have to use the sorting struct
             // MidiOut anymore
@@ -371,8 +432,10 @@ impl APC for APC40 {
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn master(&mut self) -> &mut Single { &mut self.master }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
+    fn side(&mut self) -> &mut Side { &mut self.side }
     fn instrument(&mut self) -> &mut WideRow { &mut self.instrument }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
+    fn activator(&mut self) -> &mut WideRow { &mut self.activator }
     fn solo(&mut self) -> &mut WideRow { &mut self.solo }
 
     fn new(client: &jack::Client) -> Self {
@@ -418,7 +481,7 @@ impl APC for APC40 {
             InputEventType::FaderMoved { value, fader_type: FaderType::Master } => {
                 mixer.master_adjusted(event.time, value);
             },
-            InputEventType::KnobTurned { value, knob_type: KnobType::Effect(index) } => {
+            InputEventType::KnobTurned { value: _, knob_type: KnobType::Effect(_index) } => {
                 // TODO 
                 //sequencer.knob_turned(event.time, index + self.knob_offset, value);
             },
@@ -515,14 +578,6 @@ impl APC for APC40 {
                             _ => cycle.client.transport_reposition(jack::Position::default()),
                         };
                     },
-                    ButtonType::Sequence(index) => {
-                        if let Some(ButtonType::Shift) = modifier {
-                            // TODO timeline
-                            //sequencer.queue_sequence(index);
-                        } else {
-                            surface.toggle_sequence(index);
-                        }
-                    },
                     _ => (),
                 }
             },
@@ -559,13 +614,11 @@ impl APC for APC40 {
             View::Sequence => {
                 // TODO - Draw sequence stuff
                 // TODO - Output sequence indicator
-                messages.append(&mut self.indicator.output_messages(0));
+            },
+            View::Timeline => {
+            
             }
         }
-
-        messages.append(&mut self.grid.output_messages(0));
-        messages.append(&mut self.side.output_messages(0));
-        messages.append(&mut self.activator.output_messages(0));
 
         messages
     }
@@ -633,7 +686,9 @@ impl APC for APC20 {
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn master(&mut self) -> &mut Single { &mut self.master }
     fn grid(&mut self) -> &mut Grid { &mut self.grid }
+    fn side(&mut self) -> &mut Side { &mut self.side }
     fn instrument(&mut self) -> &mut WideRow { &mut self.instrument }
+    fn activator(&mut self) -> &mut WideRow { &mut self.activator }
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
     fn solo(&mut self) -> &mut WideRow { &mut self.solo }
 
@@ -664,7 +719,7 @@ impl APC for APC20 {
         }
     }
 
-    fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+    fn process_inputevent(&mut self, event: &InputEvent, _cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, _mixer: &mut Mixer) {
         let instrument = sequencer.get_instrument(surface.instrument_shown());
         let phrase = instrument.phrase_mut(self.phrase_shown(surface.instrument_shown()));
 
@@ -740,14 +795,11 @@ impl APC for APC20 {
                 messages.append(&mut self.output_indicator(cycle, &filters, surface, loopable.length()));
             },
             View::Sequence => {
-                // TODO - sequency stuff
-                messages.append(&mut self.indicator.output_messages(0));
+            },
+            View::Timeline => {
             }
         }
 
-        messages.append(&mut self.grid.output_messages(0));
-        messages.append(&mut self.side.output_messages(0));
-        messages.append(&mut self.activator.output_messages(0));
         messages
     }
 }

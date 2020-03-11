@@ -22,8 +22,8 @@ impl Sequence {
         }
     }
 
-    pub fn phrases(&self) -> [Option<u8>; 16] {
-        self.phrases
+    pub fn phrases(&self) -> &[Option<u8>; 16] {
+        &self.phrases
     }
 
     pub fn get_phrase(&self, instrument: usize) -> Option<u8> {

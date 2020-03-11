@@ -1,10 +1,11 @@
 
 use super::controller::input::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum View {
     Instrument,
     Sequence,
+    Timeline,
 }
 
 pub struct Surface {
@@ -28,14 +29,8 @@ impl Surface {
         }
     }
 
-    pub fn switch_view(&mut self) { 
-        self.view = match self.view {
-            View::Instrument => View::Sequence,
-            // TODO When switching from sequence to instrument, don't note_off the instrument grid
-            // Clear as we do not want the selected instrument grid to clear
-            //self.indicator_note_offs = vec![];
-            View::Sequence => View::Instrument,
-        };
+    pub fn switch_view(&mut self, view: View) { 
+        self.view = view;
     }
 
     pub fn show_instrument(&mut self, index: u8) { self.instrument_shown = index; }
@@ -43,33 +38,6 @@ impl Surface {
 
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
     pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }
-
-    pub fn toggle_instrument(&mut self, index: u8) {
-        // If we click selected instrument, return to sequence for peeking
-        if self.instrument_shown() == index as usize {
-            self.switch_view();
-        } else {
-            // Otherwise select instrument && switch
-            self.show_instrument(index);
-            // TODO - What does instrument target? Move this to "instrument"
-            //self.keyboard_target = instrument;
-            //self.drumpad_target = instrument;
-
-            if let View::Sequence = self.view { self.switch_view() }
-        }
-    }
-
-    pub fn toggle_sequence(&mut self, index: u8) {
-        // When we press currently selected overview, return to instrument view, so we can peek
-        if self.sequence_shown() == index as usize {
-            self.switch_view();
-        } else {
-            // If we select a new sequence, show that
-            self.show_sequence(index);
-
-            if let View::Instrument = self.view { self.switch_view() }
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -91,7 +59,7 @@ impl EventMemory {
     }
 
     pub fn register_event(&mut self, controller_id: u8, time: u64, event_type: InputEventType) {
-        let mut previous = self.occurred_events.iter_mut()
+        let previous = self.occurred_events.iter_mut()
             .find(|event| event.controller_id == controller_id && event.event_type == event_type);
 
         if let Some(event) = previous {
@@ -141,7 +109,7 @@ impl ButtonMemory {
         self.pressed_buttons.push(ButtonPress { controller_id, button_type, });
     }
 
-    pub fn release(&mut self, controller_id: u8, end: u64, button_type: ButtonType) {
+    pub fn release(&mut self, controller_id: u8, _end: u64, button_type: ButtonType) {
         let pressed_button = self.pressed_buttons.iter().enumerate().rev().find(|(_, pressed_button)| {
             pressed_button.button_type == button_type
                 && pressed_button.controller_id == controller_id

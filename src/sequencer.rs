@@ -1,7 +1,6 @@
 
 use super::TickRange;
 use super::cycle::*;
-use super::message::{Message, TimedMessage};
 use super::instrument::Instrument;
 use super::sequence::Sequence;
 use super::loopable::*;
@@ -54,7 +53,7 @@ impl TimeLine {
 
 pub struct Sequencer {
     pub instruments: [Instrument; 16],
-    pub sequences: [Sequence; 4],
+    pub sequences: [Sequence; 5],
     
     pub timeline: TimeLine,
 }
@@ -86,6 +85,7 @@ impl Sequencer {
             Sequence::new(),
             Sequence::new(),
             Sequence::new(),
+            Sequence::new(), 
             Sequence::new(), 
         ];
 
