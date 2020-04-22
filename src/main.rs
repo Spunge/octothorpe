@@ -10,13 +10,14 @@ pub mod controller;
 pub mod message;
 pub mod sequencer;
 pub mod cycle;
-pub mod instrument;
+pub mod track;
 pub mod loopable;
 pub mod sequence;
 pub mod surface;
 pub mod port;
 pub mod mixer;
 pub mod events;
+pub mod instrument;
 
 use std::io;
 use std::sync::mpsc::channel;
@@ -161,7 +162,7 @@ impl ProcessHandler {
             apc20: APC20::new(client),
             apc40: APC40::new(client),
 
-            mixer: Mixer::new(),
+            mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
             surface: Surface::new(),
             //ticks_elapsed: 0,
@@ -188,6 +189,7 @@ impl jack::ProcessHandler for ProcessHandler {
 
         // Sequencer first at it will cache playing notes, these we can use for sequence visualization
         self.sequencer.output_midi(&cycle);
+        self.mixer.output_midi(&cycle);
 
         self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
         self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
@@ -216,7 +218,7 @@ impl jack::ProcessHandler for ProcessHandler {
         //let (dynamic_grid_messages, mut sequencer_messages) = self.controller.sequencer.output_midi(&cycle);
         //apc_messages.extend(dynamic_grid_messages);
 
-        //sequencer_messages.extend(self.controller.process_instrument_messages(&cycle, self.sequence_in.iter(process_scope)));
+        //sequencer_messages.extend(self.controller.process_Track_messages(&cycle, self.sequence_in.iter(process_scope)));
 
         // Draw all the grids that don't change much & output control knob values
         //let (messages, _) = self.sequence_in.iter(process_scope).size_hint();

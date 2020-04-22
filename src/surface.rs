@@ -3,7 +3,7 @@ use super::controller::input::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
-    Instrument,
+    Track,
     Sequence,
     Timeline,
 }
@@ -13,18 +13,18 @@ pub struct Surface {
     pub button_memory: ButtonMemory,
     pub event_memory: EventMemory,
 
-    instrument_shown: u8,
+    track_shown: u8,
     sequence_shown: u8,
 }
 
 impl Surface {
     pub fn new() -> Self {
         Surface { 
-            view: View::Instrument, 
+            view: View::Track, 
             button_memory: ButtonMemory::new(),
             event_memory: EventMemory::new(),
 
-            instrument_shown: 0,
+            track_shown: 0,
             sequence_shown: 0,
         }
     }
@@ -33,8 +33,8 @@ impl Surface {
         self.view = view;
     }
 
-    pub fn show_instrument(&mut self, index: u8) { self.instrument_shown = index; }
-    pub fn instrument_shown(&self) -> usize { self.instrument_shown as usize }
+    pub fn show_track(&mut self, index: u8) { self.track_shown = index; }
+    pub fn track_shown(&self) -> usize { self.track_shown as usize }
 
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
     pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }

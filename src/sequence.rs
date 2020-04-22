@@ -1,9 +1,9 @@
 
-use super::instrument::Instrument;
+use super::track::Track;
 use super::loopable::*;
 
 pub struct Sequence {
-    // Phrase that's playing for instrument, array index = instrument
+    // Phrase that's playing for track, array index = track
     phrases: [Option<u8>; 16],
     active: [bool; 16],
 
@@ -26,35 +26,35 @@ impl Sequence {
         &self.phrases
     }
 
-    pub fn get_phrase(&self, instrument: usize) -> Option<u8> {
-        self.phrases[instrument]
+    pub fn get_phrase(&self, track: usize) -> Option<u8> {
+        self.phrases[track]
     }
 
     pub fn set_phrases(&mut self, phrase: u8) {
         self.phrases = [Some(phrase); 16];
     }
 
-    pub fn set_phrase(&mut self, instrument: usize, phrase: u8) {
-        self.phrases[instrument] = Some(phrase);
+    pub fn set_phrase(&mut self, track: usize, phrase: u8) {
+        self.phrases[track] = Some(phrase);
     }
 
-    pub fn unset_phrase(&mut self, instrument: usize) {
-        self.phrases[instrument] = None;
+    pub fn unset_phrase(&mut self, track: usize) {
+        self.phrases[track] = None;
     }
 
-    pub fn active_phrase(&self, instrument: usize) -> Option<u8> {
-        self.phrases[instrument].and_then(|phrase| if self.active[instrument] { Some(phrase) } else { None })
+    pub fn active_phrase(&self, track: usize) -> Option<u8> {
+        self.phrases[track].and_then(|phrase| if self.active[track] { Some(phrase) } else { None })
     }
 
-    pub fn toggle_active(&mut self, instrument: usize) {
-        self.active[instrument as usize] = ! self.active[instrument as usize];
+    pub fn toggle_active(&mut self, track: usize) {
+        self.active[track as usize] = ! self.active[track as usize];
     }
 
-    pub fn length(&self, instruments: &[Instrument]) -> u32 {
+    pub fn length(&self, tracks: &[Track]) -> u32 {
         self.phrases().iter().enumerate()
-            .filter_map(|(instrument_index, phrase_option)| {
+            .filter_map(|(track_index, phrase_option)| {
                 phrase_option.and_then(|phrase_index| {
-                    Some(instruments[instrument_index].phrases[phrase_index as usize].length())
+                    Some(tracks[track_index].phrases[phrase_index as usize].length())
                 })
             })
             .max()

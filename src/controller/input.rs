@@ -8,7 +8,7 @@ pub enum ButtonType {
     Grid(u8, u8),
     Side(u8),
     Indicator(u8),
-    Instrument(u8),
+    Track(u8),
     Activator(u8),
     Solo(u8),
     Arm(u8),
@@ -56,7 +56,7 @@ impl ButtonType {
         match note {
             0x5B => ButtonType::Play,
             0x5C => ButtonType::Stop,
-            0x33 => ButtonType::Instrument(channel),
+            0x33 => ButtonType::Track(channel),
             0x3F => ButtonType::Quantization,
             // These used to be sequence buttons, but will now be more control groups for plugin parameters
             //0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
