@@ -21,7 +21,7 @@ impl TimedMessage {
 
     pub fn to_raw_midi(&self) -> jack::RawMidi {
         match &self.message {
-            Message::Introduction(bytes) =>                                            
+            Message::Introduction(bytes) =>
                 jack::RawMidi{ time: self.time, bytes: bytes},
             Message::Inquiry(bytes) =>                                                 
                 jack::RawMidi{ time: self.time, bytes: bytes},

@@ -61,6 +61,9 @@ impl TickRange {
         self.start < other.stop && self.stop > other.start
     }
 
+    pub fn length(&self) -> u32 {
+        self.stop - self.start
+    }
 }
 
 pub struct TimebaseHandler {
@@ -187,12 +190,14 @@ impl jack::ProcessHandler for ProcessHandler {
 
         let cycle = ProcessCycle::new(client, scope);
 
+        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+
+        self.sequencer.autoqueue_next_sequence(&cycle);
+
         // Sequencer first at it will cache playing notes, these we can use for sequence visualization
         self.sequencer.output_midi(&cycle);
         self.mixer.output_midi(&cycle);
-
-        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
-        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
 
         self.apc20.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
         self.apc40.output_midi(&cycle, &mut self.sequencer, &mut self.surface);

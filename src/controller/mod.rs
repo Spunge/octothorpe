@@ -32,6 +32,10 @@ pub trait APC {
 
     fn identified_cycles(&self) -> u8;
     fn set_identified_cycles(&mut self, cycles: u8);
+    fn local_id(&self) -> u8;
+    fn set_local_id(&mut self, local_id: u8);
+    fn device_id(&self) -> u8;
+    fn set_device_id(&mut self, device_id: u8);
 
     fn zoom_level(&self) -> u8;
     fn set_zoom_level(&mut self, level: u8);
@@ -58,6 +62,7 @@ pub trait APC {
     }
 
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
+    fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)>;
 
     fn cue_knob(&mut self) -> &mut CueKnob;
     fn master(&mut self) -> &mut Single;
@@ -92,26 +97,50 @@ pub trait APC {
     }
 
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
-    fn output_indicator<F>(&mut self, cycle: &ProcessCycle, filters: &[F], surface: &Surface, length: u32) -> Vec<TimedMessage> where F: Fn(&InputEventType) -> bool {
-        let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
+    fn output_indicator(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
         let mut frame = 0;
 
-        // TODO - move this timing logic to seperate function when we need it for other things
-        // Do we need to draw length indicator, and when?
-        if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, filters, usecs) {
-            let usecs_ago = cycle.time_stop - usecs;
-            let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
+        if surface.view == View::Track {
+            let loopable_length = self.shown_loopable(sequencer, surface).length();
+            let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+            let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
 
-            if hide_in_usecs < cycle.usecs() {
-                frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
+            let offset_buttons = self.offset(surface.track_shown()) / self.ticks_per_button();
+
+            // TODO - move this timing logic to seperate function when we need it for other things
+            // Do we need to draw length indicator, and when?
+            if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, &filters, usecs) {
+                let usecs_ago = cycle.time_stop - usecs;
+                let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
+
+                if hide_in_usecs < cycle.usecs() {
+                    frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
+                } else {
+                    let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / loopable_length) as u8;
+                    //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
+                    let start_button = offset_buttons as u8 * length_buttons / self.indicator().width();
+                    let stop_button = start_button + length_buttons;
+                    for index in start_button .. stop_button {
+                        self.indicator().draw(index as u8, 1);
+                    }
+                }
             } else {
-                let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / length) as u8;
-                //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
-                let offset_buttons = (self.offset(surface.track_shown()) / self.ticks_per_button()) as u8;
-                let start_button = offset_buttons * length_buttons / self.indicator().width();
-                let stop_button = start_button + length_buttons;
-                for index in start_button .. stop_button {
-                    self.indicator().draw(index as u8, 1);
+                // As we don't have to show any time based indicators, show transport position indicator
+                let ranges = self.loopable_playing_ranges(cycle, sequencer, surface);
+
+                for (range, start) in ranges {
+                    let ticks_into_playable = (range.stop - start) % loopable_length;
+                    let button = ticks_into_playable / self.ticks_per_button();
+
+                    //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
+                    if button >= offset_buttons {
+                        self.indicator().draw((button - offset_buttons) as u8, 1);
+                    }
+
+                    // If transition falls within current cycle, switch on correct frame
+                    if range.stop % self.ticks_per_button() < range.length() {
+                        frame = (((range.stop % self.ticks_per_button()) as f64 / range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+                    }
                 }
             }
         }
@@ -188,12 +217,11 @@ pub trait APC {
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
-                    let message = Message::Introduction([0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                    self.set_device_id(device_id);
+                    self.set_local_id(local_id);
                     // Make sure we stop inquiring
                     // TODO - Make sure every grid is re-initialized after identifying
                     self.set_identified_cycles(1);
-
-                    self.output().write_midi(cycle.scope, &mut vec![TimedMessage::new(0, message)]);
                 },
                 InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
                     mixer.fader_adjusted(event.time, index + Self::TRACK_OFFSET, value);
@@ -314,6 +342,12 @@ pub trait APC {
         if self.identified_cycles() == 0 {
             messages.push(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
         } else if self.identified_cycles() < IDENTIFY_CYCLES {
+            // Output introduction if APC just responded to inquiry
+            if self.identified_cycles() == 1 {
+                let message = Message::Introduction([0xF0, 0x47, self.local_id(), self.device_id(), 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                messages.push(TimedMessage::new(0, message));
+            }
+
             self.set_identified_cycles(self.identified_cycles() + 1);
         } else {
             // APC 40 / 20 specific messages
@@ -342,16 +376,12 @@ pub trait APC {
                 },
             };
 
-            // Output indicator to clear it after track view has drawn to it
-            if surface.view != View::Track {
-                messages.append(&mut self.indicator().output_messages(0));
-            }
-
             messages.append(&mut self.master().output_messages(0));
             messages.append(&mut self.solo().output_messages(0));
             messages.append(&mut self.grid().output_messages(0));
             messages.append(&mut self.side().output_messages(0));
             messages.append(&mut self.activator().output_messages(0));
+            messages.append(&mut self.output_indicator(cycle, sequencer, surface));
         }
 
         // from this function
@@ -375,6 +405,8 @@ pub struct APC40 {
     output: MidiOut,
 
     identified_cycles: u8,
+    device_id: u8,
+    local_id: u8,
     knob_offset: u8,
 
     patterns_shown: [u8; 16],
@@ -408,6 +440,10 @@ impl APC for APC40 {
 
     fn identified_cycles(&self) -> u8 { self.identified_cycles }
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
+    fn local_id(&self) -> u8 { self.local_id }
+    fn set_local_id(&mut self, local_id: u8) { self.local_id = local_id }
+    fn device_id(&self) -> u8 { self.device_id }
+    fn set_device_id(&mut self, device_id: u8) { self.device_id = device_id }
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 16 / self.zoom_level() as u32 }
 
@@ -423,6 +459,10 @@ impl APC for APC40 {
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
         let track = sequencer.get_track(surface.track_shown());
         track.pattern_mut(self.pattern_shown(surface.track_shown()))
+    }
+
+    fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
+        vec![]
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
@@ -443,6 +483,8 @@ impl APC for APC40 {
             output: MidiOut::new(output),
 
             identified_cycles: 0,
+            local_id: 0,
+            device_id: 0,
             // Offset knobs by this value to support multiple groups
             knob_offset: 0,
 
@@ -602,10 +644,6 @@ impl APC for APC40 {
                         self.activator.draw(index as u8, 1);
                     }
                 }
-
-                // Indicator
-                let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
-                messages.append(&mut self.output_indicator(cycle, &filters, surface, loopable.length()));
             },
             View::Sequence => {
                 // TODO - Draw sequence stuff
@@ -627,6 +665,8 @@ pub struct APC20 {
     output: MidiOut,
 
     identified_cycles: u8,
+    device_id: u8,
+    local_id: u8,
 
     phrases_shown: [u8; 16],
     zoom_level: u8,
@@ -662,6 +702,10 @@ impl APC for APC20 {
 
     fn identified_cycles(&self) -> u8 { self.identified_cycles }
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
+    fn local_id(&self) -> u8 { self.local_id }
+    fn set_local_id(&mut self, local_id: u8) { self.local_id = local_id }
+    fn device_id(&self) -> u8 { self.device_id }
+    fn set_device_id(&mut self, device_id: u8) { self.device_id = device_id }
 
     fn ticks_in_grid(&self) -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 16 / self.zoom_level() as u32 }
 
@@ -677,6 +721,16 @@ impl APC for APC20 {
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
         let track = sequencer.get_track(surface.track_shown());
         track.phrase_mut(self.phrase_shown(surface.track_shown()))
+    }
+
+    fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
+        // Get playing phrases for currently selected track
+        let shown_phrase_index = self.phrase_shown(surface.track_shown());
+
+        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            .filter(|(_, _, index)| *index == shown_phrase_index)
+            .map(|(range, start, _)| (range, start))
+            .collect()
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
@@ -697,6 +751,8 @@ impl APC for APC20 {
             output: MidiOut::new(output),
 
             identified_cycles: 0,
+            local_id: 0,
+            device_id: 0,
 
             phrases_shown: [0; 16],
             zoom_level: 4,
@@ -784,10 +840,6 @@ impl APC for APC20 {
                 for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {
                     self.activator.draw(index as u8, 1);
                 }
-
-                // Indicator
-                let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
-                messages.append(&mut self.output_indicator(cycle, &filters, surface, loopable.length()));
             },
             View::Sequence => {
             },

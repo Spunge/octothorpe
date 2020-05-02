@@ -4,6 +4,7 @@ use super::cycle::*;
 use super::track::Track;
 use super::sequence::Sequence;
 use super::loopable::*;
+use super::events::*;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 struct PlayingSequence {
@@ -29,25 +30,14 @@ impl TimeLine {
         }
     }
 
-    fn playing_sequence(&self, start: u32) -> &PlayingSequence {
+    fn playing_sequence(&self, start: u32) -> Option<&PlayingSequence> {
         self.playing_sequences.iter()
             .filter(|playing_sequence| playing_sequence.start <= start)
             .max_by_key(|playing_sequence| playing_sequence.start)
-            .unwrap()
     }
 
-    fn next_sequence(&mut self, playing_sequence: &PlayingSequence, sequence_length: u32) -> PlayingSequence {
-        let next_sequence_tick = playing_sequence.start + sequence_length;
-        let sequence = self.playing_sequence(next_sequence_tick);
-
-        // Is next sequence still this one?
-        if sequence.start == playing_sequence.start {
-            let next_sequence = PlayingSequence::new(next_sequence_tick, playing_sequence.index);
-            self.playing_sequences.push(next_sequence);
-            next_sequence
-        } else {
-            *sequence
-        }
+    fn queue_sequence(&mut self, start: u32, sequence_index: usize) {
+        self.playing_sequences.push(PlayingSequence::new(start, sequence_index));
     }
 }
 
@@ -132,46 +122,66 @@ impl Sequencer {
         });
     }
 
+    pub fn autoqueue_next_sequence(&mut self, cycle: &ProcessCycle) {
+        let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start).unwrap();
+        let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.tracks);
+
+        let next_start = playing_sequence.start + playing_sequence_length;
+        if let None = self.timeline.playing_sequence(next_start) {
+            self.timeline.queue_sequence(next_start, playing_sequence.index);
+        }
+    }
+
+    // Get tick ranges of phrases that are playing in current cycle
+    pub fn playing_phrases(&self, track_index: usize, tick_range: &TickRange) -> Vec<(TickRange, u32, u8)> {
+        let playing_sequence = *self.timeline.playing_sequence(tick_range.start).unwrap();
+
+        let sequence = &self.sequences[playing_sequence.index];
+        let sequence_stop = playing_sequence.start + sequence.length(&self.tracks);
+
+        let phrase_playing_at_start = sequence.get_phrase(track_index);
+
+        let mut playing_phrases = vec![];
+
+        if tick_range.contains(sequence_stop) {
+            if let (Some(index), true) = (phrase_playing_at_start, tick_range.start < sequence_stop) {
+                // Add from start to sequence_stop
+                playing_phrases.push((TickRange::new(tick_range.start, sequence_stop), playing_sequence.start, index));
+            }
+
+            let next_sequence = self.timeline.playing_sequence(sequence_stop).unwrap();
+            if let Some(index) = self.sequences[next_sequence.index].get_phrase(track_index) {
+                // Only queue more of this when nothing is queued
+                playing_phrases.push((TickRange::new(sequence_stop, tick_range.stop), sequence_stop, index));
+            }
+        } else {
+            if let Some(index) = phrase_playing_at_start {
+                playing_phrases.push((*tick_range, playing_sequence.start, index))
+            }
+        }
+
+        playing_phrases
+    }
+
     // TODO - Direct queueing
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
-        let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start);
-        let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.tracks);
-        let sequence_stop = playing_sequence.start + playing_sequence_length;
-
         if ! cycle.is_rolling {
             return
         }
 
-        for (track_index, track) in self.tracks.iter_mut().enumerate() {
-        //if let Some((track_index, track)) = self.tracks.iter_mut().enumerate().next() {
-            let mut starting_notes = vec![];
+        for track_index in 0 .. self.tracks.len() {
+            let playing_phrases = self.playing_phrases(track_index, &cycle.tick_range);
 
-            let sequence_playing = &self.sequences[playing_sequence.index];
-            let playing_phrase = sequence_playing.get_phrase(track_index);
+            //let mut starting_notes = vec![];
+            let notes: Vec<PlayingNoteEvent> = playing_phrases.into_iter()
+                .flat_map(|(tick_range, start, phrase_index)| {
+                    // TODO - Make the switch to first getting pattern events, then converting
+                    // those to notes
+                    self.tracks[track_index].starting_notes(tick_range, start, phrase_index)
+                })
+                .collect();
 
-            // Insert currenly playing cycle into timeline when there's no next cycle queued
-            if cycle.tick_range.contains(sequence_stop) || sequence_stop < cycle.tick_range.start {
-                self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
-            }
-
-            if cycle.tick_range.contains(sequence_stop) {
-                if let (Some(index), true) = (playing_phrase, cycle.tick_range.start < sequence_stop) {
-                    // Add from start to sequence_stop
-                    starting_notes.extend(track.starting_notes(TickRange::new(cycle.tick_range.start, sequence_stop), playing_sequence.start, index));
-                }
-
-                let next_sequence = self.timeline.next_sequence(&playing_sequence, playing_sequence_length);
-                if let Some(index) = self.sequences[next_sequence.index].get_phrase(track_index) {
-                    // Only queue more of this when nothing is queued
-                    starting_notes.extend(track.starting_notes(TickRange::new(sequence_stop, cycle.tick_range.stop), sequence_stop, index));
-                }
-            } else {
-                if let Some(index) = playing_phrase {
-                    starting_notes.extend(track.starting_notes(cycle.tick_range, playing_sequence.start, index))
-                }
-            }
-
-            track.output_midi(cycle, starting_notes);
+            self.tracks[track_index].output_midi(cycle, notes);
         }
     }
 

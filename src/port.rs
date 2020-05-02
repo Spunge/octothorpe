@@ -27,7 +27,7 @@ impl MidiOut {
                     println!("Error: {}", e);
                     println!("{:?}\n", message);
                 },
-                Ok(_) => {},
+                Ok(_) => (),
             }
         });
     }

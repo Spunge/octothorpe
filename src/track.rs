@@ -80,6 +80,7 @@ impl Track {
     pub fn starting_notes(&self, absolute_range: TickRange, sequence_start: u32, phrase_index: u8) -> impl Iterator<Item = PlayingNoteEvent> + '_ {
         let phrase = self.phrase(phrase_index);
 
+        // Get range relative to sequence
         let sequence_range = TickRange::new(absolute_range.start - sequence_start, absolute_range.stop - sequence_start);
         let phrase_ranges = phrase.looping_ranges(&sequence_range);
 
@@ -135,6 +136,9 @@ impl Track {
             });
 
         messages.extend(note_on);
+
+        //println!("{:?}", messages);
+        //println!("{:?}", self.playing_notes);
 
         // Remember playing notes to later trigger note off message & output note on messages
         self.playing_notes.extend(starting_notes);
