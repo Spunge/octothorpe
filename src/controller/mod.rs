@@ -20,7 +20,8 @@ const SEQUENCE_COLOR: u8 = 1;
 const TIMELINE_COLOR: u8 = 3;
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
-const LENGTH_INDICATOR_USECS: u64 = 600000;
+const LENGTH_INDICATOR_USECS: u64 = 300000;
+const PLAYING_LOOPABLE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
 
 pub trait APC {
     type Loopable: Loopable;
@@ -61,7 +62,9 @@ pub trait APC {
         } else { 0 }
     }
 
+    fn shown_loopable_index(&self, surface: &mut Surface) -> u8;
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
+    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8>;
     fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)>;
 
     fn cue_knob(&mut self) -> &mut CueKnob;
@@ -96,8 +99,36 @@ pub trait APC {
         }
     }
 
+    fn output_side(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
+        // Default to output immediately
+        let mut frame = 0;
+
+        if surface.view == View::Track {
+            let playing_indexes = self.playing_loopable_indexes(cycle, sequencer, surface);
+            let showed_index = self.shown_loopable_index(surface);
+
+            let state = 1 - (cycle.tick_range.stop / PLAYING_LOOPABLE_INDICATOR_TICKS) % 2;
+
+            for index in playing_indexes.into_iter() {
+                // Playable selector
+                self.side().draw(index, state as u8);
+            }
+
+            // Playable selector
+            self.side().draw(showed_index, 1);
+
+            // Switch on correct frame
+            if cycle.tick_range.stop % PLAYING_LOOPABLE_INDICATOR_TICKS < cycle.tick_range.length() {
+                frame = (((cycle.tick_range.stop % PLAYING_LOOPABLE_INDICATOR_TICKS) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+            }
+        }
+
+        self.side().output_messages(frame)
+    }
+
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
     fn output_indicator(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
+        // Default to output immediately
         let mut frame = 0;
         let loopable_length = self.shown_loopable(sequencer, surface).length();
 
@@ -127,7 +158,6 @@ pub trait APC {
             } else {
                 // As we don't have to show any time based indicators, show transport position indicator
                 let ranges = self.loopable_playing_ranges(cycle, sequencer, surface);
-                //println!("{:?}", ranges);
 
                 for (range, start) in ranges {
                     let ticks_into_playable = (range.stop - start);
@@ -369,6 +399,7 @@ pub trait APC {
                 },
                 View::Timeline => {
                     self.master().draw(1);
+                    //println!("{:?}", sequencer.timeline.playing_sequences);
                 },
                 View::Sequence => {
                     let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();
@@ -380,8 +411,8 @@ pub trait APC {
             messages.append(&mut self.master().output_messages(0));
             messages.append(&mut self.solo().output_messages(0));
             messages.append(&mut self.grid().output_messages(0));
-            messages.append(&mut self.side().output_messages(0));
             messages.append(&mut self.activator().output_messages(0));
+            messages.append(&mut self.output_side(cycle, sequencer, surface));
             messages.append(&mut self.output_indicator(cycle, sequencer, surface));
         }
 
@@ -457,14 +488,27 @@ impl APC for APC40 {
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
+    fn shown_loopable_index(&self, surface: &mut Surface) -> u8 {
+        self.pattern_shown(surface.track_shown())
+    }
+
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
         let track = sequencer.track_mut(surface.track_shown());
-        track.pattern_mut(self.pattern_shown(surface.track_shown()))
+        track.pattern_mut(self.shown_loopable_index(surface))
+    }
+
+    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8> {
+        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            .flat_map(|(tick_range, sequence_start, phrase_index)| {
+                sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
+                    .map(|(pattern_index, _, _, _, _)| pattern_index)
+            })
+            .collect()
     }
 
     fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
         // Get playing phrases of currently selected track
-        let shown_pattern_index = self.pattern_shown(surface.track_shown());
+        let shown_pattern_index = self.shown_loopable_index(surface);
         let pattern = sequencer.track(surface.track_shown()).pattern(shown_pattern_index);
 
         sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
@@ -660,8 +704,6 @@ impl APC for APC40 {
                     .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
                 self.draw_events(events, self.offset(surface.track_shown()), base_note - 2);
 
-                self.side.draw(self.pattern_shown(surface.track_shown()), 1);
-
                 // pattern length selector
                 if loopable.has_explicit_length() {
                     for index in 0 .. (loopable.length() / Self::Loopable::minimum_length()) {
@@ -742,22 +784,33 @@ impl APC for APC20 {
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
+    fn shown_loopable_index(&self, surface: &mut Surface) -> u8 {
+        self.phrase_shown(surface.track_shown())
+    }
+
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
         let track = sequencer.track_mut(surface.track_shown());
-        track.phrase_mut(self.phrase_shown(surface.track_shown()))
+        track.phrase_mut(self.shown_loopable_index(surface))
+    }
+
+    // Get indexes of currently playing phrases in showed track
+    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8> {
+        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            .map(|(_, _, phrase_index)| phrase_index)
+            .collect()
     }
 
     fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
         // Get playing phrases for currently selected track
-        let shown_phrase_index = self.phrase_shown(surface.track_shown());
+        let shown_phrase_index = self.shown_loopable_index(surface);
         let length = sequencer.track(surface.track_shown()).phrase(shown_phrase_index).length();
 
         sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
             .filter(|(_, _, index)| *index == shown_phrase_index)
-            .map(|(range, start, _)| {
-                let iterations = range.start / length;
+            .map(|(range, sequence_start, _)| {
+                let iterations = (range.start - sequence_start) / length;
 
-                (range, start + (iterations * length))
+                (range, sequence_start + iterations * length)
             })
             .collect()
     }
@@ -861,9 +914,6 @@ impl APC for APC20 {
                 // Draw main grid
                 let events = loopable.events().iter();
                 self.draw_events(events, self.offset(surface.track_shown()), 0);
-
-                // Playable selector
-                self.side.draw(self.phrase_shown(surface.track_shown()), 1);
 
                 // Length selector
                 for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {

@@ -131,8 +131,12 @@ impl Sequencer {
         let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.tracks);
 
         let next_start = playing_sequence.start + playing_sequence_length;
-        if let None = self.timeline.playing_sequence(next_start) {
-            self.timeline.queue_sequence(next_start, playing_sequence.index);
+
+        if cycle.tick_range.contains(next_start) {
+            let next_sequence = self.timeline.playing_sequence(next_start);
+            if next_sequence.is_none() || next_sequence.unwrap().start == playing_sequence.start {
+                self.timeline.queue_sequence(next_start, playing_sequence.index);
+            }
         }
     }
 
@@ -156,7 +160,9 @@ impl Sequencer {
             let next_sequence = self.timeline.playing_sequence(sequence_stop).unwrap();
             if let Some(index) = self.sequences[next_sequence.index].get_phrase(track_index) {
                 // Only queue more of this when nothing is queued
+                //TODO - Why did we use sequence_stop?
                 playing_phrases.push((TickRange::new(sequence_stop, tick_range.stop), sequence_stop, index));
+                //playing_phrases.push((TickRange::new(sequence_stop, tick_range.stop), playing_sequence.start, index));
             }
         } else {
             if let Some(index) = phrase_playing_at_start {
@@ -391,153 +397,5 @@ impl Sequencer {
             })
     }
 
-    fn main_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>)
-        -> Option<Vec<TimedMessage>>
-    {
-        // Minimum switch time for sequence indicator
-        let mut ticks_interval = self.playable().ticks_per_led();
-        // TODO - Ugly hotfix, plz fix
-        if ticks_interval > TimebaseHandler::beats_to_ticks(1.0) {
-            ticks_interval = TimebaseHandler::beats_to_ticks(1.0);
-        }
-
-        // Do we have to switch now?
-        cycle.delta_ticks_recurring(0, ticks_interval)
-            // Are we forced to redraw? If yes, instantly draw
-            .or_else(|| if force_redraw { Some(0) } else { None })
-            .and_then(|delta_ticks| {
-                let switch_on_tick = cycle.start + delta_ticks;
-
-                // Get playing regions of playables that are shown at the moment
-                match self.overview {
-                    OverView::Sequence => {
-                        let longest_phrase = playing_phrases.into_iter()
-                            .map(|playing_phrase| self.tracks[playing_phrase.track].phrases[playing_phrase.phrase].playable.length)
-                            .max()
-                            .unwrap();
-
-                        let ticks_per_led = longest_phrase / 8;
-
-                        let sequence_tick = switch_on_tick as i32 % longest_phrase as i32;
-                        let led = sequence_tick / ticks_per_led as i32;
-
-                        if led >= 0 && led < 8 && sequence_tick < longest_phrase as i32 {
-                            self.state_next[self.index_indicator.start + led as usize] = 1;
-                        }
-                    },
-                    OverView::Track => {
-                        let shown_playables: Vec<(u32, u32)> = match self.detailview {
-                            DetailView::Pattern => {
-                                playing_patterns.into_iter()
-                                    .filter(|playing_pattern| {
-                                        playing_pattern.track == self.track_index()
-                                            && playing_pattern.pattern == self.tracks[playing_pattern.track].pattern
-                                    })
-                                .map(|playing_pattern| (playing_pattern.start, playing_pattern.end))
-                                    .collect()
-                            },
-                            DetailView::Phrase => {
-                                playing_phrases.into_iter()
-                                    .filter(|playing_phrase| {
-                                        playing_phrase.track == self.track_index()
-                                            && playing_phrase.phrase == self.tracks[playing_phrase.track].phrase
-                                    })
-                                .map(|playing_phrase| (playing_phrase.start, playing_phrase.end))
-                                    .collect()
-                            },
-                        };
-
-                        shown_playables.into_iter()
-                            // Only show led for unfinished playables
-                            .filter(|(_, end)| *end > cycle.end)
-                            .for_each(|(start, end)| {
-                                // Amount of ticks in region (playing patterns can be shorter as pattern they play)
-                                let ticks = end - start;
-                                let playable_tick = switch_on_tick as i32 - start as i32 - self.playable().ticks_offset() as i32;
-                                let led = playable_tick / self.playable().ticks_per_led() as i32;
-
-                                if led >= 0 && led < 8 && playable_tick < ticks as i32 {
-                                    self.state_next[self.index_indicator.start + led as usize] = 1;
-                                }
-                            });
-                    },
-                };
-
-
-                // Create timed messages from indicator state
-                let messages = self.output_horizontal_grid(self.index_indicator.clone(), 0x34).into_iter()
-                    .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
-                    .collect();
-
-                // Return these beautifull messages
-                Some(messages)
-            })
-    }
-
-    // Send midi to process handler
-    pub fn output_midi(&mut self, cycle: &Cycle) -> (Vec<TimedMessage>, Vec<TimedMessage>) {
-        // Play note offs
-        let mut sequence_out_messages = Sequencer::note_off_messages(cycle, &mut self.sequence_note_offs);
-        let mut control_out_messages = Sequencer::note_off_messages(cycle, &mut self.indicator_note_offs);
-
-        // Only output sequencer notes when playing, but output indicators on reposition aswell
-        if cycle.is_rolling || cycle.was_repositioned {
-            // Get playing sequences
-            if let Some(playing_phrases) = self.playing_phrases(cycle) {
-                // Output those
-                // TODO - Sequence with phrases of different length
-                let playing_patterns = self.playing_patterns(cycle, &playing_phrases);
-
-                // We should always redraw on reposition or button press
-                let force_redraw = cycle.was_repositioned;
-
-                //if let Some(note_events) = self.main_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                //control_out_messages.extend(note_events);
-                //}
-
-                // Get playing notes for sequencer
-                let playing_notes = self.playing_notes(cycle, &playing_patterns);
-
-                // Output note events
-                let (sequence_note_offs, sequence_note_ons)
-                    = Sequencer::sequence_note_events(cycle, &playing_notes, 1, 0, None, None, None);
-
-                if cycle.is_rolling {
-                    sequence_out_messages.extend(sequence_note_ons);
-                }
-
-                // Draw dynamic indicators
-                match self.overview {
-                    OverView::Track => {
-                        //if let Some(note_events) = self.playable_indicator_note_events(cycle, force_redraw, &playing_patterns, &playing_phrases) {
-                        //control_out_messages.extend(note_events);
-                        //}
-                    },
-                    OverView::Sequence => {
-                        if cycle.is_rolling {
-                            let (indicator_note_offs, control_note_ons)
-                                = Sequencer::sequence_note_events(cycle, &playing_notes, 3, self.track_group * 8, Some(0x33), Some(1), Some(0));
-
-                            self.indicator_note_offs.extend(indicator_note_offs);
-                            control_out_messages.extend(control_note_ons);
-                        }
-                    }
-                }
-
-                // Always trigger draw of sequence indicator as it will always be active
-                //if let Some(note_events) = self.sequence_indicator_note_events(cycle, force_redraw) {
-                //control_out_messages.extend(note_events);
-                //}
-
-                // Also push note offs (TODO - Why after all this stuff?)
-                if cycle.is_rolling {
-                    self.sequence_note_offs.extend(sequence_note_offs);
-                }
-            }
-        }
-
-        // Return messages
-        (control_out_messages, sequence_out_messages)
-    }
     */
 }
