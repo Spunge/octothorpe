@@ -77,42 +77,6 @@ impl Track {
         self.output.write_midi(cycle.scope, &mut messages);
     }
 
-    pub fn starting_notes(&self, absolute_range: TickRange, sequence_start: u32, phrase_index: u8) -> impl Iterator<Item = PlayingNoteEvent> + '_ {
-        let phrase = self.phrase(phrase_index);
-
-        // Get range relative to sequence
-        let sequence_range = TickRange::new(absolute_range.start - sequence_start, absolute_range.stop - sequence_start);
-        let phrase_ranges = phrase.looping_ranges(&sequence_range);
-
-        phrase_ranges.into_iter()
-            .flat_map(move |(phrase_range, phrase_offset)| {
-                phrase.pattern_events.iter()
-                    // Only pattern events that stop
-                    .filter(|pattern_event| pattern_event.stop().is_some())
-                    // Only pattern events that fall within relative phrase cycle
-                    // Looping ranges are 2 ranges, start & end. Get absolute ranges and their
-                    // corresponding offset in the pattern
-                    .flat_map(move |pattern_event| {
-                        pattern_event.absolute_tick_ranges(phrase.length()).into_iter()
-                            .flat_map(move |(pattern_event_range, pattern_event_offset)| {
-                                let pattern = self.pattern(pattern_event.pattern);
-
-                                let pattern_event_length = pattern_event.length(phrase.length());
-                                let absolute_offset = phrase_offset + sequence_start;
-
-                                // Get pattern based starting notes, and add offset based on phrase
-                                // iteration & sequence start
-                                pattern.starting_notes(&phrase_range, &pattern_event_range, pattern_event_offset, pattern_event_length).into_iter()
-                                    .map(move |mut playing_note| {
-                                        playing_note.start += absolute_offset;
-                                        playing_note.stop += absolute_offset;
-                                        playing_note
-                                    })
-                            })
-                    })
-            })
-    }
-
     pub fn output_midi(&mut self, cycle: &ProcessCycle, starting_notes: Vec<PlayingNoteEvent>) {
         // Always play note off messages
         let mut messages = vec![];

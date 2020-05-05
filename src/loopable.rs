@@ -179,26 +179,11 @@ impl Pattern {
         self.length = Some(length);
     }
 
-    pub fn starting_notes(&self, phrase_range: &TickRange, pattern_event_range: &TickRange, offset_into_pattern: u32, pattern_event_length: u32) 
+    pub fn starting_notes(&self, absolute_start: u32, relative_range: TickRange, pattern_event_length: u32) 
         -> Vec<PlayingNoteEvent> 
     {
-        // Is this pattern event being played?
-        if ! pattern_event_range.overlaps(phrase_range) {
-            return vec![];
-        }
-
-        // Get range of pattern_event_range that falls within phrase_range
-        let absolute_start = if pattern_event_range.contains(phrase_range.start) { phrase_range.start } else { pattern_event_range.start };
-        let absolute_stop = if pattern_event_range.contains(phrase_range.stop) { phrase_range.stop } else { pattern_event_range.stop };
-
-        // Get relative range of pattern that should be played
-        let pattern_range = TickRange::new(
-            absolute_start - pattern_event_range.start + offset_into_pattern,
-            absolute_stop - pattern_event_range.start + offset_into_pattern
-        );
-
         // Get looping ranges when pattern is a looping pattern
-        let ranges = if ! self.has_explicit_length() { vec![(pattern_range, 0)] } else { self.looping_ranges(&pattern_range) };
+        let ranges = if ! self.has_explicit_length() { vec![(relative_range, 0)] } else { self.looping_ranges(&relative_range) };
 
         ranges.iter()
             .flat_map(|(range, offset)| {
@@ -210,8 +195,8 @@ impl Pattern {
                         let looping_note_length = if self.has_explicit_length() { self.length() } else { pattern_event_length };
                         let note_start = (offset + note_event.start());
                         let note_stop = offset + note_event.stop().unwrap() + if note_event.is_looping() { looping_note_length } else { 0 };
-                        let start_tick = note_start - pattern_range.start;
-                        let stop_tick = note_stop - pattern_range.start;
+                        let start_tick = note_start - relative_range.start;
+                        let stop_tick = note_stop - relative_range.start;
 
                         PlayingNoteEvent {
                             start: absolute_start + start_tick,

@@ -99,9 +99,9 @@ pub trait APC {
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
     fn output_indicator(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
         let mut frame = 0;
+        let loopable_length = self.shown_loopable(sequencer, surface).length();
 
         if surface.view == View::Track {
-            let loopable_length = self.shown_loopable(sequencer, surface).length();
             let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
             let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
 
@@ -127,9 +127,10 @@ pub trait APC {
             } else {
                 // As we don't have to show any time based indicators, show transport position indicator
                 let ranges = self.loopable_playing_ranges(cycle, sequencer, surface);
+                //println!("{:?}", ranges);
 
                 for (range, start) in ranges {
-                    let ticks_into_playable = (range.stop - start) % loopable_length;
+                    let ticks_into_playable = (range.stop - start);
                     let button = ticks_into_playable / self.ticks_per_button();
 
                     //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
@@ -457,12 +458,35 @@ impl APC for APC40 {
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
-        let track = sequencer.get_track(surface.track_shown());
+        let track = sequencer.track_mut(surface.track_shown());
         track.pattern_mut(self.pattern_shown(surface.track_shown()))
     }
 
     fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
-        vec![]
+        // Get playing phrases of currently selected track
+        let shown_pattern_index = self.pattern_shown(surface.track_shown());
+        let pattern = sequencer.track(surface.track_shown()).pattern(shown_pattern_index);
+
+        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            .flat_map(|(tick_range, sequence_start, phrase_index)| {
+                sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
+                    .filter(|(pattern_index, _, _, _, _)| *pattern_index == shown_pattern_index)
+                    .map(move |(_, absolute_start, relative_range, pattern_event_length, absolute_offset)| {
+                        let absolute_range = relative_range.plus(absolute_start);
+
+                        // Make sure indicator loops around when pattern has explicit length
+                        let start = if pattern.has_explicit_length() {
+                            let length = pattern.length();
+                            let iterations = relative_range.start / length;
+                            absolute_start + iterations * length
+                        } else {
+                            absolute_start
+                        };
+
+                        (absolute_range, start)
+                    })
+            })
+            .collect()
     }
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
@@ -511,7 +535,7 @@ impl APC for APC40 {
      * Process APC40 specific midi input, shared input is handled by APC trait
      */
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
-        let track = sequencer.get_track(surface.track_shown());
+        let track = sequencer.track_mut(surface.track_shown());
         let pattern = track.pattern_mut(self.pattern_shown(surface.track_shown()));
 
         // Only process channel note messages
@@ -719,17 +743,22 @@ impl APC for APC20 {
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
-        let track = sequencer.get_track(surface.track_shown());
+        let track = sequencer.track_mut(surface.track_shown());
         track.phrase_mut(self.phrase_shown(surface.track_shown()))
     }
 
     fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
         // Get playing phrases for currently selected track
         let shown_phrase_index = self.phrase_shown(surface.track_shown());
+        let length = sequencer.track(surface.track_shown()).phrase(shown_phrase_index).length();
 
         sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
             .filter(|(_, _, index)| *index == shown_phrase_index)
-            .map(|(range, start, _)| (range, start))
+            .map(|(range, start, _)| {
+                let iterations = range.start / length;
+
+                (range, start + (iterations * length))
+            })
             .collect()
     }
 
@@ -772,7 +801,7 @@ impl APC for APC20 {
     }
 
     fn process_inputevent(&mut self, event: &InputEvent, _cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, _mixer: &mut Mixer) {
-        let track = sequencer.get_track(surface.track_shown());
+        let track = sequencer.track_mut(surface.track_shown());
         let phrase = track.phrase_mut(self.phrase_shown(surface.track_shown()));
 
         // Only process channel note messages

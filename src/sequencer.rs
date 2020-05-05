@@ -86,8 +86,12 @@ impl Sequencer {
         }
     }
 
-    pub fn get_track(&mut self, index: usize) -> &mut Track {
+    pub fn track_mut(&mut self, index: usize) -> &mut Track {
         &mut self.tracks[index]
+    }
+
+    pub fn track(&self, index: usize) -> &Track {
+        &self.tracks[index]
     }
 
     pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
@@ -163,6 +167,46 @@ impl Sequencer {
         playing_phrases
     }
 
+    pub fn playing_patterns(&self, tick_range: &TickRange, track_index: usize, phrase_index: u8, sequence_start: u32) -> Vec<(u8, u32, TickRange, u32, u32)> {
+        let track = &self.tracks[track_index];
+        let phrase = track.phrase(phrase_index);
+
+        // Get range relative to sequence
+        let sequence_range = TickRange::new(tick_range.start - sequence_start, tick_range.stop - sequence_start);
+        let phrase_ranges = phrase.looping_ranges(&sequence_range);
+
+        phrase_ranges.into_iter()
+            .flat_map(move |(phrase_range, phrase_offset)| {
+                phrase.pattern_events.iter()
+                    // Only pattern events that stop
+                    .filter(|pattern_event| pattern_event.stop().is_some())
+                    // Only pattern events that fall within relative phrase cycle
+                    // Looping ranges are 2 ranges, start & end. Get absolute ranges and their
+                    // corresponding offset in the pattern
+                    .flat_map(move |pattern_event| {
+                        pattern_event.absolute_tick_ranges(phrase.length()).into_iter()
+                            .filter(move |(pattern_event_range, _)| pattern_event_range.overlaps(&phrase_range))
+                            .map(move |(pattern_event_range, pattern_event_offset)| {
+                                let pattern_event_length = pattern_event.length(phrase.length());
+                                let absolute_offset = phrase_offset + sequence_start;
+
+                                // Get range of pattern_event_range that falls within phrase_range
+                                let absolute_start = if pattern_event_range.contains(phrase_range.start) { phrase_range.start } else { pattern_event_range.start };
+                                let absolute_stop = if pattern_event_range.contains(phrase_range.stop) { phrase_range.stop } else { pattern_event_range.stop };
+
+                                // Get relative range of pattern that should be played
+                                let relative_range = TickRange::new(
+                                    absolute_start - pattern_event_range.start + pattern_event_offset,
+                                    absolute_stop - pattern_event_range.start + pattern_event_offset
+                                );
+
+                                (pattern_event.pattern, absolute_start, relative_range, pattern_event_length, absolute_offset)
+                            })
+                    })
+            })
+            .collect()
+    }
+
     // TODO - Direct queueing
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
         if ! cycle.is_rolling {
@@ -174,10 +218,22 @@ impl Sequencer {
 
             //let mut starting_notes = vec![];
             let notes: Vec<PlayingNoteEvent> = playing_phrases.into_iter()
-                .flat_map(|(tick_range, start, phrase_index)| {
+                .flat_map(|(tick_range, sequence_start, phrase_index)| {
                     // TODO - Make the switch to first getting pattern events, then converting
                     // those to notes
-                    self.tracks[track_index].starting_notes(tick_range, start, phrase_index)
+                    self.playing_patterns(&tick_range, track_index, phrase_index, sequence_start).into_iter()
+                        .flat_map(|(pattern_index, absolute_start, relative_range, pattern_event_length, absolute_offset)| {
+                            let pattern = self.tracks[track_index].pattern(pattern_index);
+
+                            // Get pattern based starting notes, and add offset based on phrase
+                            // iteration & sequence start
+                            pattern.starting_notes(absolute_start, relative_range, pattern_event_length).into_iter()
+                                .map(move |mut playing_note| {
+                                    playing_note.start += absolute_offset;
+                                    playing_note.stop += absolute_offset;
+                                    playing_note
+                                })
+                        })
                 })
                 .collect();
 
@@ -327,79 +383,6 @@ impl Sequencer {
 
                 // Create timed messages from indicator state
                 let messages = self.output_vertical_grid(self.index_sequences.clone(), 0x57).into_iter()
-                    .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
-                    .collect();
-
-                // Return these beautifull messages
-                Some(messages)
-            })
-    }
-
-    // Show playing & selected pattern or phrase
-    fn playable_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool, playing_patterns: &Vec<PlayingPattern>, playing_phrases: &Vec<PlayingPhrase>)
-        -> Option<Vec<TimedMessage>>
-    {
-        let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
-        let recording_ticks = TimebaseHandler::beats_to_ticks(0.5);
-
-        cycle.delta_ticks_recurring(0, recording_ticks)
-            // Are we forced to redraw? If yes, instantly draw
-            .or_else(|| if force_redraw { Some(0) } else { None })
-            .and_then(|delta_ticks| {
-                let switch_on_tick = cycle.start + delta_ticks;
-
-                // Make playing playable blink
-                let playing_indexes: Vec<usize> = match self.detailview {
-                    DetailView::Pattern => {
-                        playing_patterns.iter()
-                            .filter(|playing_pattern| {
-                                playing_pattern.track == self.track_index()
-                                    && playing_pattern.end > cycle.end
-                            })
-                        .map(|playing_pattern| playing_pattern.pattern)
-                            .collect()
-                    }
-                    DetailView::Phrase => {
-                        playing_phrases.iter()
-                            .filter(|playing_phrase| {
-                                playing_phrase.track == self.track_index()
-                                    && playing_phrase.end > cycle.end
-                            })
-                        .map(|playing_phrase| playing_phrase.phrase)
-                            .collect()
-                    },
-                };
-
-                // Multiple patterns or phrases can be playing
-                playing_indexes.into_iter().for_each(|index| {
-                    self.state_next[self.index_playables.start + index] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
-                });
-
-                // Always mark selected playable
-                let selected_index = match self.detailview {
-                    DetailView::Pattern => self.track().pattern,
-                    DetailView::Phrase => self.track().phrase,
-                };
-                self.state_next[self.index_playables.start + selected_index] = 1;
-
-                // Always (most importantly, so last) render recording playables
-                let recording_indexes: Vec<usize> = match self.detailview {
-                    DetailView::Pattern => {
-                        self.track().patterns.iter().enumerate()
-                            .filter_map(|(index, pattern)| {
-                                if pattern.is_recording { Some(index) } else { None }
-                            })
-                        .collect()
-                    }
-                    _ => vec![],
-                };
-
-                recording_indexes.into_iter().for_each(|index| {
-                    self.state_next[self.index_playables.start + index] = if ((switch_on_tick / recording_ticks) % 2) == 0 { 1 } else { 0 };
-                });
-
-                // Create timed messages from indicator state
-                let messages = self.output_vertical_grid(self.index_playables.clone(), 0x52).into_iter()
                     .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
                     .collect();
 
