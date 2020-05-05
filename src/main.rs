@@ -131,17 +131,6 @@ pub struct ProcessHandler {
     mixer: Mixer,
     sequencer: Sequencer,
     surface: Surface,
-
-    //ticks_elapsed: u32,
-    //was_repositioned: bool,
-
-    // Port that receives updates from plugin host about parameters changing
-    //control_in: jack::Port<jack::MidiIn>,
-    //control_out: MidiOut,
-
-    // Sequencer out & cc out etc.
-    //sequence_in: jack::Port<jack::MidiIn>,
-    //sequence_out: MidiOut,
 }
 
 impl ProcessHandler {
@@ -149,18 +138,6 @@ impl ProcessHandler {
         _timebase_sender: Sender<f64>,
         client: &jack::Client
     ) -> Self {
-        // Create ports
-        //let apc_40_in = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
-        //let apc_40_out = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
-        //let apc_20_in = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
-        //let apc_20_out = client.register_port("APC20 out", jack::MidiOut::default()).unwrap();
-        //let control_in = client.register_port("control in", jack::MidiIn::default()).unwrap();
-        //let control_out = client.register_port("control out", jack::MidiOut::default()).unwrap();
-        //let sequence_in = client.register_port("sequence in", jack::MidiIn::default()).unwrap();
-        //let sequence_out = client.register_port("sequence out", jack::MidiOut::default()).unwrap();
-
-        // TODO controller should be trait for apc20 & 40
-
         ProcessHandler { 
             apc20: APC20::new(client),
             apc40: APC40::new(client),
@@ -168,12 +145,6 @@ impl ProcessHandler {
             mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
             surface: Surface::new(),
-            //ticks_elapsed: 0,
-            //was_repositioned: false,
-            //control_in,
-            //control_out: MidiOut{ port: control_out },
-            //sequence_in,
-            //sequence_out: MidiOut{ port: sequence_out },
         }
     }
 }
@@ -181,13 +152,6 @@ impl ProcessHandler {
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
         // Get something representing this process cycle
-        //let (state, pos) = client.transport_query();
-        //let cycle = Cycle::new(pos, self.ticks_elapsed, self.was_repositioned, process_scope.n_frames(), state);
-        // Update next ticks to keep track of absoulute ticks elapsed for note off events
-        //self.ticks_elapsed += cycle.ticks;
-        // cycle.absolute_start indicates this is first cycle program runs for
-        //self.was_repositioned = cycle.is_repositioned || cycle.absolute_start == 0;
-
         let cycle = ProcessCycle::new(client, scope);
 
         self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
@@ -201,38 +165,6 @@ impl jack::ProcessHandler for ProcessHandler {
 
         self.apc20.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
         self.apc40.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
-
-        //let mut apc_messages = vec![];
-        //let mut control_messages = vec![];
-
-        // TODO - Clean up this mess
-
-        // Process incoming midi notes from APC (these correspond to button presses)
-        //apc_messages.extend(self.controller.process_apc_note_messages(self.apc_40_in.iter(process_scope), &cycle, client));
-        //apc_messages.extend(self.controller.process_apc_note_messages(self.apc_20_in.iter(process_scope), &cycle, client));
-        //apc_messages.extend(self.controller.process_plugin_control_change_messages(self.control_in.iter(process_scope)));
-
-        // Process incoming control change messages from APC (knob turns etc.), output adjusted cc
-        // messages on seperate CC messages channel so cc messages are not picked up by synths etc.
-        //control_messages.extend(self.controller.process_apc_control_change_messages(self.apc_40_in.iter(process_scope)));
-        //control_messages.extend(self.controller.process_apc_control_change_messages(self.apc_20_in.iter(process_scope)));
-
-        // Get dynamic grids (indicators and whatnot) & midi messages
-        // These are both returned by one function as playing notes will also be used for
-        // sequence indicators
-        //let (dynamic_grid_messages, mut sequencer_messages) = self.controller.sequencer.output_midi(&cycle);
-        //apc_messages.extend(dynamic_grid_messages);
-
-        //sequencer_messages.extend(self.controller.process_Track_messages(&cycle, self.sequence_in.iter(process_scope)));
-
-        // Draw all the grids that don't change much & output control knob values
-        //let (messages, _) = self.sequence_in.iter(process_scope).size_hint();
-        //apc_messages.extend(self.controller.sequencer.output_static(messages > 0));
-
-        // Get cycle based control & midi
-        //self.apc_40_out.write(process_scope, apc_messages);
-        //self.control_out.write(process_scope, control_messages);
-        //self.sequence_out.write(process_scope, sequencer_messages);
 
         jack::Control::Continue
     }

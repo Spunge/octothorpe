@@ -7,7 +7,7 @@ use super::TickRange;
 use super::message::{TimedMessage, Message};
 use super::cycle::ProcessCycle;
 use super::loopable::*;
-use super::sequencer::Sequencer;
+use super::sequencer::*;
 use super::surface::*;
 use super::port::MidiOut;
 use super::mixer::*;
@@ -99,6 +99,9 @@ pub trait APC {
         }
     }
 
+    /*
+     * Output side indicator, show what patterns/phrases are playing and selected
+     */
     fn output_side(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
         // Default to output immediately
         let mut frame = 0;
@@ -107,7 +110,7 @@ pub trait APC {
             let playing_indexes = self.playing_loopable_indexes(cycle, sequencer, surface);
             let showed_index = self.shown_loopable_index(surface);
 
-            let state = 1 - (cycle.tick_range.stop / PLAYING_LOOPABLE_INDICATOR_TICKS) % 2;
+            let state = 1 - (cycle.tick_range.start / PLAYING_LOOPABLE_INDICATOR_TICKS) % 2;
 
             for index in playing_indexes.into_iter() {
                 // Playable selector
@@ -222,6 +225,13 @@ pub trait APC {
             });
     }
 
+    fn draw_timeline(&mut self, playing_sequences: &Vec<PlayingSequence>) {
+        
+    }
+
+    /*
+     * Draw grid that we can use to select what phrases are playing
+     */
     fn draw_phrases(&mut self, phrases: &[Option<u8>; 16]) {
         for (index, option) in phrases[Self::TRACK_OFFSET as usize .. (Self::TRACK_OFFSET + 8) as usize].iter().enumerate() {
             if let Some(phrase) = option {
@@ -399,7 +409,7 @@ pub trait APC {
                 },
                 View::Timeline => {
                     self.master().draw(1);
-                    //println!("{:?}", sequencer.timeline.playing_sequences);
+                    self.draw_timeline(&sequencer.timeline.playing_sequences);
                 },
                 View::Sequence => {
                     let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();

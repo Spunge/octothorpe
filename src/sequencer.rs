@@ -7,7 +7,7 @@ use super::loopable::*;
 use super::events::*;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-struct PlayingSequence {
+pub struct PlayingSequence {
     // Start tick
     start: u32,
     index: usize,
@@ -20,7 +20,7 @@ impl PlayingSequence {
 }
 
 pub struct TimeLine {
-    playing_sequences: Vec<PlayingSequence>,
+    pub playing_sequences: Vec<PlayingSequence>,
 }
 
 impl TimeLine {
@@ -246,156 +246,4 @@ impl Sequencer {
             self.tracks[track_index].output_midi(cycle, notes);
         }
     }
-
-    // One of the control knobs on the APC was turned
-    /*
-    pub fn knob_turned(&mut self, time: u32, knob: u8, value: u8) {
-        // Get the channel & knob that APC knob should send out of, first 8 channels are for
-        // tracks, next 2 are used for sequences (sequence channels will be used for bus
-        // effects)
-        let (out_channel, out_knob) = match self.overview {
-            OverView::Track => {
-                let track_knob = self.track().set_knob_value(knob, value);
-                let track = self.track_index() as u8;
-                let offset = (track % 2) * 64;
-                // 2 tracks per channel
-                (track / 2, track_knob + offset)
-            },
-            OverView::Sequence => {
-                let sequence_knob = self.sequence().set_knob_value(knob, value);
-                // Sequence channels are after the tracks channels, therefore +
-                // tracks.len / 2
-                (self.sequence / 2 + self.tracks.len() as u8 / 2, sequence_knob + (self.sequence % 2) * 64)
-            },
-        };
-
-        //println!("ME: knob_{:?} on channel {:?} turned to value: {:?}", out_knob, out_channel, value);
-        // TODO - Output this to corresponding port
-        //vec![TimedMessage::new(time, Message::Note([0xB0 + out_channel, out_knob, value]))]
-    }
-
-    pub fn plugin_parameter_changed(&mut self, message: jack::RawMidi) -> Option<TimedMessage> {
-        //println!("SYNTHPOD: knob_{:?} on channel {:?} turned to value: {:?}", message.bytes[1], message.bytes[0] - 0xB0, message.bytes[2]);
-
-        let mut knob = message.bytes[1];
-        // Collections of 64 knobs
-        let mut knob_collection = (message.bytes[0] - 0xB0) * 2;
-
-        // Mulitple sequences and tracks live in same channels
-        if knob >= 64 {
-            knob_collection = knob_collection + 1;
-            knob = knob - 64;
-        }
-
-        let knob_group = knob / 16;
-        let apc_knob = knob % 16;
-
-        // Pass change to correct knob group container
-        let changed_knob = if knob_collection < 16 {
-            self.tracks[knob_collection as usize].knob_value_changed(knob, message.bytes[2])
-                // Knob was changed, see if track & knob_group are currently shown, if it is,
-                // update knob on APC
-                .and_then(|_| {
-                    // Check if changed virtual knob is visible at the moment
-                    if let OverView::Track = self.overview {
-                        if self.track_index() as u8 == knob_collection && self.track().knob_group == knob_group {
-                            Some(apc_knob)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-        } else {
-            // TODO - Sequence knob groups broken!
-            self.sequences[knob_collection as usize - 16].knob_value_changed(knob, message.bytes[2])
-                .and_then(|_| {
-                    if let OverView::Sequence = self.overview {
-                        // Sequence knob collections are placed after track groups
-                        let sequence = (knob_collection - 16) / 4;
-                        if self.sequence == sequence && self.sequence().knob_group == knob_group {
-                            Some(apc_knob)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-        };
-
-        // If knob was actually changed, pass message through to APC
-        changed_knob
-            .and_then(|mut knob| {
-                knob = if knob < 8 { 0x30 + knob } else { 0x10 + knob - 8 };
-                Some(TimedMessage::new(message.time, Message::Note([0xB0, knob, message.bytes[2]])))
-            })
-        None
-    }
-
-    pub fn recording_key_played(&mut self, track: u8, raw_channel: u8, cycle: &Cycle, message: jack::RawMidi) -> TimedMessage {
-        // We're subtracting 9 as drumpads of my keyboard are outputting on channel 9
-        let mut track_channel = raw_channel + track;
-
-        if cycle.is_rolling {
-            // Could be this is a note down meant for previously selected track
-            let target: &mut Track = if self.tracks[track as usize].recorded_messages.len() == 0 && raw_channel == 0x80 {
-                // Send message to track that has recorded messages left
-                let (index, track) = self.tracks.iter_mut().enumerate()
-                    .find(|(_, track)| track.recorded_messages.len() > 0)
-                    .unwrap();
-
-                track_channel = raw_channel + index as u8;
-                track
-            } else {
-                // It was meant for current track instead
-                &mut self.tracks[track as usize]
-            };
-
-            // Only record when cycle is rolling
-            let cycle_length = cycle.end - cycle.start;
-            // Message was recorded in previous frame
-            let message_time = (cycle.start - cycle_length) + message.time;
-            target.record_message(message_time, raw_channel, message.bytes[1], message.bytes[2], self.is_quantizing);
-        }
-
-        // Always play the note
-        TimedMessage::new(message.time, Message::Note([track_channel, message.bytes[1], message.bytes[2]]))
-    }
-
-    pub fn queue_sequence(&mut self, sequence: u8) {
-        // TODO
-        //self.sequence_queued = Some(sequence as usize);
-    }
-
-    // Show playing, queued and selected sequence
-    fn sequence_indicator_note_events(&mut self, cycle: &Cycle, force_redraw: bool) -> Option<Vec<TimedMessage>> {
-        let playing_ticks = TimebaseHandler::beats_to_ticks(1.0);
-
-        cycle.delta_ticks_recurring(0, playing_ticks)
-            // Are we forced to redraw? If yes, instantly draw
-            .or_else(|| if force_redraw { Some(0) } else { None })
-            .and_then(|delta_ticks| {
-                let switch_on_tick = cycle.start + delta_ticks;
-
-                // Add queued when it's there
-                if let Some(index) = self.sequence_queued {
-                    self.state_next[self.index_sequences.start + index] = 1;
-                }
-
-                // Set playing sequence
-                self.state_next[self.index_sequences.start + self.sequence_playing] = if ((switch_on_tick / playing_ticks) % 2) == 0 { 1 } else { 0 };
-
-                // Create timed messages from indicator state
-                let messages = self.output_vertical_grid(self.index_sequences.clone(), 0x57).into_iter()
-                    .map(|message| TimedMessage::new(cycle.ticks_to_frames(delta_ticks), message))
-                    .collect();
-
-                // Return these beautifull messages
-                Some(messages)
-            })
-    }
-
-    */
 }

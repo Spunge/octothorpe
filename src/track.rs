@@ -13,7 +13,6 @@ pub struct Track {
 
     playing_notes: Vec<PlayingNoteEvent>,
 
-    //pub knob_group: u8,
     //knob_values: [u8; 128],
 
     output: MidiOut,
@@ -32,10 +31,6 @@ impl Track {
             patterns,
 
             playing_notes: vec![],
-
-            // There's 4 knob groups, this way we can have knobs * 4 !
-            //knob_group: 0,
-            //knob_values: [0; 128],
 
             output: MidiOut::new(output),
         }
@@ -101,8 +96,6 @@ impl Track {
 
         messages.extend(note_on);
 
-        //println!("{:?}", messages);
-        //println!("{:?}", self.playing_notes);
 
         // Remember playing notes to later trigger note off message & output note on messages
         self.playing_notes.extend(starting_notes);
@@ -111,31 +104,4 @@ impl Track {
         //self.output.output_messages(&mut messages);
         self.output.write_midi(cycle.scope, &mut messages);
     }
-
-    /*
-    pub fn switch_knob_group(&mut self, group: u8) {
-        self.knob_group = group;
-    }
-
-    pub fn set_knob_value(&mut self, index: u8, value: u8) -> u8 {
-        let knob = self.knob_group * 16 + index;
-        self.knob_values[knob as usize] = value;
-        knob
-    }
-
-    pub fn get_knob_values(&self) -> &[u8] {
-        let start = self.knob_group as usize * 16;
-        let end = start as usize + 16;
-        &self.knob_values[start .. end]
-    }
-
-    pub fn knob_value_changed(&mut self, knob: u8, value: u8) -> Option<u8> {
-        if self.knob_values[knob as usize] != value {
-            self.knob_values[knob as usize] = value;
-            Some(value)
-        } else {
-            None
-        }
-    }
-    */
 }
