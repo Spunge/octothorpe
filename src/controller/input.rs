@@ -27,6 +27,7 @@ pub enum ButtonType {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum FaderType {
     Track(u8),
+    CrossFade,
     Master,
 }
 
@@ -107,6 +108,7 @@ impl InputEventType {
                     },
                     0x7 => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0) },
                     0xE => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Master },
+                    0xF => Self::FaderMoved { value: bytes[2], fader_type: FaderType::CrossFade },
                     0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
                     _ => Self::Unknown,
                 }
@@ -127,6 +129,10 @@ impl InputEvent {
 
     pub fn is_activator_button(event_type: &InputEventType) -> bool { 
         matches!(event_type, InputEventType::ButtonPressed(ButtonType::Activator(_)))
+    }
+
+    pub fn is_track_button(event_type: &InputEventType) -> bool {
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Track(_)))
     }
 
     pub fn is_solo_button(event_type: &InputEventType) -> bool { 

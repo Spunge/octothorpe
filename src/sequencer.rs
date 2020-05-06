@@ -6,16 +6,16 @@ use super::sequence::Sequence;
 use super::loopable::*;
 use super::events::*;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct PlayingSequence {
-    // Start tick
-    start: u32,
-    index: usize,
+    // Start & stop tick
+    pub tick_range: TickRange,
+    pub index: usize,
 }
 
 impl PlayingSequence {
-    fn new(start: u32, index: usize) -> Self {
-        Self { start, index }
+    fn new(start: u32, stop: u32, index: usize) -> Self {
+        Self { tick_range: TickRange::new(start, stop), index }
     }
 }
 
@@ -24,20 +24,28 @@ pub struct TimeLine {
 }
 
 impl TimeLine {
-    fn new()  -> Self {
+    fn new(client: &jack::Client)  -> Self {
+        // TODO - Get transport state from client, fill playing sequences with default sequence
+        // till current transport tick
         Self {
-            playing_sequences: vec![PlayingSequence::new(0, 0)]
+            playing_sequences: vec![
+                PlayingSequence::new(0, Phrase::default_length(), 0),
+                PlayingSequence::new(Phrase::default_length(), Phrase::default_length() * 3, 1),
+                PlayingSequence::new(Phrase::default_length() * 3, Phrase::default_length() * 5, 0),
+                PlayingSequence::new(Phrase::default_length() * 5, Phrase::default_length() * 6, 3),
+                PlayingSequence::new(Phrase::default_length() * 6, Phrase::default_length() * 8, 2),
+            ]
         }
     }
 
     fn playing_sequence(&self, start: u32) -> Option<&PlayingSequence> {
         self.playing_sequences.iter()
-            .filter(|playing_sequence| playing_sequence.start <= start)
-            .max_by_key(|playing_sequence| playing_sequence.start)
+            .filter(|playing_sequence| playing_sequence.tick_range.start <= start)
+            .max_by_key(|playing_sequence| playing_sequence.tick_range.start)
     }
 
-    fn queue_sequence(&mut self, start: u32, sequence_index: usize) {
-        self.playing_sequences.push(PlayingSequence::new(start, sequence_index));
+    fn queue_sequence(&mut self, start: u32, stop: u32, sequence_index: usize) {
+        self.playing_sequences.push(PlayingSequence::new(start, stop, sequence_index));
     }
 }
 
@@ -82,7 +90,7 @@ impl Sequencer {
         Sequencer {
             tracks,
             sequences,
-            timeline: TimeLine::new(),
+            timeline: TimeLine::new(client),
         }
     }
 
@@ -130,12 +138,12 @@ impl Sequencer {
         let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start).unwrap();
         let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.tracks);
 
-        let next_start = playing_sequence.start + playing_sequence_length;
+        let next_start = playing_sequence.tick_range.start + playing_sequence_length;
 
         if cycle.tick_range.contains(next_start) {
             let next_sequence = self.timeline.playing_sequence(next_start);
-            if next_sequence.is_none() || next_sequence.unwrap().start == playing_sequence.start {
-                self.timeline.queue_sequence(next_start, playing_sequence.index);
+            if next_sequence.is_none() || next_sequence.unwrap().tick_range.start == playing_sequence.tick_range.start {
+                self.timeline.queue_sequence(next_start, next_start + playing_sequence_length, playing_sequence.index);
             }
         }
     }
@@ -145,7 +153,8 @@ impl Sequencer {
         let playing_sequence = *self.timeline.playing_sequence(tick_range.start).unwrap();
 
         let sequence = &self.sequences[playing_sequence.index];
-        let sequence_stop = playing_sequence.start + sequence.length(&self.tracks);
+        // TODO - Get this from playing sequence
+        let sequence_stop = playing_sequence.tick_range.start + sequence.length(&self.tracks);
 
         let phrase_playing_at_start = sequence.get_phrase(track_index);
 
@@ -154,7 +163,7 @@ impl Sequencer {
         if tick_range.contains(sequence_stop) {
             if let (Some(index), true) = (phrase_playing_at_start, tick_range.start < sequence_stop) {
                 // Add from start to sequence_stop
-                playing_phrases.push((TickRange::new(tick_range.start, sequence_stop), playing_sequence.start, index));
+                playing_phrases.push((TickRange::new(tick_range.start, sequence_stop), playing_sequence.tick_range.start, index));
             }
 
             let next_sequence = self.timeline.playing_sequence(sequence_stop).unwrap();
@@ -162,11 +171,10 @@ impl Sequencer {
                 // Only queue more of this when nothing is queued
                 //TODO - Why did we use sequence_stop?
                 playing_phrases.push((TickRange::new(sequence_stop, tick_range.stop), sequence_stop, index));
-                //playing_phrases.push((TickRange::new(sequence_stop, tick_range.stop), playing_sequence.start, index));
             }
         } else {
             if let Some(index) = phrase_playing_at_start {
-                playing_phrases.push((*tick_range, playing_sequence.start, index))
+                playing_phrases.push((*tick_range, playing_sequence.tick_range.start, index))
             }
         }
 

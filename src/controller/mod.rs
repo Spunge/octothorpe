@@ -17,7 +17,10 @@ use input::*;
 use lights::*;
 
 const SEQUENCE_COLOR: u8 = 1;
-const TIMELINE_COLOR: u8 = 3;
+const TIMELINE_HEAD_COLOR: u8 = 1;
+const TIMELINE_TAIL_COLOR: u8 = 5;
+// Same as default phrase length atm
+const TIMELINE_TICKS_PER_LED: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4;
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
 const LENGTH_INDICATOR_USECS: u64 = 300000;
@@ -225,8 +228,43 @@ pub trait APC {
             });
     }
 
-    fn draw_timeline(&mut self, playing_sequences: &Vec<PlayingSequence>) {
-        
+    fn draw_timeline(&mut self, sequencer: &Sequencer, surface: &Surface) {
+        // Timeline spans 2 grids
+        let total_grid_ticks = 16 * TIMELINE_TICKS_PER_LED;
+
+        // Get max tick in playing sequences and add some padding
+        //let mut max_tick = sequencer.timeline.playing_sequences.iter()
+            //.map(|playing_sequence| playing_sequence.tick_range.stop).max().unwrap();
+        //max_tick += 4 * TIMELINE_TICKS_PER_LED;
+
+        //let offset = if max_tick > total_grid_ticks {
+            //max_tick - total_grid_ticks
+        //} else { 0 };
+
+        // One led == one minimal phrase length
+        let grid_start = Self::TRACK_OFFSET as u32 * TIMELINE_TICKS_PER_LED + surface.timeline_offset;
+        let ticks_in_grid = 8 * TIMELINE_TICKS_PER_LED;
+
+        let grid_tickrange = TickRange::new(grid_start, grid_start + ticks_in_grid);
+
+        let shown_sequences = sequencer.timeline.playing_sequences.iter()
+            .filter(|playing_sequence| grid_tickrange.overlaps(&playing_sequence.tick_range))
+            .for_each(move |playing_sequence| {
+                let start = playing_sequence.tick_range.start as i32 - grid_tickrange.start as i32;
+                let stop = playing_sequence.tick_range.stop as i32 - grid_tickrange.start as i32;
+
+                let start_led = start / TIMELINE_TICKS_PER_LED as i32;
+                let stop_led = stop / TIMELINE_TICKS_PER_LED as i32;
+
+                self.grid().try_draw(start_led, playing_sequence.index as u8, TIMELINE_HEAD_COLOR);
+
+                for led in (start_led + 1) .. stop_led {
+                    self.grid().try_draw(led, playing_sequence.index as u8, TIMELINE_TAIL_COLOR);
+                }
+            });
+
+
+        //println!("{:?}", shown_tickrange);
     }
 
     /*
@@ -269,15 +307,29 @@ pub trait APC {
                 },
                 // TODO - Shift events in loopable to right/left when holding shift
                 InputEventType::KnobTurned { value, knob_type: KnobType::Cue } => {
+                    // Check if cueknob should respond immediately
                     let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
                     let is_first_turn = surface.event_memory
                         .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
                         .is_none();
 
                     let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
-                    let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
-                    let offset = self.adjusted_offset(surface.track_shown(), max_offset, delta_buttons);
-                    self.set_offset(surface.track_shown(), offset);
+
+                    match surface.view {
+                        View::Track => {
+                            let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
+                            let offset = self.adjusted_offset(surface.track_shown(), max_offset, delta_buttons);
+                            self.set_offset(surface.track_shown(), offset);
+                        },
+                        View::Timeline => {
+                            let new_offset = surface.timeline_offset as i32 + (delta_buttons as i32 * TIMELINE_TICKS_PER_LED as i32);
+
+                            if new_offset >= 0 {
+                                surface.timeline_offset = new_offset as u32;
+                            }
+                        },
+                        _ => (),
+                    }
                 },
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep track of modifing buttons
@@ -409,7 +461,7 @@ pub trait APC {
                 },
                 View::Timeline => {
                     self.master().draw(1);
-                    self.draw_timeline(&sequencer.timeline.playing_sequences);
+                    self.draw_timeline(sequencer, surface);
                 },
                 View::Sequence => {
                     let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();

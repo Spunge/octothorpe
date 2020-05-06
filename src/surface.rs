@@ -15,6 +15,7 @@ pub struct Surface {
 
     track_shown: u8,
     sequence_shown: u8,
+    pub timeline_offset: u32,
 }
 
 impl Surface {
@@ -26,6 +27,7 @@ impl Surface {
 
             track_shown: 0,
             sequence_shown: 0,
+            timeline_offset: 0,
         }
     }
 

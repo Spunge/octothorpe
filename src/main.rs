@@ -80,7 +80,7 @@ impl TimebaseHandler {
 
     pub fn new(receiver: Receiver<f64>) -> Self {
         TimebaseHandler {
-            beats_per_minute: 137.0,
+            beats_per_minute: 600.0,
             is_up_to_date: false,
             beats_per_bar: 4.0,
             beat_type: 4.0,
@@ -157,7 +157,7 @@ impl jack::ProcessHandler for ProcessHandler {
         self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
         self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
 
-        self.sequencer.autoqueue_next_sequence(&cycle);
+        //self.sequencer.autoqueue_next_sequence(&cycle);
 
         // Sequencer first at it will cache playing notes, these we can use for sequence visualization
         self.sequencer.output_midi(&cycle);
