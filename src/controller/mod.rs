@@ -24,7 +24,10 @@ const TIMELINE_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
 const LENGTH_INDICATOR_USECS: u64 = 300000;
+const DOUBLE_CLICK_USECS: u64 = 300000;
 const PLAYING_LOOPABLE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
+const PLAYING_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
+const QUEUED_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 / 2;
 
 pub trait APC {
     type Loopable: Loopable;
@@ -109,24 +112,46 @@ pub trait APC {
         // Default to output immediately
         let mut frame = 0;
 
-        if surface.view == View::Track {
-            let playing_indexes = self.playing_loopable_indexes(cycle, sequencer, surface);
-            let showed_index = self.shown_loopable_index(surface);
+        match surface.view {
+            View::Track => {
+                let playing_indexes = self.playing_loopable_indexes(cycle, sequencer, surface);
+                let showed_index = self.shown_loopable_index(surface);
 
-            let state = 1 - (cycle.tick_range.start / PLAYING_LOOPABLE_INDICATOR_TICKS) % 2;
+                let state = 1 - (cycle.tick_range.start / PLAYING_LOOPABLE_INDICATOR_TICKS) % 2;
 
-            for index in playing_indexes.into_iter() {
+                // Draw blinking playing loopables
+                for index in playing_indexes.into_iter() {
+                    self.side().draw(index, state as u8);
+                }
+
+                // Always show selected loopable
+                self.side().draw(showed_index, 1);
+
+                // Switch on correct frame
+                if cycle.tick_range.stop % PLAYING_LOOPABLE_INDICATOR_TICKS < cycle.tick_range.length() {
+                    frame = (((cycle.tick_range.stop % PLAYING_LOOPABLE_INDICATOR_TICKS) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+                }
+            },
+            View::Sequence => {
+                // Draw blinking playing sequences
+                let playing_state = 1 - (cycle.tick_range.start / PLAYING_SEQUENCE_INDICATOR_TICKS) % 2;
+                self.side().draw(sequencer.sequence_playing as u8, playing_state as u8);
+
                 // Playable selector
-                self.side().draw(index, state as u8);
-            }
+                self.side().draw(surface.sequence_shown() as u8, 1);
 
-            // Playable selector
-            self.side().draw(showed_index, 1);
+                // If theres something queued, make sure that blinks like crazy
+                if let Some(index) = sequencer.sequence_queued {
+                    let queued_state = 1 - (cycle.tick_range.start / QUEUED_SEQUENCE_INDICATOR_TICKS) % 2;
+                    self.side().draw(index as u8, queued_state as u8);
+                }
 
-            // Switch on correct frame
-            if cycle.tick_range.stop % PLAYING_LOOPABLE_INDICATOR_TICKS < cycle.tick_range.length() {
-                frame = (((cycle.tick_range.stop % PLAYING_LOOPABLE_INDICATOR_TICKS) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
-            }
+                // Switch on correct frame
+                if cycle.tick_range.stop % PLAYING_SEQUENCE_INDICATOR_TICKS < cycle.tick_range.length() {
+                    frame = (((cycle.tick_range.stop % PLAYING_SEQUENCE_INDICATOR_TICKS) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+                }
+            },
+            _ => (),
         }
 
         self.side().output_messages(frame)
@@ -358,8 +383,16 @@ pub trait APC {
                                     }
                                 },
                                 ButtonType::Side(index) => {
+                                    // TODO - Move double click logic to surface
+                                    let filters = vec![|event_type: &InputEventType| -> bool {
+                                        *event_type == event.event_type
+                                    }];
+                                    let usecs = cycle.time_stop - DOUBLE_CLICK_USECS;
+
                                     if let Some(ButtonType::Shift) = global_modifier {
                                         sequence.set_phrases(index);
+                                    } else if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, &filters, usecs) {
+                                        sequencer.sequence_queued = Some(index as usize);
                                     } else {
                                         surface.show_sequence(index);
                                     }
@@ -371,6 +404,7 @@ pub trait APC {
                             }
                         },
                         View::Timeline => {
+                            /*
                             match button_type {
                                 ButtonType::Side(index) => {
                                     surface.show_sequence(index);
@@ -378,6 +412,7 @@ pub trait APC {
                                 }
                                 _ => (),
                             }
+                            */
                             // TODO - Timeline buttons
                         }
                     }

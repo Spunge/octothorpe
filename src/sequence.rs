@@ -12,9 +12,9 @@ pub struct Sequence {
 }
 
 impl Sequence {
-    pub fn new() -> Self {
+    pub fn new(phrase: u8) -> Self {
         Sequence {
-            phrases: [Some(0); 16],
+            phrases: [Some(phrase); 16],
             active: [true; 16],
 
             knob_group: 0,

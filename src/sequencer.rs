@@ -24,6 +24,7 @@ pub struct Sequencer {
     pub sequences: [Sequence; 5],
 
     pub sequence_playing: usize,
+    pub sequence_queued: Option<usize>,
     pub last_sequence_started: u32,
 }
 
@@ -51,11 +52,11 @@ impl Sequencer {
 
         // Build sequence we can trigger
         let sequences = [
-            Sequence::new(),
-            Sequence::new(),
-            Sequence::new(),
-            Sequence::new(),
-            Sequence::new(),
+            Sequence::new(0),
+            Sequence::new(1),
+            Sequence::new(2),
+            Sequence::new(3),
+            Sequence::new(4),
         ];
 
         Sequencer {
@@ -63,6 +64,7 @@ impl Sequencer {
             sequences,
 
             sequence_playing: 0,
+            sequence_queued: None,
             last_sequence_started: 0,
         }
     }
@@ -133,24 +135,13 @@ impl Sequencer {
             .unwrap();
 
         if cycle.tick_range.contains(next_start) {
-            println!("{:?} {:?}", next_start, self.sequence_playing);
+            if let Some(index) = self.sequence_queued {
+                self.sequence_queued = None;
+                self.sequence_playing = index;
+            };
+
             self.play_sequence(next_start, self.sequence_playing);
         }
-
-
-        /*
-        let playing_sequence = *self.sequence_line.playing_sequence(cycle.tick_range.start).unwrap();
-        let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.tracks);
-
-        let next_start = playing_sequence.tick_range.start + playing_sequence_length;
-
-        if cycle.tick_range.contains(next_start) {
-            let next_sequence = self.sequence_line.playing_sequence(next_start);
-            if next_sequence.is_none() || next_sequence.unwrap().tick_range.start == playing_sequence.tick_range.start {
-                self.sequence_line.queue_sequence(next_start, next_start + playing_sequence_length, playing_sequence.index);
-            }
-        }
-        */
     }
 
     // Get tick ranges of phrases that are playing in current cycle
