@@ -176,6 +176,29 @@ impl LoopablePatternEvent {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LoopablePhraseEvent {
+    pub start: u32,
+    pub stop: Option<u32>,
+    pub phrase: u8,
+}
+
+impl LoopableEvent for LoopablePhraseEvent {
+    fn start(&self) -> u32 { self.start }
+    fn stop(&self) -> Option<u32> { self.stop }
+    fn set_start(&mut self, tick: u32) { self.start = tick }
+    fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
+    fn is_on_row(&self, index: u8) -> bool { self.phrase == index }
+    fn is_on_same_row(&self, other: &Self) -> bool { self.phrase == other.phrase }
+    fn row(&self, offset: u8) -> u8 { self.phrase - offset }
+}
+
+impl LoopablePhraseEvent {
+    pub fn new(start: u32, stop: u32, phrase: u8) -> Self {
+        LoopablePhraseEvent { start, stop: Some(stop), phrase }
+    }
+}
+
 // We also keep start around so we can use this for different note visualizations aswell
 #[derive(Debug)]
 pub struct PlayingNoteEvent {

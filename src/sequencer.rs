@@ -19,11 +19,11 @@ impl PlayingSequence {
     }
 }
 
-pub struct TimeLine {
+pub struct SequenceLine {
     pub playing_sequences: Vec<PlayingSequence>,
 }
 
-impl TimeLine {
+impl SequenceLine {
     fn new(client: &jack::Client)  -> Self {
         // TODO - Get transport state from client, fill playing sequences with default sequence
         // till current transport tick
@@ -53,7 +53,10 @@ pub struct Sequencer {
     pub tracks: [Track; 16],
     pub sequences: [Sequence; 5],
 
-    pub timeline: TimeLine,
+    pub sequence_line: SequenceLine,
+
+    pub sequence_playing: usize,
+    pub last_sequence_started: u32,
 }
 
 impl Sequencer {
@@ -90,7 +93,10 @@ impl Sequencer {
         Sequencer {
             tracks,
             sequences,
-            timeline: TimeLine::new(client),
+            sequence_line: SequenceLine::new(client),
+
+            sequence_playing: 0,
+            last_sequence_started: 0,
         }
     }
 
@@ -134,53 +140,72 @@ impl Sequencer {
         });
     }
 
+    /*
+     * Add playing phrases in sequence to respective track timelines
+     */
+    pub fn play_sequence(&mut self, start: u32, sequence_index: usize) {
+        let sequence = &self.sequences[sequence_index];
+        let sequence_length = sequence.length(&self.tracks);
+
+        let active_phrases: Vec<(usize, u8)> = sequence.phrases().iter().enumerate()
+            .filter(|(_, phrase_option)| phrase_option.is_some())
+            .map(|(track_index, phrase_option)| (track_index, phrase_option.unwrap()))
+            .collect();
+        
+        for (track_index, phrase_index) in active_phrases {
+            let event = LoopablePhraseEvent::new(start, start + sequence_length, phrase_index);
+            
+            self.track_mut(track_index).timeline.add_complete_event(event);
+        }
+    }
+
     pub fn autoqueue_next_sequence(&mut self, cycle: &ProcessCycle) {
-        let playing_sequence = *self.timeline.playing_sequence(cycle.tick_range.start).unwrap();
+        let next_start = self.tracks.iter()
+            .map(|track| track.timeline.get_last_stop())
+            .max()
+            .unwrap();
+
+        if cycle.tick_range.contains(next_start) {
+            println!("{:?} {:?}", next_start, self.sequence_playing);
+            self.play_sequence(next_start, self.sequence_playing);
+        }
+
+
+        /*
+        let playing_sequence = *self.sequence_line.playing_sequence(cycle.tick_range.start).unwrap();
         let playing_sequence_length = self.sequences[playing_sequence.index].length(&self.tracks);
 
         let next_start = playing_sequence.tick_range.start + playing_sequence_length;
 
         if cycle.tick_range.contains(next_start) {
-            let next_sequence = self.timeline.playing_sequence(next_start);
+            let next_sequence = self.sequence_line.playing_sequence(next_start);
             if next_sequence.is_none() || next_sequence.unwrap().tick_range.start == playing_sequence.tick_range.start {
-                self.timeline.queue_sequence(next_start, next_start + playing_sequence_length, playing_sequence.index);
+                self.sequence_line.queue_sequence(next_start, next_start + playing_sequence_length, playing_sequence.index);
             }
         }
+        */
     }
 
     // Get tick ranges of phrases that are playing in current cycle
     pub fn playing_phrases(&self, track_index: usize, tick_range: &TickRange) -> Vec<(TickRange, u32, u8)> {
-        let playing_sequence = *self.timeline.playing_sequence(tick_range.start).unwrap();
-
-        let sequence = &self.sequences[playing_sequence.index];
-        // TODO - Get this from playing sequence
-        let sequence_stop = playing_sequence.tick_range.start + sequence.length(&self.tracks);
-
-        let phrase_playing_at_start = sequence.get_phrase(track_index);
-
-        let mut playing_phrases = vec![];
-
-        if tick_range.contains(sequence_stop) {
-            if let (Some(index), true) = (phrase_playing_at_start, tick_range.start < sequence_stop) {
-                // Add from start to sequence_stop
-                playing_phrases.push((TickRange::new(tick_range.start, sequence_stop), playing_sequence.tick_range.start, index));
-            }
-
-            let next_sequence = self.timeline.playing_sequence(sequence_stop).unwrap();
-            if let Some(index) = self.sequences[next_sequence.index].get_phrase(track_index) {
-                // Only queue more of this when nothing is queued
-                //TODO - Why did we use sequence_stop?
-                playing_phrases.push((TickRange::new(sequence_stop, tick_range.stop), sequence_stop, index));
-            }
-        } else {
-            if let Some(index) = phrase_playing_at_start {
-                playing_phrases.push((*tick_range, playing_sequence.tick_range.start, index))
-            }
-        }
-
-        playing_phrases
+        // Get phrase events that fall in tick_range
+        self.track(track_index).timeline.events().iter()
+            .filter(|event| event.stop().is_some())
+            .filter(|event| tick_range.overlaps(&TickRange::new(event.start(), event.stop().unwrap())))
+            // Only play start or only play end when they fall within tick_range
+            .map(|event| {
+                if tick_range.contains(event.stop().unwrap()) {
+                    (TickRange::new(tick_range.start, event.stop().unwrap()), event.start(), event.phrase)
+                } else if tick_range.contains(event.start()) {
+                    (TickRange::new(event.start(), tick_range.stop), event.start(), event.phrase)
+                } else {
+                    (*tick_range, event.start(), event.phrase)
+                }
+            })
+            .collect()
     }
 
+    // Get tick ranges of patterns that are playing in tick_range
     pub fn playing_patterns(&self, tick_range: &TickRange, track_index: usize, phrase_index: u8, sequence_start: u32) -> Vec<(u8, u32, TickRange, u32, u32)> {
         let track = &self.tracks[track_index];
         let phrase = track.phrase(phrase_index);

@@ -18,9 +18,9 @@ use lights::*;
 
 const SEQUENCE_COLOR: u8 = 1;
 const TIMELINE_HEAD_COLOR: u8 = 1;
-const TIMELINE_TAIL_COLOR: u8 = 5;
+const TIMELINE_TAIL_COLOR: u8 = 3;
 // Same as default phrase length atm
-const TIMELINE_TICKS_PER_LED: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4;
+const TIMELINE_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 2;
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
 const LENGTH_INDICATOR_USECS: u64 = 300000;
@@ -68,7 +68,7 @@ pub trait APC {
     fn shown_loopable_index(&self, surface: &mut Surface) -> u8;
     fn shown_loopable<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
     fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8>;
-    fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)>;
+    fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)>;
 
     fn cue_knob(&mut self) -> &mut CueKnob;
     fn master(&mut self) -> &mut Single;
@@ -138,48 +138,65 @@ pub trait APC {
         let mut frame = 0;
         let loopable_length = self.shown_loopable(sequencer, surface).length();
 
-        if surface.view == View::Track {
-            let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
-            let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
+        match surface.view {
+            View::Track => {
+                let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+                let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
 
-            let offset_buttons = self.offset(surface.track_shown()) / self.ticks_per_button();
+                let offset_buttons = self.offset(surface.track_shown()) / self.ticks_per_button();
 
-            // TODO - move this timing logic to seperate function when we need it for other things
-            // Do we need to draw length indicator, and when?
-            if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, &filters, usecs) {
-                let usecs_ago = cycle.time_stop - usecs;
-                let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
+                // TODO - move this timing logic to seperate function when we need it for other things
+                // Do we need to draw length indicator, and when?
+                if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, &filters, usecs) {
+                    let usecs_ago = cycle.time_stop - usecs;
+                    let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
 
-                if hide_in_usecs < cycle.usecs() {
-                    frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
+                    if hide_in_usecs < cycle.usecs() {
+                        frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
+                    } else {
+                        let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / loopable_length) as u8;
+                        //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
+                        let start_button = offset_buttons as u8 * length_buttons / self.indicator().width();
+                        let stop_button = start_button + length_buttons;
+                        for index in start_button .. stop_button {
+                            self.indicator().draw(index as u8, 1);
+                        }
+                    }
                 } else {
-                    let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid() / loopable_length) as u8;
-                    //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
-                    let start_button = offset_buttons as u8 * length_buttons / self.indicator().width();
-                    let stop_button = start_button + length_buttons;
-                    for index in start_button .. stop_button {
-                        self.indicator().draw(index as u8, 1);
+                    // As we don't have to show any time based indicators, show transport position indicator
+                    let ranges = self.playing_loopable_ranges(cycle, sequencer, surface);
+
+                    for (range, start) in ranges {
+                        let ticks_into_playable = (range.stop - start);
+                        let button = ticks_into_playable / self.ticks_per_button();
+
+                        //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
+                        if button >= offset_buttons {
+                            self.indicator().draw((button - offset_buttons) as u8, 1);
+                        }
+
+                        // If transition falls within current cycle, switch on correct frame
+                        if range.stop % self.ticks_per_button() < range.length() {
+                            frame = (((range.stop % self.ticks_per_button()) as f64 / range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+                        }
                     }
                 }
-            } else {
-                // As we don't have to show any time based indicators, show transport position indicator
-                let ranges = self.loopable_playing_ranges(cycle, sequencer, surface);
+            },
+            View::Timeline => {
+                let button = cycle.tick_range.start / TIMELINE_TICKS_PER_BUTTON;
+                let offset_buttons = surface.timeline_offset / TIMELINE_TICKS_PER_BUTTON + Self::TRACK_OFFSET as u32;
 
-                for (range, start) in ranges {
-                    let ticks_into_playable = (range.stop - start);
-                    let button = ticks_into_playable / self.ticks_per_button();
-
-                    //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
-                    if button >= offset_buttons {
-                        self.indicator().draw((button - offset_buttons) as u8, 1);
-                    }
-
-                    // If transition falls within current cycle, switch on correct frame
-                    if range.stop % self.ticks_per_button() < range.length() {
-                        frame = (((range.stop % self.ticks_per_button()) as f64 / range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
-                    }
+                //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
+                if button >= offset_buttons {
+                    self.indicator().draw((button - offset_buttons) as u8, 1);
                 }
-            }
+
+                // If transition falls within current cycle, switch on correct frame
+                if cycle.tick_range.stop % TIMELINE_TICKS_PER_BUTTON < cycle.tick_range.length() {
+                    frame = (((cycle.tick_range.stop % TIMELINE_TICKS_PER_BUTTON) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+                }
+            },
+            _ => (),
         }
 
         self.indicator().output_messages(frame)
@@ -188,8 +205,11 @@ pub trait APC {
     /*
      * Draw note or pattern events into main grid of controller
      */
-    fn draw_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, offset_x: u32, offset_y: u8) {
-        let grid_stop = offset_x + self.ticks_in_grid();
+    fn draw_loopable_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, 
+        offset_x: u32, offset_y: u8, ticks_in_grid: u32, head_color: u8, tail_color: u8) 
+    {
+        let grid_stop = offset_x + ticks_in_grid;
+        let ticks_per_button = (ticks_in_grid / 8) as i32;
 
         // Draw main grid
         events
@@ -200,71 +220,39 @@ pub trait APC {
                 grid_contains_event || event.is_looping()
             })
             .for_each(|event| {
-                let button_ticks = self.ticks_per_button() as i32;
-
                 // Get buttons from event ticks
                 let max_button = self.grid().width() as i32;
-                let start_button = (event.start() as i32 - offset_x as i32) / button_ticks;
+                let start_button = (event.start() as i32 - offset_x as i32) / ticks_per_button;
                 let stop_button = if event.stop().is_none() { 
                     start_button + 1
                 } else { 
                     // Could be event is to short for 1 button, in that case, draw 1 button
                     // TODO
-                    (event.stop().unwrap() as i32 - offset_x as i32) / button_ticks
+                    (event.stop().unwrap() as i32 - offset_x as i32) / ticks_per_button
                 };
 
                 // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
                 let row = event.row(offset_y);
 
                 // Always draw first button head
-                self.grid().try_draw(start_button, row, Self::HEAD_COLOR);
+                self.grid().try_draw(start_button, row, head_color);
                 // Draw tail depending on wether this is looping note
                 if stop_button >= start_button {
-                    self.draw_tail((start_button + 1) .. stop_button, row);
+                    self.draw_tail((start_button + 1) .. stop_button, row, tail_color);
                 } else {
-                    self.draw_tail((start_button + 1) .. max_button, row);
-                    self.draw_tail(0 .. stop_button, row);
+                    self.draw_tail((start_button + 1) .. max_button, row, tail_color);
+                    self.draw_tail(0 .. stop_button, row, tail_color);
                 }
             });
     }
 
-    fn draw_timeline(&mut self, sequencer: &Sequencer, surface: &Surface) {
-        // Timeline spans 2 grids
-        let total_grid_ticks = 16 * TIMELINE_TICKS_PER_LED;
+    fn draw_timeline(&mut self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &Surface) {
+        let track = sequencer.track(surface.track_shown());
 
-        // Get max tick in playing sequences and add some padding
-        //let mut max_tick = sequencer.timeline.playing_sequences.iter()
-            //.map(|playing_sequence| playing_sequence.tick_range.stop).max().unwrap();
-        //max_tick += 4 * TIMELINE_TICKS_PER_LED;
-
-        //let offset = if max_tick > total_grid_ticks {
-            //max_tick - total_grid_ticks
-        //} else { 0 };
-
-        // One led == one minimal phrase length
-        let grid_start = Self::TRACK_OFFSET as u32 * TIMELINE_TICKS_PER_LED + surface.timeline_offset;
-        let ticks_in_grid = 8 * TIMELINE_TICKS_PER_LED;
-
-        let grid_tickrange = TickRange::new(grid_start, grid_start + ticks_in_grid);
-
-        let shown_sequences = sequencer.timeline.playing_sequences.iter()
-            .filter(|playing_sequence| grid_tickrange.overlaps(&playing_sequence.tick_range))
-            .for_each(move |playing_sequence| {
-                let start = playing_sequence.tick_range.start as i32 - grid_tickrange.start as i32;
-                let stop = playing_sequence.tick_range.stop as i32 - grid_tickrange.start as i32;
-
-                let start_led = start / TIMELINE_TICKS_PER_LED as i32;
-                let stop_led = stop / TIMELINE_TICKS_PER_LED as i32;
-
-                self.grid().try_draw(start_led, playing_sequence.index as u8, TIMELINE_HEAD_COLOR);
-
-                for led in (start_led + 1) .. stop_led {
-                    self.grid().try_draw(led, playing_sequence.index as u8, TIMELINE_TAIL_COLOR);
-                }
-            });
-
-
-        //println!("{:?}", shown_tickrange);
+        // Draw main grid
+        let events = track.timeline.events().iter();
+        let offset = TIMELINE_TICKS_PER_BUTTON * Self::TRACK_OFFSET as u32 + surface.timeline_offset;
+        self.draw_loopable_events(events, offset, 0, TIMELINE_TICKS_PER_BUTTON * 8, TIMELINE_HEAD_COLOR, TIMELINE_TAIL_COLOR);
     }
 
     /*
@@ -278,8 +266,8 @@ pub trait APC {
         }
     }
 
-    fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8) {
-        while let Some(x) = x_range.next() { self.grid().try_draw(x, y, Self::TAIL_COLOR) }
+    fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8, color: u8) {
+        while let Some(x) = x_range.next() { self.grid().try_draw(x, y, color) }
     }
 
     fn new(client: &jack::Client) -> Self;
@@ -322,7 +310,7 @@ pub trait APC {
                             self.set_offset(surface.track_shown(), offset);
                         },
                         View::Timeline => {
-                            let new_offset = surface.timeline_offset as i32 + (delta_buttons as i32 * TIMELINE_TICKS_PER_LED as i32);
+                            let new_offset = surface.timeline_offset as i32 + (delta_buttons as i32 * TIMELINE_TICKS_PER_BUTTON as i32);
 
                             if new_offset >= 0 {
                                 surface.timeline_offset = new_offset as u32;
@@ -397,19 +385,26 @@ pub trait APC {
                     // Independent of current view
                     match button_type {
                         ButtonType::Track(index) => {
-                            // Switch to sequence when we click currently shown track button
-                            if let (&View::Track, true) = (&surface.view, surface.track_shown() == index as usize) {
-                                surface.switch_view(View::Sequence);
-                            } else {
-                                surface.show_track(index + Self::TRACK_OFFSET);
-                                surface.switch_view(View::Track);
+                            match surface.view {
+                                View::Track | View::Timeline => {
+                                    if surface.track_shown() == index as usize {
+                                        let view = if matches!(surface.view, View::Timeline) { View::Track } else { View::Timeline };
+                                        surface.switch_view(view);
+                                    } else {
+                                        surface.show_track(index + Self::TRACK_OFFSET);
+                                    }
+                                },
+                                _ => {
+                                    surface.switch_view(View::Timeline);
+                                    surface.show_track(index + Self::TRACK_OFFSET);
+                                },
                             }
                         },
                         // Switch to timeline, when timeline already shown, switch to track
                         ButtonType::Master => {
                             let view = match surface.view {
-                                View::Timeline => View::Track,
-                                _ => View::Timeline,
+                                View::Sequence => View::Track,
+                                _ => View::Sequence,
                             };
                             surface.switch_view(view);
                         },
@@ -448,7 +443,7 @@ pub trait APC {
 
             // Always draw track grid
             // This if statement is here to see if we can subtract TRACK_OFFSET
-            if surface.track_shown() >= Self::TRACK_OFFSET as usize {
+            if surface.track_shown() >= Self::TRACK_OFFSET as usize && ! matches!(surface.view, View::Sequence) {
                 let track = surface.track_shown() - Self::TRACK_OFFSET as usize;
                 self.track().draw(track as u8, 1);
             }
@@ -460,10 +455,10 @@ pub trait APC {
                     for index in 0 .. self.zoom_level() { self.solo().draw(index, 1); }
                 },
                 View::Timeline => {
-                    self.master().draw(1);
-                    self.draw_timeline(sequencer, surface);
+                    self.draw_timeline(cycle, sequencer, surface);
                 },
                 View::Sequence => {
+                    self.master().draw(1);
                     let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();
                     self.draw_phrases(phrases);
                     self.side().draw(surface.sequence_shown() as u8, 1);
@@ -568,7 +563,7 @@ impl APC for APC40 {
             .collect()
     }
 
-    fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
+    fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
         // Get playing phrases of currently selected track
         let shown_pattern_index = self.shown_loopable_index(surface);
         let pattern = sequencer.track(surface.track_shown()).pattern(shown_pattern_index);
@@ -764,7 +759,7 @@ impl APC for APC40 {
                 let base_note = self.base_notes[surface.track_shown()];
                 let events = loopable.events().iter()
                     .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
-                self.draw_events(events, self.offset(surface.track_shown()), base_note - 2);
+                self.draw_loopable_events(events, self.offset(surface.track_shown()), base_note - 2, self.ticks_in_grid(), Self::HEAD_COLOR, Self::TAIL_COLOR);
 
                 // pattern length selector
                 if loopable.has_explicit_length() {
@@ -862,7 +857,7 @@ impl APC for APC20 {
             .collect()
     }
 
-    fn loopable_playing_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
+    fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
         // Get playing phrases for currently selected track
         let shown_phrase_index = self.shown_loopable_index(surface);
         let length = sequencer.track(surface.track_shown()).phrase(shown_phrase_index).length();
@@ -975,7 +970,7 @@ impl APC for APC20 {
 
                 // Draw main grid
                 let events = loopable.events().iter();
-                self.draw_events(events, self.offset(surface.track_shown()), 0);
+                self.draw_loopable_events(events, self.offset(surface.track_shown()), 0, self.ticks_in_grid(), Self::HEAD_COLOR, Self::TAIL_COLOR);
 
                 // Length selector
                 for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {

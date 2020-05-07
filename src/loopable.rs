@@ -7,62 +7,63 @@ pub trait Loopable {
     type Event: LoopableEvent;
 
     fn length(&self) -> u32;
-    fn events(&mut self) -> &mut Vec<Self::Event>;
+    fn events(&self) -> &Vec<Self::Event>;
+    fn events_mut(&mut self) -> &mut Vec<Self::Event>;
 
     fn clear_events(&mut self) {
-        self.events().clear();
+        self.events_mut().clear();
     }
 
     fn try_add_starting_event(&mut self, event: Self::Event) {
-        let previous = self.events().iter().filter(|other| other.is_on_same_row(&event)).last();
+        let previous = self.events_mut().iter().filter(|other| other.is_on_same_row(&event)).last();
 
         if let Some(true) = previous.and_then(|event| Some(event.stop().is_none())) {
             return;
         }
 
-        self.events().push(event);
+        self.events_mut().push(event);
     }
 
     fn get_last_event_on_row(&mut self, index: u8) -> Self::Event {
         // What pattern event is this stop for?
-        let index = self.events().iter_mut().enumerate()
+        let index = self.events_mut().iter_mut().enumerate()
             .filter(|(_, event)| event.is_on_row(index)).last().unwrap().0;
         
         // Get event from events so we can compare others
-        self.events().swap_remove(index)
+        self.events_mut().swap_remove(index)
     }
 
     fn add_complete_event(&mut self, event: Self::Event) {
         let length = self.length();
 
         // Remove events that are contained in current event
-        self.events().retain(|other| {
+        self.events_mut().retain(|other| {
             ! event.is_on_same_row(other) || ! event.contains(other, length)
         });
 
         // Resize events around new event, add new event when previous event is split by current event
-        let mut split_events: Vec<Self::Event> = self.events().iter_mut()
+        let mut split_events: Vec<Self::Event> = self.events_mut().iter_mut()
             .filter(|other| other.is_on_same_row(&event))
             .filter_map(|other| other.resize_to_fit(&event, length))
             .collect();
 
-        self.events().append(&mut split_events);
-        self.events().push(event);
+        self.events_mut().append(&mut split_events);
+        self.events_mut().push(event);
     }
 
     fn contains_events_starting_in(&mut self, range: TickRange, index: u8) -> bool {
-        self.events().iter()
+        self.events_mut().iter()
             .find(|event| event.is_on_row(index) && range.contains(event.start()))
             .is_some()
     }
 
     fn remove_events_starting_in(&mut self, range: TickRange, index: u8) {
-        let indexes: Vec<usize> = self.events().iter().enumerate()
+        let indexes: Vec<usize> = self.events_mut().iter().enumerate()
             .filter(|(_, event)| event.is_on_row(index) && range.contains(event.start()))
             .map(|(index, _)| index)
             .collect();
 
-        indexes.into_iter().for_each(|index| { self.events().remove(index); () });
+        indexes.into_iter().for_each(|index| { self.events_mut().remove(index); () });
     }
 
     /*
@@ -90,6 +91,44 @@ pub trait Loopable {
 }
 
 #[derive(Clone)]
+pub struct Timeline {
+    pub phrase_events: Vec<LoopablePhraseEvent>,
+}
+
+impl Loopable for Timeline {
+    type Event = LoopablePhraseEvent;
+
+    // Get max stop tick & add some padding
+    fn length(&self) -> u32 { 
+        let max_stop_tick = self.phrase_events.iter()
+            .filter(|phrase_event| phrase_event.stop.is_some())
+            .map(|phrase_event| phrase_event.stop.unwrap())
+            .max();
+
+        if max_stop_tick.is_some() {
+            max_stop_tick.unwrap() + Phrase::default_length() * 4
+        } else {
+            Phrase::default_length() * 8
+        }
+    } 
+
+    fn events(&self) -> &Vec<Self::Event> { &self.phrase_events }
+    fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.phrase_events }
+}
+
+impl Timeline {
+    pub fn new() -> Self {
+        Timeline { phrase_events: vec![] }
+    }
+
+    pub fn get_last_stop(&self) -> u32 {
+        self.events().iter().filter(|event| event.stop.is_some()).map(|event| event.stop.unwrap()).max()
+            .or_else(|| Some(0))
+            .unwrap()
+    }
+}
+
+#[derive(Clone)]
 pub struct Phrase {
     // Length in ticks
     length: u32,
@@ -100,7 +139,8 @@ impl Loopable for Phrase {
     type Event = LoopablePatternEvent;
 
     fn length(&self) -> u32 { self.length } 
-    fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.pattern_events }
+    fn events(&self) -> &Vec<Self::Event> { &self.pattern_events }
+    fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.pattern_events }
 }
 
 impl Phrase {
@@ -157,7 +197,8 @@ impl Loopable for Pattern {
         })
     }
 
-    fn events(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
+    fn events(&self) -> &Vec<Self::Event> { &self.note_events }
+    fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
 }
 
 impl Pattern {

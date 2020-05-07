@@ -10,6 +10,7 @@ pub struct Track {
     // TODO - these are public as we're testing with premade patterns
     pub patterns: [Pattern; 5],
     pub phrases: [Phrase; 5],
+    pub timeline: Timeline,
 
     playing_notes: Vec<PlayingNoteEvent>,
 
@@ -29,6 +30,7 @@ impl Track {
         Track {
             phrases,
             patterns,
+            timeline: Timeline::new(),
 
             playing_notes: vec![],
 
