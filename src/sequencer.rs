@@ -19,41 +19,9 @@ impl PlayingSequence {
     }
 }
 
-pub struct SequenceLine {
-    pub playing_sequences: Vec<PlayingSequence>,
-}
-
-impl SequenceLine {
-    fn new(client: &jack::Client)  -> Self {
-        // TODO - Get transport state from client, fill playing sequences with default sequence
-        // till current transport tick
-        Self {
-            playing_sequences: vec![
-                PlayingSequence::new(0, Phrase::default_length(), 0),
-                PlayingSequence::new(Phrase::default_length(), Phrase::default_length() * 3, 1),
-                PlayingSequence::new(Phrase::default_length() * 3, Phrase::default_length() * 5, 0),
-                PlayingSequence::new(Phrase::default_length() * 5, Phrase::default_length() * 6, 3),
-                PlayingSequence::new(Phrase::default_length() * 6, Phrase::default_length() * 8, 2),
-            ]
-        }
-    }
-
-    fn playing_sequence(&self, start: u32) -> Option<&PlayingSequence> {
-        self.playing_sequences.iter()
-            .filter(|playing_sequence| playing_sequence.tick_range.start <= start)
-            .max_by_key(|playing_sequence| playing_sequence.tick_range.start)
-    }
-
-    fn queue_sequence(&mut self, start: u32, stop: u32, sequence_index: usize) {
-        self.playing_sequences.push(PlayingSequence::new(start, stop, sequence_index));
-    }
-}
-
 pub struct Sequencer {
     pub tracks: [Track; 16],
     pub sequences: [Sequence; 5],
-
-    pub sequence_line: SequenceLine,
 
     pub sequence_playing: usize,
     pub last_sequence_started: u32,
@@ -93,7 +61,6 @@ impl Sequencer {
         Sequencer {
             tracks,
             sequences,
-            sequence_line: SequenceLine::new(client),
 
             sequence_playing: 0,
             last_sequence_started: 0,
