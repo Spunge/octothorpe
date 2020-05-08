@@ -44,7 +44,7 @@ impl Surface {
 
 #[derive(Debug)]
 struct OccurredInputEvent {
-    controller_id: u8,
+    controller_track_offset: u8,
     time: u64,
     event_type: InputEventType,
 }
@@ -60,21 +60,21 @@ impl EventMemory {
         Self { occurred_events: vec![] }
     }
 
-    pub fn register_event(&mut self, controller_id: u8, time: u64, event_type: InputEventType) {
+    pub fn register_event(&mut self, controller_track_offset: u8, time: u64, event_type: InputEventType) {
         let previous = self.occurred_events.iter_mut()
-            .find(|event| event.controller_id == controller_id && event.event_type == event_type);
+            .find(|event| event.controller_track_offset == controller_track_offset && event.event_type == event_type);
 
         if let Some(event) = previous {
             event.time = time;
         } else {
-            self.occurred_events.push(OccurredInputEvent { controller_id, time, event_type });
+            self.occurred_events.push(OccurredInputEvent { controller_track_offset, time, event_type });
         }
     }
 
-    pub fn last_occurred_event_after<F>(&self, controller_id: u8, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
+    pub fn last_occurred_event_after<F>(&self, controller_track_offset: u8, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
         self.occurred_events.iter()
             .filter(|event| {
-                controller_id == event.controller_id
+                controller_track_offset == event.controller_track_offset
                     && event.time >= usecs
                     && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
             })
@@ -84,9 +84,9 @@ impl EventMemory {
 }
 
 #[derive(Debug)]
-struct ButtonPress {
-    controller_id: u8,
-    button_type: ButtonType,
+pub struct ButtonPress {
+    pub controller_track_offset: u8,
+    pub button_type: ButtonType,
 }
 
 pub struct ButtonMemory {
@@ -103,18 +103,18 @@ impl ButtonMemory {
         Self { pressed_buttons: vec![] }
     }
 
-    //pub fn register_event(&mut self, controller_id: u8, time: u64, InputEvent:)
+    //pub fn register_event(&mut self, controller_track_offset: u8, time: u64, InputEvent:)
 
     // We pressed a button!
-    pub fn press(&mut self, controller_id: u8, button_type: ButtonType) {
+    pub fn press(&mut self, controller_track_offset: u8, button_type: ButtonType) {
         // Save pressed_button to keep track of modifing keys (multiple keys pressed twice)
-        self.pressed_buttons.push(ButtonPress { controller_id, button_type, });
+        self.pressed_buttons.push(ButtonPress { controller_track_offset, button_type, });
     }
 
-    pub fn release(&mut self, controller_id: u8, _end: u64, button_type: ButtonType) {
+    pub fn release(&mut self, controller_track_offset: u8, _end: u64, button_type: ButtonType) {
         let pressed_button = self.pressed_buttons.iter().enumerate().rev().find(|(_, pressed_button)| {
             pressed_button.button_type == button_type
-                && pressed_button.controller_id == controller_id
+                && pressed_button.controller_track_offset == controller_track_offset
         });
 
         // We only use if let instead of unwrap to not crash when first event is button release
@@ -123,20 +123,20 @@ impl ButtonMemory {
         }
     }
 
-    pub fn modifier(&self, controller_id: u8, button_type: ButtonType) -> Option<ButtonType> {
+    pub fn modifier(&self, controller_track_offset: u8, button_type: ButtonType) -> Option<ButtonType> {
         self.pressed_buttons.iter()
             .filter(|pressed_button| {
                 pressed_button.button_type != button_type
-                    && pressed_button.controller_id == controller_id
+                    && pressed_button.controller_track_offset == controller_track_offset
             })
             .next()
             .and_then(|pressed_button| Some(pressed_button.button_type))
     }
 
-    pub fn global_modifier(&self, button_type: ButtonType) -> Option<ButtonType> {
+    pub fn global_modifier(&self, button_type: ButtonType) -> Option<&ButtonPress> {
         self.pressed_buttons.iter()
             .filter(|pressed_button| pressed_button.button_type != button_type)
             .next()
-            .and_then(|pressed_button| Some(pressed_button.button_type))
+            .and_then(|pressed_button| Some(pressed_button))
     }
 }

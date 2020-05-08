@@ -32,7 +32,6 @@ const QUEUED_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as 
 pub trait APC {
     type Loopable: Loopable;
 
-    const CONTROLLER_ID: u8;
     const TRACK_OFFSET: u8;
     const HEAD_COLOR: u8;
     const TAIL_COLOR: u8;
@@ -48,9 +47,6 @@ pub trait APC {
     fn set_zoom_level(&mut self, level: u8);
     fn ticks_in_grid(&self) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
-    fn button_to_ticks(&self, button: u8, ticks_per_button: u32, offset: u32) -> u32 {
-        button as u32 * ticks_per_button + offset
-    }
 
     fn offset(&self, index: usize) -> u32;
     fn set_offset(&mut self, index: usize, ticks: u32);
@@ -86,9 +82,9 @@ pub trait APC {
      * Remove existing events when there's starting events in tick range, otherwise, remove tick
      * range so we can add new event
      */
-    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, ticks_per_button: u32, offset: u32, row: u8) -> Option<TickRange> {
-        let start = self.button_to_ticks(x, ticks_per_button, offset);
-        let mut tick_range = TickRange::new(start, start + ticks_per_button);
+    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<TickRange> {
+        let start = x as u32 * self.ticks_per_button() + offset;
+        let mut tick_range = TickRange::new(start, start + self.ticks_per_button());
 
         // Should we delete the event we're clicking?
         if let (None, true) = (modifier, loopable.contains_events_starting_in(tick_range, row)) {
@@ -98,7 +94,7 @@ pub trait APC {
             // Add event get x from modifier when its a grid button in the same row
             if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
                 if mod_y == y { 
-                    tick_range.start = self.button_to_ticks(mod_x, ticks_per_button, offset);
+                    tick_range.start = mod_x as u32 * self.ticks_per_button() + offset;
                 }
             }
 
@@ -173,7 +169,7 @@ pub trait APC {
 
                 // TODO - move this timing logic to seperate function when we need it for other things
                 // Do we need to draw length indicator, and when?
-                if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, &filters, usecs) {
+                if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::TRACK_OFFSET, &filters, usecs) {
                     let usecs_ago = cycle.time_stop - usecs;
                     let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
 
@@ -324,7 +320,7 @@ pub trait APC {
                     // Check if cueknob should respond immediately
                     let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
                     let is_first_turn = surface.event_memory
-                        .last_occurred_event_after(Self::CONTROLLER_ID, &[InputEvent::is_cue_knob], usecs)
+                        .last_occurred_event_after(Self::TRACK_OFFSET, &[InputEvent::is_cue_knob], usecs)
                         .is_none();
 
                     let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
@@ -347,7 +343,7 @@ pub trait APC {
                 },
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep track of modifing buttons
-                    surface.button_memory.press(Self::CONTROLLER_ID, button_type);
+                    surface.button_memory.press(Self::TRACK_OFFSET, button_type);
                     let global_modifier = surface.button_memory.global_modifier(button_type);
 
                     // Do the right thing in the right visualization
@@ -390,9 +386,9 @@ pub trait APC {
                                     }];
                                     let usecs = cycle.time_stop - DOUBLE_CLICK_USECS;
 
-                                    if let Some(ButtonType::Shift) = global_modifier {
+                                    if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                         sequence.set_phrases(index);
-                                    } else if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::CONTROLLER_ID, &filters, usecs) {
+                                    } else if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::TRACK_OFFSET, &filters, usecs) {
                                         sequencer.sequence_queued = Some(index as usize);
                                     } else {
                                         surface.show_sequence(index);
@@ -409,9 +405,23 @@ pub trait APC {
                                 ButtonType::Grid(x, y) => {
                                     let track = sequencer.track_mut(surface.track_shown());
 
-                                    if let Some(mut tick_range) = self.should_add_event(&mut track.timeline, global_modifier, x, y, TIMELINE_TICKS_PER_BUTTON, surface.timeline_offset, y) {
-                                        // We don't want to be able to loop in timeline, so make
-                                        // sure start < stop
+                                    // Add track offset to make it possible to draw across multiple controllers
+                                    let start = (Self::TRACK_OFFSET + x) as u32 * TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
+                                    let mut tick_range = TickRange::new(start, start + TIMELINE_TICKS_PER_BUTTON);
+
+                                    // Should we delete the event we're clicking?
+                                    if let (None, true) = (global_modifier, track.timeline.contains_events_starting_in(tick_range, y)) {
+                                        track.timeline.remove_events_starting_in(tick_range, y);
+                                    } else {
+                                        // Add event get x from modifier when its a grid button in the same row
+                                        if let Some(ButtonPress { button_type: ButtonType::Grid(mod_x, mod_y), controller_track_offset }) = global_modifier {
+                                            if *mod_y == y { 
+                                                // Add track offset off modifier to make it possible to draw across controllers
+                                                tick_range.start = (mod_x + controller_track_offset) as u32 * TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
+                                            }
+                                        }
+
+                                        // Switch start & stop if stop button was pressed before start button
                                         if tick_range.start > tick_range.stop {
                                             let start = tick_range.start;
                                             // As stop is @ end of button & start is @ start of
@@ -458,14 +468,14 @@ pub trait APC {
                     }
                 },
                 InputEventType::ButtonReleased(button_type) => {
-                    surface.button_memory.release(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), button_type);
+                    surface.button_memory.release(Self::TRACK_OFFSET, cycle.time_at_frame(event.time), button_type);
                 },
                 // This message is controller specific, handle it accordingly
                 _ => self.process_inputevent(&event, cycle, sequencer, surface, mixer),
             }
 
             // Keep track of event so we can use it to calculate double presses etc.
-            surface.event_memory.register_event(Self::CONTROLLER_ID, cycle.time_at_frame(event.time), event.event_type);
+            surface.event_memory.register_event(Self::TRACK_OFFSET, cycle.time_at_frame(event.time), event.event_type);
         }
     }
 
@@ -568,7 +578,6 @@ impl APC40 {
 impl APC for APC40 {
     type Loopable = Pattern;
 
-    const CONTROLLER_ID: u8 = 0;
     const TRACK_OFFSET: u8 = 8;
     const HEAD_COLOR: u8 = 1;
     const TAIL_COLOR: u8 = 5;
@@ -696,7 +705,7 @@ impl APC for APC40 {
             },
             InputEventType::ButtonPressed(button_type) => {
                 // Get modifier (other currently pressed key)
-                let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
+                let modifier = surface.button_memory.modifier(Self::TRACK_OFFSET, button_type);
                 let global_modifier = surface.button_memory.global_modifier(button_type);
 
                 match surface.view {
@@ -709,7 +718,7 @@ impl APC for APC40 {
                                 // We put base note in center of grid
                                 let note = self.base_notes[surface.track_shown()] - 2 + y;
 
-                                if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, self.ticks_per_button(), offset, note) {
+                                if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, offset, note) {
                                     pattern.try_add_starting_event(LoopableNoteEvent::new(tick_range.start, note, 127));
                                     let mut event = pattern.get_last_event_on_row(note);
                                     event.set_stop(tick_range.stop);
@@ -725,7 +734,7 @@ impl APC for APC40 {
                                 } else {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
                                         track.clone_pattern(modifier_index, index);
-                                    } else if let Some(ButtonType::Shift) = global_modifier {
+                                    } else if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                         self.set_offset(surface.track_shown(), 0);
                                         track.pattern_mut(index).clear_events();
                                     } else {
@@ -785,7 +794,7 @@ impl APC for APC40 {
                         let is_transport_at_start = pos.bar == 1 && pos.beat == 1 && pos.tick == 0;
 
                         // Reset timeline when we shift press stop @ 0:0:0
-                        if let (Some(ButtonType::Shift), true) = (global_modifier, is_transport_at_start) {
+                        if let (Some(ButtonPress { button_type: ButtonType::Shift, .. }), true) = (global_modifier, is_transport_at_start) {
                             sequencer.reset_timeline();
                         } else {
                             match state {
@@ -870,7 +879,6 @@ impl APC20 {
 impl APC for APC20 {
     type Loopable = Phrase;
 
-    const CONTROLLER_ID: u8 = 1;
     const TRACK_OFFSET: u8 = 0;
 
     const HEAD_COLOR: u8 = 3;
@@ -972,7 +980,7 @@ impl APC for APC20 {
             // TODO - Use indicator row as fast movement
             InputEventType::ButtonPressed(button_type) => {
                 // Get modifier (other currently pressed key)
-                let modifier = surface.button_memory.modifier(Self::CONTROLLER_ID, button_type);
+                let modifier = surface.button_memory.modifier(Self::TRACK_OFFSET, button_type);
 
                 match surface.view {
                     View::Track => {
@@ -981,7 +989,7 @@ impl APC for APC20 {
                                 let offset = self.offset(surface.track_shown());
                                 // We draw grids from bottom to top
 
-                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, self.ticks_per_button(), offset, y) {
+                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, offset, y) {
                                     phrase.try_add_starting_event(LoopablePatternEvent::new(tick_range.start, y));
                                     let mut event = phrase.get_last_event_on_row(y);
                                     event.set_stop(tick_range.stop);
@@ -994,7 +1002,7 @@ impl APC for APC20 {
 
                                 if let Some(ButtonType::Side(modifier_index)) = modifier {
                                     track.clone_phrase(modifier_index, index);
-                                } else if let Some(ButtonType::Shift) = global_modifier {
+                                } else if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                     track.phrase_mut(index).clear_events();
                                 } else {
                                     self.phrases_shown[surface.track_shown()] = index;
