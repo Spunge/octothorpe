@@ -48,8 +48,8 @@ pub trait APC {
     fn set_zoom_level(&mut self, level: u8);
     fn ticks_in_grid(&self) -> u32;
     fn ticks_per_button(&self) -> u32 { self.ticks_in_grid() / 8 }
-    fn button_to_ticks(&self, button: u8, offset: u32) -> u32 {
-        button as u32 * self.ticks_per_button() + offset
+    fn button_to_ticks(&self, button: u8, ticks_per_button: u32, offset: u32) -> u32 {
+        button as u32 * ticks_per_button + offset
     }
 
     fn offset(&self, index: usize) -> u32;
@@ -86,8 +86,9 @@ pub trait APC {
      * Remove existing events when there's starting events in tick range, otherwise, remove tick
      * range so we can add new event
      */
-    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, offset: u32, row: u8) -> Option<TickRange> {
-        let mut tick_range = TickRange::new(self.button_to_ticks(x, offset), self.button_to_ticks(x + 1, offset));
+    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8, ticks_per_button: u32, offset: u32, row: u8) -> Option<TickRange> {
+        let start = self.button_to_ticks(x, ticks_per_button, offset);
+        let mut tick_range = TickRange::new(start, start + ticks_per_button);
 
         // Should we delete the event we're clicking?
         if let (None, true) = (modifier, loopable.contains_events_starting_in(tick_range, row)) {
@@ -97,7 +98,7 @@ pub trait APC {
             // Add event get x from modifier when its a grid button in the same row
             if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
                 if mod_y == y { 
-                    tick_range.start = self.button_to_ticks(mod_x, offset);
+                    tick_range.start = self.button_to_ticks(mod_x, ticks_per_button, offset);
                 }
             }
 
@@ -404,16 +405,26 @@ pub trait APC {
                             }
                         },
                         View::Timeline => {
-                            /*
                             match button_type {
-                                ButtonType::Side(index) => {
-                                    surface.show_sequence(index);
-                                    surface.switch_view(View::Sequence);
-                                }
+                                ButtonType::Grid(x, y) => {
+                                    let track = sequencer.track_mut(surface.track_shown());
+
+                                    if let Some(mut tick_range) = self.should_add_event(&mut track.timeline, global_modifier, x, y, TIMELINE_TICKS_PER_BUTTON, surface.timeline_offset, y) {
+                                        // We don't want to be able to loop in timeline, so make
+                                        // sure start < stop
+                                        if tick_range.start > tick_range.stop {
+                                            let start = tick_range.start;
+                                            // As stop is @ end of button & start is @ start of
+                                            // button, offset start & stop by a button
+                                            tick_range.start = tick_range.stop - TIMELINE_TICKS_PER_BUTTON;
+                                            tick_range.stop = start + TIMELINE_TICKS_PER_BUTTON;
+                                        }
+
+                                        track.timeline.add_complete_event(LoopablePhraseEvent::new(tick_range.start, tick_range.stop, y));
+                                    }
+                                },
                                 _ => (),
                             }
-                            */
-                            // TODO - Timeline buttons
                         }
                     }
 
@@ -698,7 +709,7 @@ impl APC for APC40 {
                                 // We put base note in center of grid
                                 let note = self.base_notes[surface.track_shown()] - 2 + y;
 
-                                if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, offset, note) {
+                                if let Some(tick_range) = self.should_add_event(pattern, modifier, x, y, self.ticks_per_button(), offset, note) {
                                     pattern.try_add_starting_event(LoopableNoteEvent::new(tick_range.start, note, 127));
                                     let mut event = pattern.get_last_event_on_row(note);
                                     event.set_stop(tick_range.stop);
@@ -770,11 +781,18 @@ impl APC for APC40 {
                     ButtonType::Play => sequencer.start(cycle),
                     ButtonType::Stop => {
                         // Reset to 0 when we press stop button but we're already stopped
-                        let (state, _) = cycle.client.transport_query();
-                        match state {
-                            1 => sequencer.stop(cycle),
-                            _ => sequencer.reset(cycle),
-                        };
+                        let (state, pos) = cycle.client.transport_query();
+                        let is_transport_at_start = pos.bar == 1 && pos.beat == 1 && pos.tick == 0;
+
+                        // Reset timeline when we shift press stop @ 0:0:0
+                        if let (Some(ButtonType::Shift), true) = (global_modifier, is_transport_at_start) {
+                            sequencer.reset_timeline();
+                        } else {
+                            match state {
+                                1 => sequencer.stop(cycle),
+                                _ => sequencer.reset(cycle),
+                            };
+                        }
                     },
                     _ => (),
                 }
@@ -963,14 +981,13 @@ impl APC for APC20 {
                                 let offset = self.offset(surface.track_shown());
                                 // We draw grids from bottom to top
 
-                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, offset, y) {
+                                if let Some(tick_range) = self.should_add_event(phrase, modifier, x, y, self.ticks_per_button(), offset, y) {
                                     phrase.try_add_starting_event(LoopablePatternEvent::new(tick_range.start, y));
                                     let mut event = phrase.get_last_event_on_row(y);
                                     event.set_stop(tick_range.stop);
 
                                     phrase.add_complete_event(event);
                                 }
-
                             },
                             ButtonType::Side(index) => {
                                 let global_modifier = surface.button_memory.global_modifier(button_type);

@@ -109,6 +109,12 @@ impl Sequencer {
         });
     }
 
+    pub fn reset_timeline(&mut self) {
+        self.tracks.iter_mut().for_each(|track| {
+            track.timeline.clear_events();
+        });
+    }
+
     /*
      * Add playing phrases in sequence to respective track timelines
      */

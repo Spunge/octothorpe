@@ -157,7 +157,9 @@ impl jack::ProcessHandler for ProcessHandler {
         self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
         self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
 
-        self.sequencer.autoqueue_next_sequence(&cycle);
+        if cycle.is_rolling {
+            self.sequencer.autoqueue_next_sequence(&cycle);
+        }
 
         // Sequencer first at it will cache playing notes, these we can use for sequence visualization
         self.sequencer.output_midi(&cycle);
