@@ -121,6 +121,7 @@ impl Sequencer {
     pub fn play_sequence(&mut self, start: u32, sequence_index: usize) {
         let sequence = &self.sequences[sequence_index];
         let sequence_length = sequence.length(&self.tracks);
+        let stop = start + sequence_length;
 
         let active_phrases: Vec<(usize, u8)> = sequence.phrases().iter().enumerate()
             .filter(|(_, phrase_option)| phrase_option.is_some())
@@ -128,9 +129,19 @@ impl Sequencer {
             .collect();
         
         for (track_index, phrase_index) in active_phrases {
-            let event = LoopablePhraseEvent::new(start, start + sequence_length, phrase_index);
+            let mut phrase_start = start;
+            let phrase_length = self.track(track_index).phrase(phrase_index).length();
+
+            // When phrase is smaller than sequence, queue multiple smaller events
+            while phrase_start < stop {
+                let phrase_stop = if phrase_start + phrase_length > stop { stop } else { phrase_start + phrase_length };
+
+                let event = LoopablePhraseEvent::new(phrase_start, phrase_stop, phrase_index);
+                self.track_mut(track_index).timeline.add_complete_event(event);
+
+                phrase_start += phrase_length;
+            }
             
-            self.track_mut(track_index).timeline.add_complete_event(event);
         }
     }
 
