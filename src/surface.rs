@@ -16,6 +16,17 @@ pub struct Surface {
     track_shown: u8,
     sequence_shown: u8,
     pub timeline_offset: u32,
+
+    offset_factor: f64,
+
+    phrase_shown: [u8; 16],
+    phrase_zoom_level: u8,
+    phrase_offsets: [u32; 16],
+
+    pattern_shown: [u8; 16],
+    pattern_zoom_level: u8,
+    pattern_offsets: [u32; 16],
+    pattern_base_notes: [u8; 16],
 }
 
 impl Surface {
@@ -28,6 +39,17 @@ impl Surface {
             track_shown: 0,
             sequence_shown: 0,
             timeline_offset: 0,
+
+            offset_factor: 0.0,
+
+            phrase_shown: [0; 16],
+            phrase_zoom_level: 4,
+            phrase_offsets: [0; 16],
+
+            pattern_shown: [0; 16],
+            pattern_zoom_level: 4,
+            pattern_offsets: [0; 16],
+            pattern_base_notes: [60; 16],
         }
     }
 
@@ -40,6 +62,41 @@ impl Surface {
 
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
     pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }
+
+    pub fn pattern_shown(&self) -> u8 { self.pattern_shown[self.track_shown()] }
+    pub fn set_pattern_shown(&mut self, index: u8) { self.pattern_shown[self.track_shown()] = index }
+    pub fn pattern_offset(&self, index: usize) -> u32 { self.pattern_offsets[index] }
+    pub fn set_pattern_offset(&mut self, index: usize, ticks: u32) { self.pattern_offsets[index] = ticks }
+    pub fn shown_pattern_offset(&self) -> u32 { self.pattern_offset(self.track_shown()) }
+    pub fn set_shown_pattern_offset(&mut self, offset: u32) { self.set_pattern_offset(self.track_shown(), offset) }
+    pub fn pattern_zoom_level(&self) -> u8 { self.pattern_zoom_level }
+    pub fn set_pattern_zoom_level(&mut self, level: u8) { self.pattern_zoom_level = level }
+    // TODO - We don't use the 60 array indexes that are there
+    pub fn pattern_base_note(&self, index: usize) -> u8 { self.pattern_base_notes[index] }
+    pub fn shown_pattern_base_note(&self) -> u8 { self.pattern_base_notes[self.track_shown()] }
+    pub fn set_shown_pattern_base_note(&mut self, base_note: u8) { 
+        if base_note <= 118 && base_note >= 22 { 
+            self.pattern_base_notes[self.track_shown()] = base_note ;
+        }
+    }
+
+    pub fn phrase_shown(&self) -> u8 { self.phrase_shown[self.track_shown()] }
+    pub fn set_phrase_shown(&mut self, index: u8) { self.phrase_shown[self.track_shown()] = index }
+    pub fn phrase_offset(&self, index: usize) -> u32 { self.phrase_offsets[index] }
+    pub fn set_phrase_offset(&mut self, index: usize, ticks: u32) { self.phrase_offsets[index] = ticks }
+    pub fn shown_phrase_offset(&self) -> u32 { self.phrase_offset(self.track_shown()) }
+    pub fn set_shown_phrase_offset(&mut self, offset: u32) { self.set_phrase_offset(self.track_shown(), offset) }
+    pub fn phrase_zoom_level(&self) -> u8 { self.phrase_zoom_level }
+    pub fn set_phrase_zoom_level(&mut self, level: u8) { self.phrase_zoom_level = level }
+
+    pub fn set_offset_factor(&mut self, factor: f64) {
+        self.offset_factor = factor;
+    }
+
+    pub fn get_offset(&self, length: u32, grid_width: u32) -> u32 {
+        let max = length - grid_width;
+        (self.offset_factor * max as f64) as u32
+    }
 }
 
 #[derive(Debug)]
