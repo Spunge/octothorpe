@@ -151,7 +151,13 @@ pub trait APC {
                 let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
                 let ticks_per_button = self.loopable_ticks_per_button(surface);
                 let offset_buttons = self.shown_loopable_offset(surface) / ticks_per_button;
-                let controller_filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+                let controller_filters = [
+                    InputEvent::is_cue_knob,
+                    InputEvent::is_solo_button,
+                    InputEvent::is_activator_button,
+                    InputEvent::is_right_button,
+                    InputEvent::is_left_button
+                ];
                 let global_filters = [InputEvent::is_crossfader];
                 // Show length/offset indicator when events occurred that changed length/offset
                 let last_occurred_controller_event = surface.event_memory
@@ -168,7 +174,6 @@ pub trait APC {
                         frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
                     } else {
                         let length_buttons = (self.indicator().width() as u32 * self.loopable_ticks_in_grid(surface) / loopable_length) as u8;
-                        //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
                         let start_button = offset_buttons as u8 * length_buttons / self.indicator().width();
                         let stop_button = start_button + length_buttons;
                         for index in start_button .. stop_button {
@@ -183,7 +188,6 @@ pub trait APC {
                         let ticks_into_playable = range.stop - start;
                         let button = ticks_into_playable / ticks_per_button;
 
-                        //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
                         if button >= offset_buttons {
                             self.indicator().draw((button - offset_buttons) as u8, 1);
                         }
@@ -199,7 +203,6 @@ pub trait APC {
                 let button = cycle.tick_range.start / Surface::TIMELINE_TICKS_PER_BUTTON;
                 let offset_buttons = surface.timeline_offset() / Surface::TIMELINE_TICKS_PER_BUTTON + Self::TRACK_OFFSET as u32;
 
-                //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
                 if button >= offset_buttons {
                     self.indicator().draw((button - offset_buttons) as u8, 1);
                 }

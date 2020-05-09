@@ -146,6 +146,14 @@ impl InputEvent {
     pub fn is_grid_button(event_type: &InputEventType) -> bool { 
         matches!(event_type, InputEventType::ButtonPressed(ButtonType::Grid(_, _)))
     }
+
+    pub fn is_right_button(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Right))
+    }
+
+    pub fn is_left_button(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Left))
+    }
 }
 
 /*

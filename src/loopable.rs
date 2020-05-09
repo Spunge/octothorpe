@@ -153,7 +153,12 @@ impl Phrase {
     pub fn set_length(&mut self, length: u32) { 
         self.length = length; 
 
-        // Cut patterns short when shortening length
+        // Remove pattern events that start outside of length
+        self.pattern_events.retain(|event| {
+            event.start() < length
+        });
+
+        // Cut pattern events short that start within length but stop after 
         self.pattern_events.iter_mut().for_each(|mut event| {
             if let Some(stop) = event.stop {
                 if stop > length {
