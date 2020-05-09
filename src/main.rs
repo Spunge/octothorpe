@@ -72,19 +72,19 @@ pub struct TimebaseHandler {
     beat_type: f32,
     is_up_to_date: bool,
 
-    receiver: Receiver<f64>,
+    //receiver: Receiver<f64>,
 }
 
 impl TimebaseHandler {
     pub const TICKS_PER_BEAT: f64 = 1920.0;
 
-    pub fn new(receiver: Receiver<f64>) -> Self {
+    pub fn new(_: Receiver<f64>) -> Self {
         TimebaseHandler {
             beats_per_minute: 137.0,
             is_up_to_date: false,
             beats_per_bar: 4.0,
             beat_type: 4.0,
-            receiver,
+            //receiver,
         }
     }
 }

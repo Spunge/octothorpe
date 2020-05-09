@@ -185,15 +185,8 @@ impl Loopable for Pattern {
                     .or_else(|| Some(max_start))
             });
 
-            let mut length = Self::minimum_length();
 
-            if let Some(tick) = max_tick { 
-                while length / 2 < tick {
-                    length = length * 2;
-                }
-            }
-
-            length
+            2 * Self::minimum_length() + max_tick.or(Some(0)).unwrap()
         })
     }
 
@@ -234,7 +227,7 @@ impl Pattern {
                     })
                     .map(move |note_event| {
                         let looping_note_length = if self.has_explicit_length() { self.length() } else { pattern_event_length };
-                        let note_start = (offset + note_event.start());
+                        let note_start = offset + note_event.start();
                         let note_stop = offset + note_event.stop().unwrap() + if note_event.is_looping() { looping_note_length } else { 0 };
                         let start_tick = note_start - relative_range.start;
                         let stop_tick = note_stop - relative_range.start;

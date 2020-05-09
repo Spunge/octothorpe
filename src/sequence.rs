@@ -6,9 +6,6 @@ pub struct Sequence {
     // Phrase that's playing for track, array index = track
     phrases: [Option<u8>; 16],
     active: [bool; 16],
-
-    knob_group: u8,
-    knob_values: [u8; 128],
 }
 
 impl Sequence {
@@ -16,9 +13,6 @@ impl Sequence {
         Sequence {
             phrases: [Some(phrase); 16],
             active: [true; 16],
-
-            knob_group: 0,
-            knob_values: [0; 128],
         }
     }
 

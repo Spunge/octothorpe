@@ -18,9 +18,7 @@ pub struct Surface {
 
     track_shown: u8,
     sequence_shown: u8,
-    pub timeline_offset: u32,
-
-    offset_factor: f64,
+    timeline_offset: u32,
 
     phrase_shown: [u8; 16],
     phrase_zoom_level: u8,
@@ -47,8 +45,6 @@ impl Surface {
             sequence_shown: 0,
             timeline_offset: 0,
 
-            offset_factor: 0.0,
-
             phrase_shown: [0; 16],
             phrase_zoom_level: 4,
             phrase_offsets: [0; 16],
@@ -56,7 +52,7 @@ impl Surface {
             pattern_shown: [0; 16],
             pattern_zoom_level: 4,
             pattern_offsets: [0; 16],
-            pattern_base_notes: [16; 16],
+            pattern_base_notes: [60; 16],
         }
     }
 
@@ -77,6 +73,24 @@ impl Surface {
     pub fn pattern_ticks_in_grid(&self) -> u32 { self.pattern_ticks_per_button() * 8 }
     pub fn phrase_ticks_per_button(&self) -> u32 { Self::PHRASE_TICKS_PER_BUTTON / self.phrase_zoom_level() as u32 }
     pub fn phrase_ticks_in_grid(&self) -> u32 { self.phrase_ticks_per_button() * 8 }
+    pub fn timeline_ticks_in_grid(&self) -> u32 { Self::TIMELINE_TICKS_PER_BUTTON * 16 }
+
+    pub fn timeline_offset(&self) -> u32 { self.timeline_offset }
+    pub fn set_timeline_offset(&mut self, sequencer: &Sequencer, offset: u32) { 
+        let max_offset = self.max_timeline_offset(sequencer);
+        let adjusted_offset = (offset / Self::TIMELINE_TICKS_PER_BUTTON) * Self::TIMELINE_TICKS_PER_BUTTON;
+        self.timeline_offset = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
+    }
+    pub fn get_timeline_length(&self, sequencer: &Sequencer) -> u32 {
+        let timeline_end = sequencer.get_timeline_end();
+        timeline_end + Self::TIMELINE_TICKS_PER_BUTTON * 12
+    }
+    pub fn max_timeline_offset(&self, sequencer: &Sequencer) -> u32 {
+        let timeline_length = self.get_timeline_length(sequencer);
+        if self.timeline_ticks_in_grid() < timeline_length {
+            timeline_length - self.timeline_ticks_in_grid()
+        } else { 0 }
+    }
 
     pub fn pattern_offset(&self, index: usize) -> u32 { self.pattern_offsets[index] }
     pub fn max_pattern_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
@@ -141,6 +155,9 @@ impl Surface {
         let max_pattern_offset = self.max_pattern_offset(sequencer, track_index);
         let pattern_offset = (max_pattern_offset as f64 * factor) as u32;
         self.set_pattern_offset(sequencer, track_index, pattern_offset);
+        let max_timeline_offset = self.max_timeline_offset(sequencer);
+        let timeline_offset = (max_timeline_offset as f64 * factor) as u32;
+        self.set_timeline_offset(sequencer, timeline_offset);
         // TODO - Timeline
     }
 }

@@ -22,7 +22,7 @@ const TIMELINE_TAIL_COLOR: u8 = 3;
 // Same as default phrase length atm
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
-const LENGTH_INDICATOR_USECS: u64 = 300000;
+const LENGTH_INDICATOR_USECS: u64 = 200000;
 const DOUBLE_CLICK_USECS: u64 = 300000;
 const PLAYING_LOOPABLE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
 const PLAYING_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
@@ -180,7 +180,7 @@ pub trait APC {
                     let ranges = self.playing_loopable_ranges(cycle, sequencer, surface);
 
                     for (range, start) in ranges {
-                        let ticks_into_playable = (range.stop - start);
+                        let ticks_into_playable = range.stop - start;
                         let button = ticks_into_playable / ticks_per_button;
 
                         //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
@@ -197,7 +197,7 @@ pub trait APC {
             },
             View::Timeline => {
                 let button = cycle.tick_range.start / Surface::TIMELINE_TICKS_PER_BUTTON;
-                let offset_buttons = surface.timeline_offset / Surface::TIMELINE_TICKS_PER_BUTTON + Self::TRACK_OFFSET as u32;
+                let offset_buttons = surface.timeline_offset() / Surface::TIMELINE_TICKS_PER_BUTTON + Self::TRACK_OFFSET as u32;
 
                 //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
                 if button >= offset_buttons {
@@ -259,12 +259,12 @@ pub trait APC {
             });
     }
 
-    fn draw_timeline(&mut self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &Surface) {
+    fn draw_timeline(&mut self, sequencer: &Sequencer, surface: &Surface) {
         let track = sequencer.track(surface.track_shown());
 
         // Draw main grid
         let events = track.timeline.events().iter();
-        let offset = Surface::TIMELINE_TICKS_PER_BUTTON * Self::TRACK_OFFSET as u32 + surface.timeline_offset;
+        let offset = Surface::TIMELINE_TICKS_PER_BUTTON * Self::TRACK_OFFSET as u32 + surface.timeline_offset();
         self.draw_loopable_events(events, offset, 0, Surface::TIMELINE_TICKS_PER_BUTTON * 8, TIMELINE_HEAD_COLOR, TIMELINE_TAIL_COLOR);
     }
 
@@ -325,10 +325,10 @@ pub trait APC {
                             self.set_shown_loopable_offset(sequencer, surface, offset);
                         },
                         View::Timeline => {
-                            let new_offset = surface.timeline_offset as i32 + (delta_buttons as i32 * Surface::TIMELINE_TICKS_PER_BUTTON as i32);
+                            let new_offset = surface.timeline_offset() as i32 + (delta_buttons as i32 * Surface::TIMELINE_TICKS_PER_BUTTON as i32);
 
                             if new_offset >= 0 {
-                                surface.timeline_offset = new_offset as u32;
+                                surface.set_timeline_offset(sequencer, new_offset as u32);
                             }
                         },
                         _ => (),
@@ -376,7 +376,7 @@ pub trait APC {
 
                                     if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                         sequence.set_phrases(index);
-                                    } else if let Some(usecs) = last_occurred_event {
+                                    } else if let Some(_) = last_occurred_event {
                                         // If we double clicked sequence button, queue it
                                         sequencer.sequence_queued = Some(index as usize);
                                     } else {
@@ -395,7 +395,7 @@ pub trait APC {
                                     let track = sequencer.track_mut(surface.track_shown());
 
                                     // Add track offset to make it possible to draw across multiple controllers
-                                    let start = (Self::TRACK_OFFSET + x) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
+                                    let start = (Self::TRACK_OFFSET + x) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset();
                                     let mut tick_range = TickRange::new(start, start + Surface::TIMELINE_TICKS_PER_BUTTON);
 
                                     // Should we delete the event we're clicking?
@@ -406,7 +406,7 @@ pub trait APC {
                                         if let Some(ButtonPress { button_type: ButtonType::Grid(mod_x, mod_y), controller_track_offset }) = global_modifier {
                                             if *mod_y == y { 
                                                 // Add track offset off modifier to make it possible to draw across controllers
-                                                tick_range.start = (mod_x + controller_track_offset) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
+                                                tick_range.start = (mod_x + controller_track_offset) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset();
                                             }
                                         }
 
@@ -484,7 +484,7 @@ pub trait APC {
             self.set_identified_cycles(self.identified_cycles() + 1);
         } else {
             // APC 40 / 20 specific messages
-            messages.append(&mut self.output_messages(cycle, sequencer, surface));
+            self.draw(sequencer, surface);
 
             // Always draw track grid
             // This if statement is here to see if we can subtract TRACK_OFFSET
@@ -500,7 +500,7 @@ pub trait APC {
                     for index in 0 .. self.loopable_zoom_level(surface) { self.solo().draw(index, 1); }
                 },
                 View::Timeline => {
-                    self.draw_timeline(cycle, sequencer, surface);
+                    self.draw_timeline(sequencer, surface);
                 },
                 View::Sequence => {
                     self.master().draw(1);
@@ -530,7 +530,7 @@ pub trait APC {
     }
 
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
-    fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage>;
+    fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface);
 }
 
 pub struct APC40 {
@@ -541,7 +541,7 @@ pub struct APC40 {
     identified_cycles: u8,
     device_id: u8,
     local_id: u8,
-    knob_offset: u8,
+    //knob_offset: u8,
 
     cue_knob: CueKnob,
     master: Single,
@@ -552,7 +552,7 @@ pub struct APC40 {
     track: WideRow,
     activator: WideRow,
     solo: WideRow,
-    arm: WideRow,
+    //arm: WideRow,
 }
 
 impl APC for APC40 {
@@ -612,7 +612,7 @@ impl APC for APC40 {
             .flat_map(|(tick_range, sequence_start, phrase_index)| {
                 sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
                     .filter(|(pattern_index, _, _, _, _)| *pattern_index == shown_pattern_index)
-                    .map(move |(_, absolute_start, relative_range, pattern_event_length, absolute_offset)| {
+                    .map(move |(_, absolute_start, relative_range, _, _)| {
                         let absolute_range = relative_range.plus(absolute_start);
 
                         // Make sure indicator loops around when pattern has explicit length
@@ -651,7 +651,7 @@ impl APC for APC40 {
             local_id: 0,
             device_id: 0,
             // Offset knobs by this value to support multiple groups
-            knob_offset: 0,
+            //knob_offset: 0,
 
             cue_knob: CueKnob::new(),
             master: Single::new(0x50),
@@ -663,7 +663,7 @@ impl APC for APC40 {
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
             // TODO - Put length indicator here, get length from longest LoopablePatternEvent in phrases?
-            arm: WideRow::new(0x30),
+            //arm: WideRow::new(0x30),
         }
     }
 
@@ -796,7 +796,10 @@ impl APC for APC40 {
                         } else {
                             match state {
                                 1 => sequencer.stop(cycle),
-                                _ => sequencer.reset(cycle),
+                                _ => {
+                                    sequencer.reset(cycle);
+                                    surface.set_timeline_offset(sequencer, 0);
+                                },
                             };
                         }
                     },
@@ -807,9 +810,7 @@ impl APC for APC40 {
         }
     }
 
-    fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
-        let mut messages = vec![];
-
+    fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface) {
         match surface.view {
             View::Track => {
                 let loopable = self.shown_loopable_mut(sequencer, surface);
@@ -836,8 +837,6 @@ impl APC for APC40 {
             
             }
         }
-
-        messages
     }
 }
 
@@ -861,11 +860,7 @@ pub struct APC20 {
     track: WideRow,
     activator: WideRow,
     solo: WideRow,
-    arm: WideRow,
-}
-
-impl APC20 {
-    fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
+    //arm: WideRow,
 }
 
 impl APC for APC20 {
@@ -959,7 +954,7 @@ impl APC for APC20 {
             track: WideRow::new(0x33),
             activator: WideRow::new(0x32),
             solo: WideRow::new(0x31),
-            arm: WideRow::new(0x30),
+            //arm: WideRow::new(0x30),
         }
     }
 
@@ -1014,9 +1009,8 @@ impl APC for APC20 {
         }
     }
 
-    fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
-        let mut messages = vec![];
-
+    // Draw APC specific things
+    fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface) {
         match surface.view {
             View::Track => {
                 let loopable = self.shown_loopable(sequencer, surface);
@@ -1035,7 +1029,5 @@ impl APC for APC20 {
             View::Timeline => {
             }
         }
-
-        messages
     }
 }

@@ -34,12 +34,14 @@ pub struct WideRow {
 }
 
 // 4 wide grid
+/*
 pub struct NarrowRow {
     state: [u8; 4],
     next_state: [u8; 4],
 
     note: u8,
 }
+*/
 
 pub struct Single {
     state: u8,
@@ -172,6 +174,7 @@ impl Drawable for WideRow {
     }
 }
 
+/*
 impl NarrowRow {
     pub fn new(note: u8) -> Self {
         NarrowRow { state: [9; 4], next_state: [0; 4], note, }
@@ -185,6 +188,7 @@ impl NarrowRow {
         }
     }
 }
+*/
 
 impl Single {
     pub fn new(note: u8) -> Self {

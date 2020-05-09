@@ -6,19 +6,6 @@ use super::sequence::Sequence;
 use super::loopable::*;
 use super::events::*;
 
-#[derive(Debug, Copy, Clone)]
-pub struct PlayingSequence {
-    // Start & stop tick
-    pub tick_range: TickRange,
-    pub index: usize,
-}
-
-impl PlayingSequence {
-    fn new(start: u32, stop: u32, index: usize) -> Self {
-        Self { tick_range: TickRange::new(start, stop), index }
-    }
-}
-
 pub struct Sequencer {
     pub tracks: [Track; 16],
     pub sequences: [Sequence; 5],
@@ -145,19 +132,24 @@ impl Sequencer {
         }
     }
 
-    pub fn autoqueue_next_sequence(&mut self, cycle: &ProcessCycle) {
-        let next_start = self.tracks.iter()
+    // Get tick at which timeline stops
+    pub fn get_timeline_end(&self) -> u32 {
+        self.tracks.iter()
             .map(|track| track.timeline.get_last_stop())
             .max()
-            .unwrap();
+            .unwrap()
+    }
 
-        if cycle.tick_range.contains(next_start) {
+    pub fn autoqueue_next_sequence(&mut self, cycle: &ProcessCycle) {
+        let timeline_end = self.get_timeline_end();
+
+        if cycle.tick_range.contains(timeline_end) {
             if let Some(index) = self.sequence_queued {
                 self.sequence_queued = None;
                 self.sequence_playing = index;
             };
 
-            self.play_sequence(next_start, self.sequence_playing);
+            self.play_sequence(timeline_end, self.sequence_playing);
         }
     }
 
@@ -194,6 +186,7 @@ impl Sequencer {
                 phrase.pattern_events.iter()
                     // Only pattern events that stop
                     .filter(|pattern_event| pattern_event.stop().is_some())
+                    .filter(move |pattern_event| pattern_event.start() < phrase.length())
                     // Only pattern events that fall within relative phrase cycle
                     // Looping ranges are 2 ranges, start & end. Get absolute ranges and their
                     // corresponding offset in the pattern
