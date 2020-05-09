@@ -20,7 +20,6 @@ const SEQUENCE_COLOR: u8 = 1;
 const TIMELINE_HEAD_COLOR: u8 = 1;
 const TIMELINE_TAIL_COLOR: u8 = 3;
 // Same as default phrase length atm
-const TIMELINE_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 2;
 // Wait some cycles for sloooow apc's
 const IDENTIFY_CYCLES: u8 = 3;
 const LENGTH_INDICATOR_USECS: u64 = 300000;
@@ -43,27 +42,12 @@ pub trait APC {
     fn device_id(&self) -> u8;
     fn set_device_id(&mut self, device_id: u8);
 
+    fn loopable_ticks_per_button(&self, surface: &Surface) -> u32;
+    fn loopable_ticks_in_grid(&self, surface: &Surface) -> u32;
     fn loopable_zoom_level(&self, surface: &Surface) -> u8;
-    fn set_loopable_zoom_level(&self, surface: &mut Surface, zoom_level: u8);
+    fn set_loopable_zoom_level(&self, sequencer: &Sequencer, surface: &mut Surface, zoom_level: u8);
     fn shown_loopable_offset(&self, surface: &Surface) -> u32;
-    fn set_shown_loopable_offset(&self, surface: &mut Surface, offset: u32);
-    fn ticks_in_grid(&self, surface: &Surface) -> u32;
-    fn ticks_per_button(&self, surface: &Surface) -> u32 { self.ticks_in_grid(surface) / 8 }
-
-    fn max_offset(&self, sequencer: &Sequencer, surface: &Surface) -> u32 {
-        let loopable_length = self.shown_loopable(sequencer, surface).length();
-
-        let max = loopable_length as i32 - self.ticks_in_grid(surface) as i32;
-        if max > 0 { max as u32 } else { 0 }
-    }
-    fn adjusted_offset_by_delta(&self, surface: &Surface, max_offset: u32, delta_buttons: i8) -> u32 {
-        let delta_ticks = delta_buttons as i32 * self.ticks_per_button(surface) as i32;
-        let new_offset = self.shown_loopable_offset(surface) as i32 + delta_ticks;
-
-        if new_offset >= 0 {
-            if new_offset < max_offset as i32 { new_offset as u32 } else { max_offset }
-        } else { 0 }
-    }
+    fn set_shown_loopable_offset(&self, sequencer: &Sequencer, surface: &mut Surface, offset: u32);
 
     fn shown_loopable_index(&self, surface: &Surface) -> u8;
     fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable;
@@ -164,22 +148,26 @@ pub trait APC {
 
         match surface.view {
             View::Track => {
-                let filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
                 let usecs = cycle.time_stop - LENGTH_INDICATOR_USECS;
-                let ticks_per_button = self.ticks_per_button(surface);
-
+                let ticks_per_button = self.loopable_ticks_per_button(surface);
                 let offset_buttons = self.shown_loopable_offset(surface) / ticks_per_button;
+                let controller_filters = [InputEvent::is_cue_knob, InputEvent::is_solo_button, InputEvent::is_activator_button];
+                let global_filters = [InputEvent::is_crossfader];
+                // Show length/offset indicator when events occurred that changed length/offset
+                let last_occurred_controller_event = surface.event_memory
+                    .last_occurred_controller_event_after(Self::TRACK_OFFSET, &controller_filters, usecs)
+                    .or_else(|| surface.event_memory.last_occurred_global_event_after(&global_filters, usecs));
 
                 // TODO - move this timing logic to seperate function when we need it for other things
                 // Do we need to draw length indicator, and when?
-                if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::TRACK_OFFSET, &filters, usecs) {
+                if let Some(usecs) = last_occurred_controller_event {
                     let usecs_ago = cycle.time_stop - usecs;
                     let hide_in_usecs = LENGTH_INDICATOR_USECS - usecs_ago;
 
                     if hide_in_usecs < cycle.usecs() {
                         frame = hide_in_usecs as u32 * cycle.scope.n_frames() / cycle.usecs() as u32;
                     } else {
-                        let length_buttons = (self.indicator().width() as u32 * self.ticks_in_grid(surface) / loopable_length) as u8;
+                        let length_buttons = (self.indicator().width() as u32 * self.loopable_ticks_in_grid(surface) / loopable_length) as u8;
                         //let length_buttons = self.indicator().width() / (length / self.ticks_in_grid()) as u8;
                         let start_button = offset_buttons as u8 * length_buttons / self.indicator().width();
                         let stop_button = start_button + length_buttons;
@@ -208,8 +196,8 @@ pub trait APC {
                 }
             },
             View::Timeline => {
-                let button = cycle.tick_range.start / TIMELINE_TICKS_PER_BUTTON;
-                let offset_buttons = surface.timeline_offset / TIMELINE_TICKS_PER_BUTTON + Self::TRACK_OFFSET as u32;
+                let button = cycle.tick_range.start / Surface::TIMELINE_TICKS_PER_BUTTON;
+                let offset_buttons = surface.timeline_offset / Surface::TIMELINE_TICKS_PER_BUTTON + Self::TRACK_OFFSET as u32;
 
                 //let switch_to_led = (((range.stop - start) as f64 / length as f64) * (length / self.ticks_per_button()) as f64) as u32;
                 if button >= offset_buttons {
@@ -217,8 +205,8 @@ pub trait APC {
                 }
 
                 // If transition falls within current cycle, switch on correct frame
-                if cycle.tick_range.stop % TIMELINE_TICKS_PER_BUTTON < cycle.tick_range.length() {
-                    frame = (((cycle.tick_range.stop % TIMELINE_TICKS_PER_BUTTON) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
+                if cycle.tick_range.stop % Surface::TIMELINE_TICKS_PER_BUTTON < cycle.tick_range.length() {
+                    frame = (((cycle.tick_range.stop % Surface::TIMELINE_TICKS_PER_BUTTON) as f64 / cycle.tick_range.length() as f64) * cycle.scope.n_frames() as f64) as u32;
                 }
             },
             _ => (),
@@ -276,8 +264,8 @@ pub trait APC {
 
         // Draw main grid
         let events = track.timeline.events().iter();
-        let offset = TIMELINE_TICKS_PER_BUTTON * Self::TRACK_OFFSET as u32 + surface.timeline_offset;
-        self.draw_loopable_events(events, offset, 0, TIMELINE_TICKS_PER_BUTTON * 8, TIMELINE_HEAD_COLOR, TIMELINE_TAIL_COLOR);
+        let offset = Surface::TIMELINE_TICKS_PER_BUTTON * Self::TRACK_OFFSET as u32 + surface.timeline_offset;
+        self.draw_loopable_events(events, offset, 0, Surface::TIMELINE_TICKS_PER_BUTTON * 8, TIMELINE_HEAD_COLOR, TIMELINE_TAIL_COLOR);
     }
 
     /*
@@ -323,19 +311,21 @@ pub trait APC {
                     // Check if cueknob should respond immediately
                     let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
                     let is_first_turn = surface.event_memory
-                        .last_occurred_event_after(Self::TRACK_OFFSET, &[InputEvent::is_cue_knob], usecs)
+                        .last_occurred_controller_event_after(Self::TRACK_OFFSET, &[InputEvent::is_cue_knob], usecs)
                         .is_none();
 
                     let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
 
                     match surface.view {
                         View::Track => {
-                            let max_offset = self.max_offset(sequencer, surface);
-                            let offset = self.adjusted_offset_by_delta(surface, max_offset, delta_buttons);
-                            self.set_shown_loopable_offset(surface, offset);
+                            let delta_ticks = delta_buttons as i32 * self.loopable_ticks_per_button(surface) as i32;
+                            let new_offset = self.shown_loopable_offset(surface) as i32 + delta_ticks;
+                            let offset = if new_offset < 0 { 0 } else { new_offset as u32 };
+
+                            self.set_shown_loopable_offset(sequencer, surface, offset);
                         },
                         View::Timeline => {
-                            let new_offset = surface.timeline_offset as i32 + (delta_buttons as i32 * TIMELINE_TICKS_PER_BUTTON as i32);
+                            let new_offset = surface.timeline_offset as i32 + (delta_buttons as i32 * Surface::TIMELINE_TICKS_PER_BUTTON as i32);
 
                             if new_offset >= 0 {
                                 surface.timeline_offset = new_offset as u32;
@@ -357,13 +347,7 @@ pub trait APC {
                                     // We divide by zoom level, so don't start at 0
                                     let zoom_level = index + 1;
                                     if zoom_level != 7 {
-                                        self.set_loopable_zoom_level(surface, zoom_level);
-
-                                        // It could happen that we're moved out of range when zooming out
-                                        //let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
-                                        //if self.offset(surface.track_shown()) > max_offset {
-                                            //self.set_offset(surface.track_shown(), max_offset);
-                                        //}
+                                        self.set_loopable_zoom_level(sequencer, surface, zoom_level);
                                     }
                                 },
                                 _ => (),
@@ -388,10 +372,12 @@ pub trait APC {
                                         *event_type == event.event_type
                                     }];
                                     let usecs = cycle.time_stop - DOUBLE_CLICK_USECS;
+                                    let last_occurred_event = surface.event_memory.last_occurred_controller_event_after(Self::TRACK_OFFSET, &filters, usecs);
 
                                     if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                         sequence.set_phrases(index);
-                                    } else if let Some(usecs) = surface.event_memory.last_occurred_event_after(Self::TRACK_OFFSET, &filters, usecs) {
+                                    } else if let Some(usecs) = last_occurred_event {
+                                        // If we double clicked sequence button, queue it
                                         sequencer.sequence_queued = Some(index as usize);
                                     } else {
                                         surface.show_sequence(index);
@@ -409,8 +395,8 @@ pub trait APC {
                                     let track = sequencer.track_mut(surface.track_shown());
 
                                     // Add track offset to make it possible to draw across multiple controllers
-                                    let start = (Self::TRACK_OFFSET + x) as u32 * TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
-                                    let mut tick_range = TickRange::new(start, start + TIMELINE_TICKS_PER_BUTTON);
+                                    let start = (Self::TRACK_OFFSET + x) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
+                                    let mut tick_range = TickRange::new(start, start + Surface::TIMELINE_TICKS_PER_BUTTON);
 
                                     // Should we delete the event we're clicking?
                                     if let (None, true) = (global_modifier, track.timeline.contains_events_starting_in(tick_range, y)) {
@@ -420,7 +406,7 @@ pub trait APC {
                                         if let Some(ButtonPress { button_type: ButtonType::Grid(mod_x, mod_y), controller_track_offset }) = global_modifier {
                                             if *mod_y == y { 
                                                 // Add track offset off modifier to make it possible to draw across controllers
-                                                tick_range.start = (mod_x + controller_track_offset) as u32 * TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
+                                                tick_range.start = (mod_x + controller_track_offset) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset;
                                             }
                                         }
 
@@ -429,8 +415,8 @@ pub trait APC {
                                             let start = tick_range.start;
                                             // As stop is @ end of button & start is @ start of
                                             // button, offset start & stop by a button
-                                            tick_range.start = tick_range.stop - TIMELINE_TICKS_PER_BUTTON;
-                                            tick_range.stop = start + TIMELINE_TICKS_PER_BUTTON;
+                                            tick_range.start = tick_range.stop - Surface::TIMELINE_TICKS_PER_BUTTON;
+                                            tick_range.stop = start + Surface::TIMELINE_TICKS_PER_BUTTON;
                                         }
 
                                         track.timeline.add_complete_event(LoopablePhraseEvent::new(tick_range.start, tick_range.stop, y));
@@ -583,18 +569,21 @@ impl APC for APC40 {
     fn device_id(&self) -> u8 { self.device_id }
     fn set_device_id(&mut self, device_id: u8) { self.device_id = device_id }
 
+    fn loopable_ticks_per_button(&self, surface: &Surface) -> u32 { surface.pattern_ticks_per_button() }
+    fn loopable_ticks_in_grid(&self, surface: &Surface) -> u32 { surface.pattern_ticks_in_grid() }
     fn loopable_zoom_level(&self, surface: &Surface) -> u8 { surface.pattern_zoom_level() }
-    fn set_loopable_zoom_level(&self, surface: &mut Surface, zoom_level: u8) { surface.set_pattern_zoom_level(zoom_level) }
-    fn shown_loopable_offset(&self, surface: &Surface) -> u32 { surface.shown_pattern_offset() }
-    fn set_shown_loopable_offset(&self, surface: &mut Surface, offset: u32) { surface.set_shown_pattern_offset(offset) }
-    fn ticks_in_grid(&self, surface: &Surface) -> u32 {
-        TimebaseHandler::TICKS_PER_BEAT as u32 * 16 / self.loopable_zoom_level(surface) as u32
+    fn set_loopable_zoom_level(&self, sequencer: &Sequencer, surface: &mut Surface, zoom_level: u8) { 
+        surface.set_pattern_zoom_level(sequencer, zoom_level);
+    }
+    fn shown_loopable_offset(&self, surface: &Surface) -> u32 { surface.pattern_offset(surface.track_shown()) }
+    fn set_shown_loopable_offset(&self, sequencer: &Sequencer, surface: &mut Surface, offset: u32) { 
+        surface.set_pattern_offset(sequencer, surface.track_shown(), offset) 
     }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
-    fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.pattern_shown() }
+    fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.pattern_shown(surface.track_shown()) }
 
     fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable { 
         let track = sequencer.track(surface.track_shown());
@@ -682,8 +671,6 @@ impl APC for APC40 {
      * Process APC40 specific midi input, shared input is handled by APC trait
      */
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
-        let track = sequencer.track_mut(surface.track_shown());
-        let pattern = track.pattern_mut(surface.pattern_shown());
 
         // Only process channel note messages
         match event.event_type {
@@ -693,10 +680,9 @@ impl APC for APC40 {
             InputEventType::FaderMoved { value, fader_type: FaderType::CrossFade } => {
                 let factor = value as f64 / 127.0;
                 //let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
-                //let offset = self.adjusted_offset_by_delta(surface.track_shown(), max_offset, delta_buttons);
                 
                 //let offset = (max_offset as f64 * factor) as u32;
-                surface.set_offset_factor(factor);
+                surface.set_offsets_by_factor(sequencer, surface.track_shown(), factor);
                 //println!("{:?} {:?}", offset, max_offset);
                 
                 //self.set_offset(surface.track_shown(), offset);
@@ -714,12 +700,15 @@ impl APC for APC40 {
                     View::Track => {
                         match button_type {
                             ButtonType::Grid(x, y) => {
+                                let track = sequencer.track_mut(surface.track_shown());
+                                let pattern = track.pattern_mut(surface.pattern_shown(surface.track_shown()));
+
                                 // We subtract y from 4 as we want lower notes to be lower on
                                 // the grid, the grid counts from the top
-                                let offset = surface.shown_pattern_offset();
+                                let offset = surface.pattern_offset(surface.track_shown());
                                 // We put base note in center of grid
-                                let note = surface.shown_pattern_base_note() - 2 + y;
-                                let ticks_per_button = self.ticks_per_button(surface);
+                                let note = surface.pattern_base_note(surface.track_shown()) - 2 + y;
+                                let ticks_per_button = self.loopable_ticks_per_button(surface);
 
                                 if let Some(tick_range) = self.should_add_event(pattern, modifier, ticks_per_button, x, y, offset, note) {
                                     pattern.try_add_starting_event(LoopableNoteEvent::new(tick_range.start, note, 127));
@@ -738,16 +727,21 @@ impl APC for APC40 {
                                     //track.pattern_mut(index).switch_recording_state()
                                 } else {
                                     if let Some(ButtonType::Side(modifier_index)) = modifier {
+                                        let track = sequencer.track_mut(surface.track_shown());
                                         track.clone_pattern(modifier_index, index);
                                     } else if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
-                                        surface.set_shown_pattern_offset(0);
+                                        surface.set_pattern_offset(sequencer, surface.track_shown(), 0);
+
+                                        let track = sequencer.track_mut(surface.track_shown());
                                         track.pattern_mut(index).clear_events();
                                     } else {
-                                        surface.set_pattern_shown(index);
+                                        surface.show_pattern(surface.track_shown(), index);
                                     }
                                 }
                             },
                             ButtonType::Activator(index) => {
+                                let track = sequencer.track_mut(surface.track_shown());
+                                let pattern = track.pattern_mut(surface.pattern_shown(surface.track_shown()));
                                 let length = Pattern::minimum_length() * (index as u32 + 1);
 
                                 if pattern.has_explicit_length() && pattern.length() == length {
@@ -757,25 +751,26 @@ impl APC for APC40 {
                                 }
                             },
                             ButtonType::Up => {
-                                let base_note = surface.shown_pattern_base_note();
-                                surface.set_shown_pattern_base_note(base_note + 4);
+                                let base_note = surface.pattern_base_note(surface.track_shown());
+                                surface.set_pattern_base_note(surface.track_shown(), base_note + 4);
                             },
                             ButtonType::Down => {
-                                let base_note = surface.shown_pattern_base_note();
-                                surface.set_shown_pattern_base_note(base_note - 4) 
+                                let base_note = surface.pattern_base_note(surface.track_shown());
+                                surface.set_pattern_base_note(surface.track_shown(), base_note - 4) 
                             },
                             ButtonType::Right => {
-                                let ticks_per_button = self.ticks_per_button(surface);
-                                let offset = surface.shown_pattern_offset();
+                                let ticks_per_button = self.loopable_ticks_per_button(surface);
+                                let offset = surface.pattern_offset(surface.track_shown());
                                 // There's 8 buttons, shift view one gridwidth to the right
-                                surface.set_shown_pattern_offset(offset + ticks_per_button * 8);
+                                surface.set_pattern_offset(sequencer, surface.track_shown(), offset + ticks_per_button * 8);
                             },
                             ButtonType::Left => {
-                                let ticks_per_button = self.ticks_per_button(surface);
-                                let offset = surface.shown_pattern_offset();
+                                let ticks_per_button = self.loopable_ticks_per_button(surface);
+                                let offset = surface.pattern_offset(surface.track_shown());
                                 let new_offset = offset as i32 - (ticks_per_button * 8) as i32;
+                                let offset = if new_offset >= 0 { new_offset as u32 } else { 0 };
 
-                                surface.set_shown_pattern_offset(if new_offset >= 0 { new_offset as u32 } else { 0 });
+                                surface.set_pattern_offset(sequencer, surface.track_shown(), offset);
                             },
                             ButtonType::Quantization => {
                                 // TODO - Move quantizing & quantize_level to "keyboard"
@@ -820,14 +815,11 @@ impl APC for APC40 {
                 let loopable = self.shown_loopable_mut(sequencer, surface);
 
                 // Get base note of track, as we draw the grid with base note in vertical center
-                let base_note = surface.shown_pattern_base_note();
+                let base_note = surface.pattern_base_note(surface.track_shown());
                 let events = loopable.events().iter()
                     .filter(|event| event.note >= base_note - 2 && event.note <= base_note + 2);
 
-                //let offset = surface.get_offset(loopable.length(), self.ticks_in_grid());
-                //let max_offset = self.max_offset();
-                self.draw_loopable_events(events, surface.shown_pattern_offset(), base_note - 2, self.ticks_in_grid(surface), Self::HEAD_COLOR, Self::TAIL_COLOR);
-                //self.draw_loopable_events(events, offset, base_note - 2, self.ticks_in_grid(), Self::HEAD_COLOR, Self::TAIL_COLOR);
+                self.draw_loopable_events(events, surface.pattern_offset(surface.track_shown()), base_note - 2, self.loopable_ticks_in_grid(surface), Self::HEAD_COLOR, Self::TAIL_COLOR);
 
                 // pattern length selector
                 if loopable.has_explicit_length() {
@@ -880,7 +872,6 @@ impl APC for APC20 {
     type Loopable = Phrase;
 
     const TRACK_OFFSET: u8 = 0;
-
     const HEAD_COLOR: u8 = 3;
     const TAIL_COLOR: u8 = 5;
 
@@ -891,18 +882,21 @@ impl APC for APC20 {
     fn device_id(&self) -> u8 { self.device_id }
     fn set_device_id(&mut self, device_id: u8) { self.device_id = device_id }
 
+    fn loopable_ticks_per_button(&self, surface: &Surface) -> u32 { surface.phrase_ticks_per_button() }
+    fn loopable_ticks_in_grid(&self, surface: &Surface) -> u32 { surface.phrase_ticks_in_grid() }
     fn loopable_zoom_level(&self, surface: &Surface) -> u8 { surface.phrase_zoom_level() }
-    fn set_loopable_zoom_level(&self, surface: &mut Surface, zoom_level: u8) { surface.set_phrase_zoom_level(zoom_level) }
-    fn shown_loopable_offset(&self, surface: &Surface) -> u32 { surface.shown_phrase_offset() }
-    fn set_shown_loopable_offset(&self, surface: &mut Surface, offset: u32) { surface.set_shown_phrase_offset(offset) }
-    fn ticks_in_grid(&self, surface: &Surface) -> u32 {
-        TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 16 / self.loopable_zoom_level(surface) as u32 
+    fn set_loopable_zoom_level(&self, sequencer: &Sequencer, surface: &mut Surface, zoom_level: u8) { 
+        surface.set_phrase_zoom_level(sequencer, zoom_level);
+    }
+    fn shown_loopable_offset(&self, surface: &Surface) -> u32 { surface.phrase_offset(surface.track_shown()) }
+    fn set_shown_loopable_offset(&self, sequencer: &Sequencer, surface: &mut Surface, offset: u32) {
+        surface.set_phrase_offset(sequencer, surface.track_shown(), offset);
     }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
-    fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.phrase_shown() }
+    fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.phrase_shown(surface.track_shown()) }
 
     fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable { 
         let track = sequencer.track(surface.track_shown());
@@ -971,7 +965,7 @@ impl APC for APC20 {
 
     fn process_inputevent(&mut self, event: &InputEvent, _cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, _mixer: &mut Mixer) {
         let track = sequencer.track_mut(surface.track_shown());
-        let phrase = track.phrase_mut(surface.phrase_shown());
+        let phrase = track.phrase_mut(surface.phrase_shown(surface.track_shown()));
 
         // Only process channel note messages
         match event.event_type {
@@ -984,9 +978,9 @@ impl APC for APC20 {
                     View::Track => {
                         match button_type {
                             ButtonType::Grid(x, y) => {
-                                let offset = surface.shown_phrase_offset();
+                                let offset = surface.phrase_offset(surface.track_shown());
                                 // We draw grids from bottom to top
-                                let ticks_per_button = self.ticks_per_button(surface);
+                                let ticks_per_button = self.loopable_ticks_per_button(surface);
 
                                 if let Some(tick_range) = self.should_add_event(phrase, modifier, ticks_per_button, x, y, offset, y) {
                                     phrase.try_add_starting_event(LoopablePatternEvent::new(tick_range.start, y));
@@ -1004,7 +998,7 @@ impl APC for APC20 {
                                 } else if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                     track.phrase_mut(index).clear_events();
                                 } else {
-                                    surface.set_phrase_shown(index);
+                                    surface.show_phrase(surface.track_shown(), index);
                                 }
                             },
                             ButtonType::Activator(index) => {
@@ -1029,10 +1023,7 @@ impl APC for APC20 {
 
                 // Draw main grid
                 let events = loopable.events().iter();
-                //let offset = surface.get_offset(loopable.length(), self.ticks_in_grid());
-                //let max_offset = self.max_offset(self.shown_loopable(sequencer, surface).length());
-                self.draw_loopable_events(events, surface.shown_phrase_offset(), 0, self.ticks_in_grid(surface), Self::HEAD_COLOR, Self::TAIL_COLOR);
-                //self.draw_loopable_events(events, offset, 0, self.ticks_in_grid(), Self::HEAD_COLOR, Self::TAIL_COLOR);
+                self.draw_loopable_events(events, surface.phrase_offset(surface.track_shown()), 0, self.loopable_ticks_in_grid(surface), Self::HEAD_COLOR, Self::TAIL_COLOR);
 
                 // Length selector
                 for index in 0 .. (loopable.length() / Self::Loopable::default_length()) {

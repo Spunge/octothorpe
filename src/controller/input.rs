@@ -127,6 +127,10 @@ impl InputEvent {
         matches!(event_type, InputEventType::KnobTurned { knob_type: KnobType::Cue, .. }) 
     }
 
+    pub fn is_crossfader(event_type: &InputEventType) -> bool { 
+        matches!(event_type, InputEventType::FaderMoved { fader_type: FaderType::CrossFade, .. }) 
+    }
+
     pub fn is_activator_button(event_type: &InputEventType) -> bool { 
         matches!(event_type, InputEventType::ButtonPressed(ButtonType::Activator(_)))
     }

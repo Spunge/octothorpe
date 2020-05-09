@@ -1,5 +1,8 @@
 
 use super::controller::input::*;
+use super::TimebaseHandler;
+use super::Sequencer;
+use super::loopable::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
@@ -30,6 +33,10 @@ pub struct Surface {
 }
 
 impl Surface {
+    pub const PATTERN_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
+    pub const PHRASE_TICKS_PER_BUTTON: u32 = Self::PATTERN_TICKS_PER_BUTTON * 4;
+    pub const TIMELINE_TICKS_PER_BUTTON: u32 = Self::PHRASE_TICKS_PER_BUTTON * 1;
+
     pub fn new() -> Self {
         Surface { 
             view: View::Track, 
@@ -49,7 +56,7 @@ impl Surface {
             pattern_shown: [0; 16],
             pattern_zoom_level: 4,
             pattern_offsets: [0; 16],
-            pattern_base_notes: [60; 16],
+            pattern_base_notes: [16; 16],
         }
     }
 
@@ -59,43 +66,82 @@ impl Surface {
 
     pub fn show_track(&mut self, index: u8) { self.track_shown = index; }
     pub fn track_shown(&self) -> usize { self.track_shown as usize }
-
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
     pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }
+    pub fn phrase_shown(&self, track_index: usize) -> u8 { self.phrase_shown[track_index] }
+    pub fn show_phrase(&mut self, track_index: usize, index: u8) { self.phrase_shown[track_index] = index }
+    pub fn pattern_shown(&self, track_index: usize) -> u8 { self.pattern_shown[track_index] }
+    pub fn show_pattern(&mut self, track_index: usize, index: u8) { self.pattern_shown[track_index] = index }
 
-    pub fn pattern_shown(&self) -> u8 { self.pattern_shown[self.track_shown()] }
-    pub fn set_pattern_shown(&mut self, index: u8) { self.pattern_shown[self.track_shown()] = index }
+    pub fn pattern_ticks_per_button(&self) -> u32 { Self::PATTERN_TICKS_PER_BUTTON / self.pattern_zoom_level() as u32 }
+    pub fn pattern_ticks_in_grid(&self) -> u32 { self.pattern_ticks_per_button() * 8 }
+    pub fn phrase_ticks_per_button(&self) -> u32 { Self::PHRASE_TICKS_PER_BUTTON / self.phrase_zoom_level() as u32 }
+    pub fn phrase_ticks_in_grid(&self) -> u32 { self.phrase_ticks_per_button() * 8 }
+
     pub fn pattern_offset(&self, index: usize) -> u32 { self.pattern_offsets[index] }
-    pub fn set_pattern_offset(&mut self, index: usize, ticks: u32) { self.pattern_offsets[index] = ticks }
-    pub fn shown_pattern_offset(&self) -> u32 { self.pattern_offset(self.track_shown()) }
-    pub fn set_shown_pattern_offset(&mut self, offset: u32) { self.set_pattern_offset(self.track_shown(), offset) }
+    pub fn max_pattern_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
+        let pattern_length = sequencer.track(track_index).pattern(self.pattern_shown(track_index)).length();
+
+        if self.pattern_ticks_in_grid() < pattern_length {
+            pattern_length - self.pattern_ticks_in_grid()
+        } else { 0 }
+    }
+    pub fn set_pattern_offset(&mut self, sequencer: &Sequencer, track_index: usize, ticks: u32) {
+        let max_offset = self.max_pattern_offset(sequencer, track_index);
+        let adjusted_offset = (ticks / self.pattern_ticks_per_button()) * self.pattern_ticks_per_button();
+        self.pattern_offsets[track_index] = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
+    }
+
     pub fn pattern_zoom_level(&self) -> u8 { self.pattern_zoom_level }
-    pub fn set_pattern_zoom_level(&mut self, level: u8) { self.pattern_zoom_level = level }
-    // TODO - We don't use the 60 array indexes that are there
-    pub fn pattern_base_note(&self, index: usize) -> u8 { self.pattern_base_notes[index] }
-    pub fn shown_pattern_base_note(&self) -> u8 { self.pattern_base_notes[self.track_shown()] }
-    pub fn set_shown_pattern_base_note(&mut self, base_note: u8) { 
-        if base_note <= 118 && base_note >= 22 { 
-            self.pattern_base_notes[self.track_shown()] = base_note ;
+    pub fn set_pattern_zoom_level(&mut self, sequencer: &Sequencer, level: u8) { 
+        self.pattern_zoom_level = level;
+        // - loop shown patterns & adjust offsets so they don't exceed max_offset
+        for track_index in 0 .. self.pattern_offsets.len() {
+            self.set_pattern_offset(sequencer, track_index, self.pattern_offset(track_index))
         }
     }
 
-    pub fn phrase_shown(&self) -> u8 { self.phrase_shown[self.track_shown()] }
-    pub fn set_phrase_shown(&mut self, index: u8) { self.phrase_shown[self.track_shown()] = index }
-    pub fn phrase_offset(&self, index: usize) -> u32 { self.phrase_offsets[index] }
-    pub fn set_phrase_offset(&mut self, index: usize, ticks: u32) { self.phrase_offsets[index] = ticks }
-    pub fn shown_phrase_offset(&self) -> u32 { self.phrase_offset(self.track_shown()) }
-    pub fn set_shown_phrase_offset(&mut self, offset: u32) { self.set_phrase_offset(self.track_shown(), offset) }
-    pub fn phrase_zoom_level(&self) -> u8 { self.phrase_zoom_level }
-    pub fn set_phrase_zoom_level(&mut self, level: u8) { self.phrase_zoom_level = level }
-
-    pub fn set_offset_factor(&mut self, factor: f64) {
-        self.offset_factor = factor;
+    pub fn pattern_base_note(&self, index: usize) -> u8 { self.pattern_base_notes[index] }
+    pub fn set_pattern_base_note(&mut self, track_index: usize, base_note: u8) { 
+        if base_note <= 118 && base_note >= 22 { 
+            self.pattern_base_notes[track_index] = base_note;
+        }
     }
 
-    pub fn get_offset(&self, length: u32, grid_width: u32) -> u32 {
-        let max = length - grid_width;
-        (self.offset_factor * max as f64) as u32
+    pub fn phrase_offset(&self, track_index: usize) -> u32 { self.phrase_offsets[track_index] }
+    pub fn max_phrase_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
+        let phrase_length = sequencer.track(track_index).phrase(self.phrase_shown(track_index)).length();
+
+        if self.phrase_ticks_in_grid() < phrase_length {
+            phrase_length - self.phrase_ticks_in_grid()
+        } else { 0 }
+    }
+    pub fn set_phrase_offset(&mut self, sequencer: &Sequencer, track_index: usize, ticks: u32) {
+        let max_offset = self.max_phrase_offset(sequencer, track_index);
+        // Round offset to button
+        let adjusted_offset = (ticks / self.phrase_ticks_per_button()) * self.phrase_ticks_per_button();
+
+        // Make sure offset is not > max-offset
+        self.phrase_offsets[track_index] = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
+    }
+
+    pub fn phrase_zoom_level(&self) -> u8 { self.phrase_zoom_level }
+    pub fn set_phrase_zoom_level(&mut self, sequencer: &Sequencer, level: u8) { 
+        self.phrase_zoom_level = level;
+        // Loop shown phrases & make sure offset does not exceed max_offset
+        for track_index in 0 .. self.phrase_offsets.len() {
+            self.set_phrase_offset(sequencer, track_index, self.phrase_offset(track_index))
+        }
+    }
+
+    pub fn set_offsets_by_factor(&mut self, sequencer: &Sequencer, track_index: usize, factor: f64) {
+        let max_phrase_offset = self.max_phrase_offset(sequencer, track_index);
+        let phrase_offset = (max_phrase_offset as f64 * factor) as u32;
+        self.set_phrase_offset(sequencer, track_index, phrase_offset);
+        let max_pattern_offset = self.max_pattern_offset(sequencer, track_index);
+        let pattern_offset = (max_pattern_offset as f64 * factor) as u32;
+        self.set_pattern_offset(sequencer, track_index, pattern_offset);
+        // TODO - Timeline
     }
 }
 
@@ -128,7 +174,17 @@ impl EventMemory {
         }
     }
 
-    pub fn last_occurred_event_after<F>(&self, controller_track_offset: u8, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
+    pub fn last_occurred_global_event_after<F>(&self, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
+        self.occurred_events.iter()
+            .filter(|event| {
+                event.time >= usecs
+                    && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
+            })
+            .map(|event| event.time)
+            .max()
+    }
+
+    pub fn last_occurred_controller_event_after<F>(&self, controller_track_offset: u8, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
         self.occurred_events.iter()
             .filter(|event| {
                 controller_track_offset == event.controller_track_offset
