@@ -11,14 +11,98 @@ pub enum View {
     Timeline,
 }
 
+pub enum TrackView {
+    Split,
+    Pattern,
+    Phrase,
+    Timeline,
+}
+
+pub enum LoopableType {
+    Timeline,
+    Phrase { shown: [u8; 16] },
+    Pattern { shown: [u8; 16] },
+}
+pub struct LoopableGrid {
+    offset_x: u32,
+    offset_y: u8,
+    zoom_level: u8,
+    ticks_per_button: u32,
+    loopable_type: LoopableType,
+}
+
+impl LoopableGrid {
+    pub fn new(loopable_type: LoopableType, offset_y: u8, ticks_per_button: u32) -> Self {
+        Self { offset_x: 0, offset_y, zoom_level: 4, ticks_per_button, loopable_type }
+    }
+
+    pub fn ticks_per_button(&self) -> u32 {
+        self.ticks_per_button / self.zoom_level as u32
+    }
+    pub fn ticks_in_grid(&self, grid_width: u32) -> u32 {
+        self.ticks_per_button() * grid_width
+    }
+
+    pub fn max_offset_x(&mut self, length: u32, grid_width: u8) -> u32 {
+        let ticks_in_grid = self.ticks_per_button() * grid_width as u32;
+        if ticks_in_grid < length { length - ticks_in_grid } else { 0 }
+    }
+
+    pub fn set_offset_x(&mut self, ticks: u32, max: u32) { 
+        let adjusted_offset = (ticks / self.ticks_per_button()) * self.ticks_per_button();
+        self.offset_x = if adjusted_offset < max { adjusted_offset } else { max };
+    }
+    pub fn offset_x(&self) -> u32 { self.offset_x }
+
+    pub fn set_offset_y(&mut self, offset: u8) { 
+        let offset = match self.loopable_type {
+            LoopableType::Pattern { .. } => {
+                if offset > 118 { 118 } else if offset < 22 { 22 } else { offset }
+            },
+            // Phrases & timeline don't support scrolling (yet)
+            _ => if offset > 4 { 4 } else { offset }
+        };
+        self.offset_y = offset;
+    }
+    pub fn offset_y(&self) -> u8 { self.offset_y }
+
+    pub fn zoom_level(&self) -> u8 { self.zoom_level }
+    pub fn set_zoom_level(&mut self, level: u8) {
+        // Why not support 7?
+        if level != 7 {
+            self.zoom_level = level;
+        }
+    }
+
+    /*
+    pub fn shown(&self, track_index: u8) -> u8 {
+        match self.loopable_type {
+            LoopableType::Pattern { shown }=> { 
+                Box::new(track.pattern(shown[track_index]))
+            },
+            LoopableType::Phrase { shown } => { 
+                Box::new(track.phrase(shown[track_index]))
+            },
+            LoopableType::Timeline => { 
+                Box::new(track.timeline)
+            },
+        }
+    }
+    */
+}
+
+
 pub struct Surface {
     pub view: View,
     pub button_memory: ButtonMemory,
     pub event_memory: EventMemory,
 
+    pub pattern_grid: LoopableGrid,
+    pub phrase_grid: LoopableGrid,
+    pub timeline_grid: LoopableGrid,
+
     track_shown: u8,
     sequence_shown: u8,
-    timeline_offset: u32,
 
     phrase_shown: [u8; 16],
     phrase_zoom_level: u8,
@@ -31,19 +115,23 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub const PATTERN_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
-    pub const PHRASE_TICKS_PER_BUTTON: u32 = Self::PATTERN_TICKS_PER_BUTTON * 4;
-    pub const TIMELINE_TICKS_PER_BUTTON: u32 = Self::PHRASE_TICKS_PER_BUTTON * 1;
 
     pub fn new() -> Self {
+        let pattern_ticks_per_button = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
+        let phrase_ticks_per_button = pattern_ticks_per_button * 4;
+        let timeline_ticks_per_button = phrase_ticks_per_button * 4;
+
         Surface { 
             view: View::Track, 
             button_memory: ButtonMemory::new(),
             event_memory: EventMemory::new(),
 
+            pattern_grid: LoopableGrid::new(LoopableType::Pattern { shown: [0; 16] }, 58, pattern_ticks_per_button),
+            phrase_grid: LoopableGrid::new(LoopableType::Phrase { shown: [0; 16] }, 0, phrase_ticks_per_button),
+            timeline_grid: LoopableGrid::new(LoopableType::Timeline, 0, timeline_ticks_per_button),
+
             track_shown: 0,
             sequence_shown: 0,
-            timeline_offset: 0,
 
             phrase_shown: [0; 16],
             phrase_zoom_level: 4,
@@ -69,21 +157,21 @@ impl Surface {
     pub fn pattern_shown(&self, track_index: usize) -> u8 { self.pattern_shown[track_index] }
     pub fn show_pattern(&mut self, track_index: usize, index: u8) { self.pattern_shown[track_index] = index }
 
-    pub fn pattern_ticks_per_button(&self) -> u32 { Self::PATTERN_TICKS_PER_BUTTON / self.pattern_zoom_level() as u32 }
+    pub fn pattern_ticks_per_button(&self) -> u32 { self.pattern_grid.ticks_per_button() }
     pub fn pattern_ticks_in_grid(&self) -> u32 { self.pattern_ticks_per_button() * 8 }
-    pub fn phrase_ticks_per_button(&self) -> u32 { Self::PHRASE_TICKS_PER_BUTTON / self.phrase_zoom_level() as u32 }
+    pub fn phrase_ticks_per_button(&self) -> u32 { self.phrase_grid.ticks_per_button() }
     pub fn phrase_ticks_in_grid(&self) -> u32 { self.phrase_ticks_per_button() * 8 }
-    pub fn timeline_ticks_in_grid(&self) -> u32 { Self::TIMELINE_TICKS_PER_BUTTON * 16 }
+    pub fn timeline_ticks_in_grid(&self) -> u32 { self.timeline_grid.ticks_per_button() }
 
-    pub fn timeline_offset(&self) -> u32 { self.timeline_offset }
+    /*
     pub fn set_timeline_offset(&mut self, sequencer: &Sequencer, offset: u32) { 
         let max_offset = self.max_timeline_offset(sequencer);
-        let adjusted_offset = (offset / Self::TIMELINE_TICKS_PER_BUTTON) * Self::TIMELINE_TICKS_PER_BUTTON;
+        let adjusted_offset = (offset / self.timeline_grid.ticks_per_button()) * self.timeline_grid.ticks_per_button();
         self.timeline_offset = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
     }
     pub fn get_timeline_length(&self, sequencer: &Sequencer) -> u32 {
         let timeline_end = sequencer.get_timeline_end();
-        timeline_end + Self::TIMELINE_TICKS_PER_BUTTON * 12
+        timeline_end + self.timeline_grid.ticks_per_button() * 12
     }
     pub fn max_timeline_offset(&self, sequencer: &Sequencer) -> u32 {
         let timeline_length = self.get_timeline_length(sequencer);
@@ -91,7 +179,9 @@ impl Surface {
             timeline_length - self.timeline_ticks_in_grid()
         } else { 0 }
     }
+    */
 
+    /*
     pub fn pattern_offset(&self, index: usize) -> u32 { self.pattern_offsets[index] }
     pub fn max_pattern_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
         let pattern_length = sequencer.track(track_index).pattern(self.pattern_shown(track_index)).length();
@@ -147,17 +237,18 @@ impl Surface {
             self.set_phrase_offset(sequencer, track_index, self.phrase_offset(track_index))
         }
     }
+    */
 
     pub fn set_offsets_by_factor(&mut self, sequencer: &Sequencer, track_index: usize, factor: f64) {
-        let max_phrase_offset = self.max_phrase_offset(sequencer, track_index);
-        let phrase_offset = (max_phrase_offset as f64 * factor) as u32;
-        self.set_phrase_offset(sequencer, track_index, phrase_offset);
-        let max_pattern_offset = self.max_pattern_offset(sequencer, track_index);
-        let pattern_offset = (max_pattern_offset as f64 * factor) as u32;
-        self.set_pattern_offset(sequencer, track_index, pattern_offset);
-        let max_timeline_offset = self.max_timeline_offset(sequencer);
-        let timeline_offset = (max_timeline_offset as f64 * factor) as u32;
-        self.set_timeline_offset(sequencer, timeline_offset);
+        //let max_phrase_offset = self.max_phrase_offset(sequencer, track_index);
+        //let phrase_offset = (max_phrase_offset as f64 * factor) as u32;
+        //self.set_phrase_offset(sequencer, track_index, phrase_offset);
+        //let max_pattern_offset = self.max_pattern_offset(sequencer, track_index);
+        //let pattern_offset = (max_pattern_offset as f64 * factor) as u32;
+        //self.set_pattern_offset(sequencer, track_index, pattern_offset);
+        //let max_timeline_offset = self.max_timeline_offset(sequencer);
+        //let timeline_offset = (max_timeline_offset as f64 * factor) as u32;
+        //self.set_timeline_offset(sequencer, timeline_offset);
         // TODO - Timeline
     }
 }

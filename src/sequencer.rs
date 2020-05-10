@@ -133,7 +133,7 @@ impl Sequencer {
     }
 
     // Get tick at which timeline stops
-    pub fn get_timeline_end(&self) -> u32 {
+    pub fn timeline_end(&self) -> u32 {
         self.tracks.iter()
             .map(|track| track.timeline.get_last_stop())
             .max()
@@ -141,7 +141,7 @@ impl Sequencer {
     }
 
     pub fn autoqueue_next_sequence(&mut self, cycle: &ProcessCycle) {
-        let timeline_end = self.get_timeline_end();
+        let timeline_end = self.timeline_end();
 
         if cycle.tick_range.contains(timeline_end) {
             if let Some(index) = self.sequence_queued {
