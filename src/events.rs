@@ -9,7 +9,7 @@ pub trait LoopableEvent: Clone + std::fmt::Debug {
     fn set_start(&mut self, start: u32);
     fn is_on_row(&self, index: u8) -> bool;
     fn is_on_same_row(&self, other: &Self) -> bool;
-    fn row(&self, offset: u8) -> u8;
+    fn row(&self) -> u8;
 
     fn is_looping(&self) -> bool {
         match self.stop() {
@@ -122,7 +122,7 @@ impl LoopableEvent for LoopableNoteEvent {
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
     fn is_on_row(&self, index: u8) -> bool { self.note == index }
     fn is_on_same_row(&self, other: &Self) -> bool { self.note == other.note }
-    fn row(&self, offset: u8) -> u8 { self.note - offset }
+    fn row(&self) -> u8 { self.note }
 }
 
 impl LoopableNoteEvent {
@@ -155,7 +155,7 @@ impl LoopableEvent for LoopablePatternEvent {
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
     fn is_on_row(&self, index: u8) -> bool { self.pattern == index }
     fn is_on_same_row(&self, other: &Self) -> bool { self.pattern == other.pattern }
-    fn row(&self, offset: u8) -> u8 { self.pattern - offset }
+    fn row(&self) -> u8 { self.pattern }
 }
 
 impl LoopablePatternEvent {
@@ -190,7 +190,7 @@ impl LoopableEvent for LoopablePhraseEvent {
     fn set_stop(&mut self, tick: u32) { self.stop = Some(tick) }
     fn is_on_row(&self, index: u8) -> bool { self.phrase == index }
     fn is_on_same_row(&self, other: &Self) -> bool { self.phrase == other.phrase }
-    fn row(&self, offset: u8) -> u8 { self.phrase - offset }
+    fn row(&self) -> u8 { self.phrase }
 }
 
 impl LoopablePhraseEvent {

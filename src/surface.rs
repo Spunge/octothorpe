@@ -1,20 +1,247 @@
 
 use super::controller::input::*;
+use super::controller::lights::*;
 use super::TimebaseHandler;
 use super::Sequencer;
 use super::loopable::*;
+use super::events::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
     Track,
     Sequence,
+}
+
+pub enum TrackView {
+    Split,
+    Pattern,
+    Phrase,
     Timeline,
+}
+
+pub trait LoopableGrid {
+    type Loopable: Loopable;
+    const HEAD_COLOR: u8;
+    const TAIL_COLOR: u8;
+    const TICKS_PER_BUTTON: u32;
+    const BUTTONS_IN_GRID: u32;
+    fn new() -> Self;
+    fn length(&self, sequencer: &Sequencer, track_index: usize) -> u32 { 
+        self.shown_loopable(sequencer, track_index).length()
+    }
+    fn zoom_level(&self) -> u8;
+    fn set_zoom_level(&mut self, zoom_level: u8);
+    fn ticks_per_button(&self) -> u32 { Self::TICKS_PER_BUTTON / self.zoom_level() as u32 }
+    fn ticks_in_grid(&self) -> u32 { self.ticks_per_button() * Self::BUTTONS_IN_GRID }
+    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, track_index: usize) -> &'a Self::Loopable;
+    fn offset_x(&self) -> u32;
+    fn set_offset_x(&mut self, ticks: u32);
+    fn offset_y(&self) -> u8;
+    fn max_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
+        let length = self.length(sequencer, track_index);
+        if self.ticks_in_grid() < length {
+            length - self.ticks_in_grid()
+        } else { 0 }
+    }
+
+    /*
+     * Remove existing events when there's starting events in tick range, otherwise, remove tick
+     * range so we can add new event
+     */
+    fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, x: u8, y: u8) -> Option<TickRange> {
+        let row = self.offset_y() + y;
+
+        let start = x as u32 * ticks_per_button + offset;
+        let mut tick_range = TickRange::new(start, start + ticks_per_button);
+
+        // Should we delete the event we're clicking?
+        if let (None, true) = (modifier, loopable.contains_events_starting_in(tick_range, row)) {
+            loopable.remove_events_starting_in(tick_range, row);
+            None
+        } else {
+            // Add event get x from modifier when its a grid button in the same row
+            if let Some(ButtonType::Grid(mod_x, mod_y)) = modifier {
+                if mod_y == y { 
+                    tick_range.start = mod_x as u32 * ticks_per_button + offset;
+                }
+            }
+
+            Some(tick_range)
+        }
+    }
+
+    fn grid_button_pressed(&mut self, sequencer: &Sequencer, surface: &surface, controller_x_offset: u8, grid_buttons: u8, button_type: ButtonType) {
+    
+    }
+
+    fn button_pressed(&mut self, sequencer: &Sequencer, surface: &Surface, controller_x_offset: u8, grid_buttons: u8, button_type: ButtonType) {
+        match button_type {
+            ButtonType::Grid(x, y) => {
+                let modifier = surface.button_memory.modifier(controller_x_offset, button_type);
+                let loopable = self.shown_loopable(sequencer, surface.track_shown());
+
+                // We subtract y from 4 as we want lower notes to be lower on
+                // the grid, the grid counts from the top
+                // We put base note in center of grid
+
+                if let Some(tick_range) = self.should_add_event(loopable, modifier, x, y) {
+                    loopable.try_add_starting_event(Self::Loopable::LoopableEvent::new(tick_range.start, self.offset_y() + y, 127));
+                    let mut event = loopable.get_last_event_on_row(self.offset_y() + y);
+                    event.set_stop(tick_range.stop);
+                    event.stop_velocity = Some(127);
+
+                    loopable.add_complete_event(event);
+                }
+            },
+            ButtonType::Solo(index) => {
+                // We divide by zoom level, so don't start at 0
+                let zoom_level = index + 1;
+                if zoom_level != 7 {
+                    self.set_zoom_level(zoom_level);
+                }
+            },
+            _ => (),
+        }
+    }
+
+    fn draw(&self, sequencer: &Sequencer, track_index: usize, controller_x_offset: u8, grid_buttons: u8, lights: &mut Lights) {
+        let loopable = self.shown_loopable(sequencer, track_index);
+
+        // Draw zoom grid
+        for index in 0 .. self.zoom_level() { lights.solo.draw(index, 1); }
+
+        if loopable.has_explicit_length() {
+            for index in 0 .. (loopable.length() / Self::Loopable::minimum_length()) {
+                lights.activator.draw(index as u8, 1);
+            }
+        }
+
+        // Draw main grid
+        let grid_height = lights.grid.height();
+        loopable.events().iter()
+            .filter(|event| (self.offset_y() .. self.offset_y() + grid_height).contains(&event.row()))
+            .filter(|event| { 
+                let grid_contains_event = event.start() < loopable.length() 
+                    && (event.stop().is_none() || event.stop().unwrap() > self.offset_x());
+
+                grid_contains_event || event.is_looping()
+            })
+            .for_each(|event| {
+                // Get buttons from event ticks
+                let max_button = lights.grid.width() as i32;
+                let start_button = (event.start() as i32 - self.offset_x() as i32) / self.ticks_per_button() as i32;
+                let stop_button = if event.stop().is_none() { 
+                    start_button + 1
+                } else { 
+                    // Could be event is to short for 1 button, in that case, draw 1 button
+                    // TODO
+                    (event.stop().unwrap() as i32 - self.offset_x() as i32) / self.ticks_per_button() as i32
+                };
+
+                // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
+                let row = event.row() - self.offset_y();
+
+                // Always draw first button head
+                lights.grid.try_draw(start_button, row, Self::HEAD_COLOR);
+                // Draw tail depending on wether this is looping note
+                let tails = if stop_button >= start_button {
+                    vec![(start_button + 1) .. stop_button]
+                } else {
+                    vec![(start_button + 1) .. max_button, 0 .. stop_button]
+                };
+
+                tails.into_iter().for_each(|mut range| {
+                    while let Some(x) = range.next() { lights.grid.try_draw(x, row, Self::TAIL_COLOR) }
+                })
+            });
+    }
+}
+
+pub struct PatternGrid {
+    offset: u32,
+    zoom_level: u8,
+    pattern_shown: [u8; 16],
+    base_note: u8,
+}
+impl LoopableGrid for PatternGrid {
+    type Loopable = Pattern;
+    const TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
+    const BUTTONS_IN_GRID: u32 = 8;
+    const HEAD_COLOR: u8 = 1;
+    const TAIL_COLOR: u8 = 5;
+    fn new() -> Self { Self { offset: 0, zoom_level: 4, pattern_shown: [0; 16], base_note: 58 } }
+    fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn set_zoom_level(&mut self, zoom_level: u8) { self.zoom_level = zoom_level }
+    fn offset_x(&self) -> u32 { self.offset }
+    fn set_offset_x(&mut self, ticks: u32) { self.offset = ticks }
+    fn offset_y(&self) -> u8 { self.base_note }
+    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, track_index: usize) -> &'a Self::Loopable {
+        sequencer.track(track_index).pattern(self.pattern_shown(track_index))
+    }
+}
+impl PatternGrid {
+    fn pattern_shown(&self, track_index: usize) -> u8 { self.pattern_shown[track_index] }
+    fn show_pattern(&mut self, track_index: usize, index: u8) { self.pattern_shown[track_index] = index }
+}
+pub struct PhraseGrid {
+    offset: u32,
+    zoom_level: u8,
+    phrase_shown: [u8; 16],
+}
+impl LoopableGrid for PhraseGrid {
+    type Loopable = Phrase;
+    const TICKS_PER_BUTTON: u32 = PatternGrid::TICKS_PER_BUTTON * 4;
+    const BUTTONS_IN_GRID: u32 = 8;
+    const HEAD_COLOR: u8 = 3;
+    const TAIL_COLOR: u8 = 5;
+    fn new() -> Self { Self { offset: 0, zoom_level: 4, phrase_shown: [0; 16] } }
+    fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn set_zoom_level(&mut self, zoom_level: u8) { self.zoom_level = zoom_level }
+    fn offset_x(&self) -> u32 { self.offset }
+    fn set_offset_x(&mut self, ticks: u32) { self.offset = ticks }
+    fn offset_y(&self) -> u8 { 0 }
+    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, track_index: usize) -> &'a Self::Loopable {
+        sequencer.track(track_index).phrase(self.phrase_shown(track_index))
+    }
+}
+impl PhraseGrid {
+    fn phrase_shown(&self, track_index: usize) -> u8 { self.phrase_shown[track_index] }
+    fn show_phrase(&mut self, track_index: usize, index: u8) { self.phrase_shown[track_index] = index }
+}
+pub struct TimelineGrid {
+    offset: u32,
+    zoom_level: u8,
+}
+impl LoopableGrid for TimelineGrid {
+    type Loopable = Timeline;
+    const TICKS_PER_BUTTON: u32 = PhraseGrid::TICKS_PER_BUTTON * 4;
+    const BUTTONS_IN_GRID: u32 = 16;
+    const HEAD_COLOR: u8 = 1;
+    const TAIL_COLOR: u8 = 3;
+    fn new() -> Self { Self { offset: 0, zoom_level: 4 } }
+    fn length(&self, sequencer: &Sequencer, track_index: usize) -> u32 { 
+        let timeline_end = sequencer.get_timeline_end();
+        timeline_end + self.ticks_per_button() * 12
+    }
+    fn zoom_level(&self) -> u8 { self.zoom_level }
+    fn set_zoom_level(&mut self, zoom_level: u8) { self.zoom_level = zoom_level }
+    fn offset_x(&self) -> u32 { self.offset }
+    fn set_offset_x(&mut self, ticks: u32) { self.offset = ticks }
+    fn offset_y(&self) -> u8 { 0 }
+    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, track_index: usize) -> &'a Self::Loopable {
+        &sequencer.track(track_index).timeline
+    }
 }
 
 pub struct Surface {
     pub view: View,
+    pub track_view: TrackView,
     pub button_memory: ButtonMemory,
     pub event_memory: EventMemory,
+
+    pub pattern_grid: PatternGrid,
+    pub phrase_grid: PhraseGrid,
+    pub timeline_grid: TimelineGrid,
 
     track_shown: u8,
     sequence_shown: u8,
@@ -38,8 +265,13 @@ impl Surface {
     pub fn new() -> Self {
         Surface { 
             view: View::Track, 
+            track_view: TrackView::Split,
             button_memory: ButtonMemory::new(),
             event_memory: EventMemory::new(),
+
+            pattern_grid: PatternGrid::new(),
+            phrase_grid: PhraseGrid::new(),
+            timeline_grid: TimelineGrid::new(),
 
             track_shown: 0,
             sequence_shown: 0,

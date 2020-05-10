@@ -53,7 +53,7 @@ impl Sequence {
             })
             .max()
             // When nothing is playing, we still need some kind of length to calculate when to queue next sequence
-            .or(Some(Phrase::default_length()))
+            .or(Some(Phrase::minimum_length()))
             .unwrap()
     }
 }
