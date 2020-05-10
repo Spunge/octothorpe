@@ -3,6 +3,7 @@ use super::controller::input::*;
 use super::TimebaseHandler;
 use super::Sequencer;
 use super::loopable::*;
+use super::events::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
@@ -28,7 +29,7 @@ pub struct LoopableGrid {
     offset_y: u8,
     zoom_level: u8,
     ticks_per_button: u32,
-    loopable_type: LoopableType,
+    pub loopable_type: LoopableType,
 }
 
 impl LoopableGrid {
@@ -73,22 +74,6 @@ impl LoopableGrid {
             self.zoom_level = level;
         }
     }
-
-    /*
-    pub fn shown(&self, track_index: u8) -> u8 {
-        match self.loopable_type {
-            LoopableType::Pattern { shown }=> { 
-                Box::new(track.pattern(shown[track_index]))
-            },
-            LoopableType::Phrase { shown } => { 
-                Box::new(track.phrase(shown[track_index]))
-            },
-            LoopableType::Timeline => { 
-                Box::new(track.timeline)
-            },
-        }
-    }
-    */
 }
 
 
@@ -162,82 +147,6 @@ impl Surface {
     pub fn phrase_ticks_per_button(&self) -> u32 { self.phrase_grid.ticks_per_button() }
     pub fn phrase_ticks_in_grid(&self) -> u32 { self.phrase_ticks_per_button() * 8 }
     pub fn timeline_ticks_in_grid(&self) -> u32 { self.timeline_grid.ticks_per_button() }
-
-    /*
-    pub fn set_timeline_offset(&mut self, sequencer: &Sequencer, offset: u32) { 
-        let max_offset = self.max_timeline_offset(sequencer);
-        let adjusted_offset = (offset / self.timeline_grid.ticks_per_button()) * self.timeline_grid.ticks_per_button();
-        self.timeline_offset = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
-    }
-    pub fn get_timeline_length(&self, sequencer: &Sequencer) -> u32 {
-        let timeline_end = sequencer.get_timeline_end();
-        timeline_end + self.timeline_grid.ticks_per_button() * 12
-    }
-    pub fn max_timeline_offset(&self, sequencer: &Sequencer) -> u32 {
-        let timeline_length = self.get_timeline_length(sequencer);
-        if self.timeline_ticks_in_grid() < timeline_length {
-            timeline_length - self.timeline_ticks_in_grid()
-        } else { 0 }
-    }
-    */
-
-    /*
-    pub fn pattern_offset(&self, index: usize) -> u32 { self.pattern_offsets[index] }
-    pub fn max_pattern_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
-        let pattern_length = sequencer.track(track_index).pattern(self.pattern_shown(track_index)).length();
-
-        if self.pattern_ticks_in_grid() < pattern_length {
-            pattern_length - self.pattern_ticks_in_grid()
-        } else { 0 }
-    }
-    pub fn set_pattern_offset(&mut self, sequencer: &Sequencer, track_index: usize, ticks: u32) {
-        let max_offset = self.max_pattern_offset(sequencer, track_index);
-        let adjusted_offset = (ticks / self.pattern_ticks_per_button()) * self.pattern_ticks_per_button();
-        self.pattern_offsets[track_index] = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
-    }
-
-    pub fn pattern_zoom_level(&self) -> u8 { self.pattern_zoom_level }
-    pub fn set_pattern_zoom_level(&mut self, sequencer: &Sequencer, level: u8) { 
-        self.pattern_zoom_level = level;
-        // - loop shown patterns & adjust offsets so they don't exceed max_offset
-        for track_index in 0 .. self.pattern_offsets.len() {
-            self.set_pattern_offset(sequencer, track_index, self.pattern_offset(track_index))
-        }
-    }
-
-    pub fn pattern_base_note(&self, index: usize) -> u8 { self.pattern_base_notes[index] }
-    pub fn set_pattern_base_note(&mut self, track_index: usize, base_note: u8) { 
-        if base_note <= 118 && base_note >= 22 { 
-            self.pattern_base_notes[track_index] = base_note;
-        }
-    }
-
-    pub fn phrase_offset(&self, track_index: usize) -> u32 { self.phrase_offsets[track_index] }
-    pub fn max_phrase_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
-        let phrase_length = sequencer.track(track_index).phrase(self.phrase_shown(track_index)).length();
-
-        if self.phrase_ticks_in_grid() < phrase_length {
-            phrase_length - self.phrase_ticks_in_grid()
-        } else { 0 }
-    }
-    pub fn set_phrase_offset(&mut self, sequencer: &Sequencer, track_index: usize, ticks: u32) {
-        let max_offset = self.max_phrase_offset(sequencer, track_index);
-        // Round offset to button
-        let adjusted_offset = (ticks / self.phrase_ticks_per_button()) * self.phrase_ticks_per_button();
-
-        // Make sure offset is not > max-offset
-        self.phrase_offsets[track_index] = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
-    }
-
-    pub fn phrase_zoom_level(&self) -> u8 { self.phrase_zoom_level }
-    pub fn set_phrase_zoom_level(&mut self, sequencer: &Sequencer, level: u8) { 
-        self.phrase_zoom_level = level;
-        // Loop shown phrases & make sure offset does not exceed max_offset
-        for track_index in 0 .. self.phrase_offsets.len() {
-            self.set_phrase_offset(sequencer, track_index, self.phrase_offset(track_index))
-        }
-    }
-    */
 
     pub fn set_offsets_by_factor(&mut self, sequencer: &Sequencer, track_index: usize, factor: f64) {
         //let max_phrase_offset = self.max_phrase_offset(sequencer, track_index);
