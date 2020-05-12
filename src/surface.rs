@@ -10,6 +10,110 @@ pub enum View {
     Sequence,
     Timeline,
 }
+pub enum TrackView {
+    Split,
+    Pattern,
+    Phrase,
+    Timeline,
+}
+
+pub enum LedColor {
+    Green,
+    Orange,
+    Red,
+}
+pub struct DisplayParameters {
+    offset_x: u32,
+    offset_y: u8,
+    min_offset_y: u8,
+    max_offset_y: u8,
+    zoom_level: u8,
+    ticks_per_button: u32,
+    head_color: LedColor,
+    tail_color: LedColor,
+}
+
+impl DisplayParameters {
+    pub fn new(offset_y: u8, min_offset_y: u8, max_offset_y: u8, ticks_per_button: u32, head_color: LedColor, tail_color: LedColor) -> Self {
+        Self { 
+            offset_x: 0, 
+            offset_y,
+            min_offset_y,
+            max_offset_y,
+            zoom_level: 4,
+            ticks_per_button,
+            head_color,
+            tail_color,
+        }
+    }
+    pub fn ticks_per_button(&self) -> u32 { self.ticks_per_button / self.zoom_level as u32 }
+    pub fn ticks_in_grid(&self, grid_width: u8) -> u32 { self.ticks_per_button() * grid_width as u32 }
+
+    pub fn zoom_level(&self) -> u8 { self.zoom_level }
+    pub fn set_zoom_level(&mut self, level: u8) {
+        if level != 7 { self.zoom_level = level };
+    }
+
+    pub fn offset_x(&self) -> u32 { self.offset_x }
+    pub fn max_offset_x(&self, loopable_length: u32, grid_width: u8) -> u32 {
+        let ticks_in_grid = self.ticks_per_button() * grid_width as u32;
+        if ticks_in_grid < loopable_length { loopable_length - ticks_in_grid } else { 0 }
+    }
+    pub fn adjust_offset_x(&self, ticks: i32) -> i32 {
+        (ticks / self.ticks_per_button() as i32) * self.ticks_per_button() as i32
+    }
+    pub fn set_offset_x(&mut self, ticks: i32, loopable_length: u32, grid_width: u8) {
+        let max_offset = self.max_offset_x(loopable_length, grid_width);
+        let offset = self.adjust_offset_x(ticks);
+
+        if offset >= 0 && ticks <= max_offset as i32 {
+            self.offset_x = offset as u32;
+        }
+    }
+
+    pub fn offset_y(&self) -> u8 { self.offset_y }
+    pub fn adjust_offset_y(&self, offset: u8) -> u8 { 
+        if offset > self.max_offset_y { 
+            self.max_offset_y 
+        } else if offset < self.min_offset_y {
+            self.min_offset_y 
+        } else { offset }
+    }
+
+    pub fn head_color(&self) -> &LedColor { &self.head_color }
+    pub fn tail_color(&self) -> &LedColor { &self.tail_color }
+}
+
+pub struct PatternDisplay {
+    parameters: DisplayParameters,
+    shown: [u8; 16],
+}
+pub struct PhraseDisplay {
+    parameters: DisplayParameters,
+    shown: [u8; 16],
+}
+pub struct TimelineDisplay {
+    parameters: DisplayParameters,
+}
+
+pub trait LoopableDisplay {
+    fn parameters(&self) -> &DisplayParameters;
+    fn parameters_mut(&mut self) -> &mut DisplayParameters;
+}
+
+impl LoopableDisplay for PatternDisplay {
+    fn parameters(&self) -> &DisplayParameters { &self.parameters }
+    fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
+}
+impl LoopableDisplay for PhraseDisplay {
+    fn parameters(&self) -> &DisplayParameters { &self.parameters }
+    fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
+}
+impl LoopableDisplay for TimelineDisplay {
+    fn parameters(&self) -> &DisplayParameters { &self.parameters }
+    fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
+}
+
 
 pub struct Surface {
     pub view: View,
@@ -19,6 +123,10 @@ pub struct Surface {
     track_shown: u8,
     sequence_shown: u8,
     timeline_offset: u32,
+
+    pattern_display: PatternDisplay,
+    phrase_display: PhraseDisplay,
+    timeline_display: TimelineDisplay,
 
     phrase_shown: [u8; 16],
     phrase_zoom_level: u8,
@@ -36,6 +144,10 @@ impl Surface {
     pub const TIMELINE_TICKS_PER_BUTTON: u32 = Self::PHRASE_TICKS_PER_BUTTON * 1;
 
     pub fn new() -> Self {
+        let pattern_button_ticks = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
+        let phrase_button_ticks = pattern_button_ticks * 4;
+        let timeline_button_ticks= phrase_button_ticks * 4;
+
         Surface { 
             view: View::Track, 
             button_memory: ButtonMemory::new(),
@@ -44,6 +156,18 @@ impl Surface {
             track_shown: 0,
             sequence_shown: 0,
             timeline_offset: 0,
+
+            pattern_display: PatternDisplay {
+                parameters: DisplayParameters::new(58, 22, 118, pattern_button_ticks, LedColor::Green, LedColor::Orange),
+                shown: [0; 16],
+            },
+            phrase_display: PhraseDisplay {
+                parameters: DisplayParameters::new(0, 0, 4, phrase_button_ticks, LedColor::Red, LedColor::Orange),
+                shown: [0; 16],
+            },
+            timeline_display: TimelineDisplay {
+                parameters: DisplayParameters::new(0, 0, 4, timeline_button_ticks, LedColor::Red, LedColor::Green),
+            },
 
             phrase_shown: [0; 16],
             phrase_zoom_level: 4,
