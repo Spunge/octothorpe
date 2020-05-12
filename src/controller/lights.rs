@@ -1,7 +1,31 @@
 
 use super::super::message::*;
 
-// TODO - We could probably macro these grids, but.. alas, i'm not familiar enough with macros
+
+pub struct Lights {
+    pub master: Single,
+    pub grid: Grid,
+    pub side: Side,
+    pub indicator: WideRow,
+    pub track: WideRow,
+    pub activator: WideRow,
+    pub solo: WideRow,
+    //arm: WideRow,
+}
+
+impl Lights {
+    pub fn new() -> Self {
+        Self {
+            master: Single::new(0x50),
+            grid: Grid::new(),
+            side: Side::new(),
+            indicator: WideRow::new(0x34),
+            track: WideRow::new(0x33),
+            activator: WideRow::new(0x32),
+            solo: WideRow::new(0x31),
+        }
+    }
+}
 
 pub trait Drawable {
     fn output_messages(&mut self, frame: u32) -> Vec<TimedMessage> {

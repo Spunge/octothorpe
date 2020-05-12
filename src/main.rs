@@ -124,13 +124,11 @@ impl jack::TimebaseHandler for TimebaseHandler {
 
 
 pub struct ProcessHandler {
-    // Controllers
-    apc20: APC20,
-    apc40: APC40,
-
     mixer: Mixer,
     sequencer: Sequencer,
     surface: Surface,
+
+    controllers: Vec<APC>,
 }
 
 impl ProcessHandler {
@@ -139,12 +137,12 @@ impl ProcessHandler {
         client: &jack::Client
     ) -> Self {
         ProcessHandler { 
-            apc20: APC20::new(client),
-            apc40: APC40::new(client),
-
             mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
-            surface: Surface::new(),
+            surface: Surface::new(client),
+
+            controllers: vec![APC::new(client, "APC20", 0), APC::new(client, "APC40", 8)],
+
         }
     }
 }
@@ -154,19 +152,26 @@ impl jack::ProcessHandler for ProcessHandler {
         // Get something representing this process cycle
         let cycle = ProcessCycle::new(client, scope);
 
-        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
-        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        // Process input from controllers
+        //for controller in self.controllers.iter_mut() {
+            //controller.process_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        //}
+
+        self.surface.process_midi_input(&cycle, &mut self.sequencer, &mut self.mixer, &mut self.controllers);
 
         if cycle.is_rolling {
             self.sequencer.autoqueue_next_sequence(&cycle);
         }
 
-        // Sequencer first at it will cache playing notes, these we can use for sequence visualization
+        // Sequencer first as it will cache playing notes, these we can use for sequence visualization
         self.sequencer.output_midi(&cycle);
         self.mixer.output_midi(&cycle);
 
-        self.apc20.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
-        self.apc40.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
+        // Output midi to controllers
+        //for controller in self.controllers.iter_mut() {
+            //controller.output(&cycle, &mut self.sequencer, &mut self.surface);
+        //}
+        self.surface.output_midi(&cycle, &mut self.sequencer, &mut self.controllers);
 
         jack::Control::Continue
     }

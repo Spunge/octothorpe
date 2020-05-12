@@ -106,7 +106,7 @@ impl Loopable for Timeline {
             .max();
 
         if max_stop_tick.is_some() {
-            max_stop_tick.unwrap() + Phrase::default_length() * 4
+            max_stop_tick.unwrap() + Phrase::default_length() * 5
         } else {
             Phrase::default_length() * 8
         }

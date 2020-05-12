@@ -28,6 +28,7 @@ const PLAYING_LOOPABLE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as
 const PLAYING_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
 const QUEUED_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 / 2;
 
+/*
 pub trait APC {
     type Loopable: Loopable;
 
@@ -35,6 +36,10 @@ pub trait APC {
     const HEAD_COLOR: u8;
     const TAIL_COLOR: u8;
 
+    fn new(client: &jack::Client, button_offset_x: u8) -> Self;
+
+    fn offset_button(&self, index: u8) -> u8 { self.button_offset_x() + index }
+    fn button_offset_x(&self) -> u8;
     fn identified_cycles(&self) -> u8;
     fn set_identified_cycles(&mut self, cycles: u8);
     fn local_id(&self) -> u8;
@@ -42,14 +47,14 @@ pub trait APC {
     fn device_id(&self) -> u8;
     fn set_device_id(&mut self, device_id: u8);
 
-    fn loopable_grid<'a>(&self, surface: &'a Surface) -> &'a LoopableGrid;
-    fn loopable_grid_mut<'a>(&self, surface: &'a mut Surface) -> &'a mut LoopableGrid;
+    //fn loopable_grid<'a>(&self, surface: &'a Surface) -> &'a LoopableGrid;
+    //fn loopable_grid_mut<'a>(&self, surface: &'a mut Surface) -> &'a mut LoopableGrid;
 
-    fn shown_loopable_index(&self, surface: &Surface) -> u8;
-    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable;
-    fn shown_loopable_mut<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
-    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8>;
-    fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)>;
+    //fn shown_loopable_index(&self, surface: &Surface) -> u8;
+    //fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable;
+    //fn shown_loopable_mut<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable;
+    //fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8>;
+    //fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)>;
 
     fn cue_knob(&mut self) -> &mut CueKnob;
     fn master(&mut self) -> &mut Single;
@@ -64,6 +69,7 @@ pub trait APC {
      * Remove existing events when there's starting events in tick range, otherwise, remove tick
      * range so we can add new event
      */
+    /*
     fn should_add_event(&self, loopable: &mut impl Loopable, modifier: Option<ButtonType>, ticks_per_button: u32, x: u8, y: u8, offset: u32, row: u8) -> Option<TickRange> {
         let start = x as u32 * ticks_per_button + offset;
         let mut tick_range = TickRange::new(start, start + ticks_per_button);
@@ -83,10 +89,12 @@ pub trait APC {
             Some(tick_range)
         }
     }
+    */
 
     /*
      * Output side indicator, show what patterns/phrases are playing and selected
      */
+    /*
     fn output_side(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
         // Default to output immediately
         let mut frame = 0;
@@ -135,8 +143,10 @@ pub trait APC {
 
         self.side().output_messages(frame)
     }
+    */
 
     // TODO - only draw length indicator at position 0 only when we are precisely at 0
+    /*
     fn output_indicator(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage> {
         // Default to output immediately
         let mut frame = 0;
@@ -214,10 +224,12 @@ pub trait APC {
 
         self.indicator().output_messages(frame)
     }
+    */
 
     /*
      * Draw note or pattern events into main grid of controller
      */
+        /*
     fn draw_loopable_events<'a>(&mut self, events: impl Iterator<Item = &'a (impl LoopableEvent + 'a)>, 
         offset_x: u32, offset_y: u8, ticks_in_grid: u32, head_color: u8, tail_color: u8) 
     {
@@ -258,7 +270,9 @@ pub trait APC {
                 }
             });
     }
+        */
 
+        /*
     fn draw_timeline(&mut self, sequencer: &Sequencer, surface: &Surface) {
         let track = sequencer.track(surface.track_shown());
 
@@ -267,10 +281,12 @@ pub trait APC {
         let offset = surface.timeline_grid.ticks_per_button() * Self::TRACK_OFFSET as u32 + surface.timeline_grid.offset_x();
         self.draw_loopable_events(events, offset, 0, surface.timeline_grid.ticks_per_button() * 8, TIMELINE_HEAD_COLOR, TIMELINE_TAIL_COLOR);
     }
+        */
 
     /*
      * Draw grid that we can use to select what phrases are playing
      */
+        /*
     fn draw_phrases(&mut self, phrases: &[Option<u8>; 16]) {
         for (index, option) in phrases[Self::TRACK_OFFSET as usize .. (Self::TRACK_OFFSET + 8) as usize].iter().enumerate() {
             if let Some(phrase) = option {
@@ -278,22 +294,24 @@ pub trait APC {
             }
         }
     }
+        */
 
+        /*
     fn draw_tail(&mut self, mut x_range: Range<i32>, y: u8, color: u8) {
         while let Some(x) = x_range.next() { self.grid().try_draw(x, y, color) }
     }
-
-    fn new(client: &jack::Client) -> Self;
+        */
 
     /*
      * Process incoming midi, handle generic midi here, pass controller specific input to
      * controller via process_inputevent
      */ 
-    fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+    fn process_midi_input(&mut self, cycle: &ProcessCycle) {
         for event in self.input_events(cycle.scope) {
             // Only process channel note messages
             match event.event_type {
                 InputEventType::InquiryResponse(local_id, device_id) => {
+                    println!("identified");
                     // Introduce ourselves to controller
                     // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
                     // 0x42 is ableton alternate mode (all leds controlled from host)
@@ -303,41 +321,311 @@ pub trait APC {
                     // TODO - Make sure every grid is re-initialized after identifying
                     self.set_identified_cycles(1);
                 },
-                InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
-                    mixer.fader_adjusted(event.time, index + Self::TRACK_OFFSET, value);
+                _ => (),
+            }
+        }
+    }
+    */
+    /*
+    fn output(&mut self) -> &mut MidiOut;
+    fn input(&self) -> &jack::Port<jack::MidiIn>;
+
+    fn input_events(&self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
+        self.input().iter(scope).map(|message| InputEvent::new(message.time, message.bytes)).collect()
+    }
+
+    fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
+    fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface);
+}
+*/
+
+pub struct APC {
+    // Ports that connect to APC
+    input: jack::Port<jack::MidiIn>,
+    output: MidiOut,
+
+    pub offset_x: u8,
+    identified_cycles: u8,
+    device_id: u8,
+    local_id: u8,
+    //knob_offset: u8,
+
+    pub cue_knob: CueKnob,
+    pub lights: Lights,
+}
+
+impl APC {
+    //type Loopable = Pattern;
+
+    //const TRACK_OFFSET: u8 = 8;
+    //const HEAD_COLOR: u8 = 1;
+    //const TAIL_COLOR: u8 = 5;
+
+    //fn loopable_grid<'a>(&self, surface: &'a Surface) -> &'a LoopableGrid { &surface.pattern_grid }
+    //fn loopable_grid_mut<'a>(&self, surface: &'a mut Surface) -> &'a mut LoopableGrid { &mut surface.pattern_grid }
+
+    //fn output(&mut self) -> &mut MidiOut { &mut self.output }
+    //fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
+
+    //fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.pattern_shown(surface.track_shown()) }
+
+    //fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable { 
+        //let track = sequencer.track(surface.track_shown());
+        //track.pattern(self.shown_loopable_index(surface))
+    //}
+    //fn shown_loopable_mut<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
+        //let track = sequencer.track_mut(surface.track_shown());
+        //track.pattern_mut(self.shown_loopable_index(surface))
+    //}
+
+    /*
+    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8> {
+        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            .flat_map(|(tick_range, sequence_start, phrase_index)| {
+                sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
+                    .map(|(pattern_index, _, _, _, _)| pattern_index)
+            })
+            .collect()
+    }
+    */
+
+    /*
+    fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
+        // Get playing phrases of currently selected track
+        let shown_pattern_index = self.shown_loopable_index(surface);
+        let pattern = sequencer.track(surface.track_shown()).pattern(shown_pattern_index);
+
+        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            .flat_map(|(tick_range, sequence_start, phrase_index)| {
+                sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
+                    .filter(|(pattern_index, _, _, _, _)| *pattern_index == shown_pattern_index)
+                    .map(move |(_, absolute_start, relative_range, _, _)| {
+                        let absolute_range = relative_range.plus(absolute_start);
+
+                        // Make sure indicator loops around when pattern has explicit length
+                        let start = if pattern.has_explicit_length() {
+                            let length = pattern.length();
+                            let iterations = relative_range.start / length;
+                            absolute_start + iterations * length
+                        } else {
+                            absolute_start
+                        };
+
+                        (absolute_range, start)
+                    })
+            })
+            .collect()
+    }
+    */
+
+    pub fn new(client: &jack::Client, name: &str, offset_x: u8) -> Self {
+        let input = client.register_port(&(name.to_owned() + " in"), jack::MidiIn::default()).unwrap();
+        let output = client.register_port(&(name.to_owned() + " out"), jack::MidiOut::default()).unwrap();
+        
+        Self {
+            input,
+            output: MidiOut::new(output),
+
+            offset_x,
+            identified_cycles: 0,
+            local_id: 0,
+            device_id: 0,
+            // Offset knobs by this value to support multiple groups
+            //knob_offset: 0,
+
+            cue_knob: CueKnob::new(),
+            lights: Lights::new(),
+            // TODO - Put length indicator here, get length from longest LoopablePatternEvent in phrases?
+            //arm: WideRow::new(0x30),
+        }
+    }
+
+    /*
+     * Transform raw jack midi events into input events
+     */
+    pub fn input_events(&self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
+        self.input.iter(scope).map(|message| InputEvent::new(message.time, message.bytes)).collect()
+    }
+
+    /*
+     * Process incoming midi from controller port
+     */
+    pub fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+        // Process identification and other controller specific stuff
+        for event in self.input_events(cycle.scope) {
+            // Only process channel note messages
+            match event.event_type {
+                InputEventType::InquiryResponse(local_id, device_id) => {
+                    // Introduce ourselves to controller
+                    // 0x41 after 0x04 is ableton mode (only led rings are not controlled by host, but can be set.)
+                    // 0x42 is ableton alternate mode (all leds controlled from host)
+                    self.device_id = device_id;
+                    self.local_id = local_id;
+                    // Make sure we stop inquiring
+                    // TODO - Make sure every grid is re-initialized after identifying
+                    self.identified_cycles = 1;
                 },
-                // TODO - Shift events in loopable to right/left when holding shift
+                InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
+                    mixer.fader_adjusted(event.time, self.offset_x + index, value);
+                },
                 InputEventType::KnobTurned { value, knob_type: KnobType::Cue } => {
-                    // Check if cueknob should respond immediately
-                    let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
-                    let is_first_turn = surface.event_memory
-                        .last_occurred_controller_event_after(Self::TRACK_OFFSET, &[InputEvent::is_cue_knob], usecs)
-                        .is_none();
+                    // Cueknow is only used in track views
+                    if let View::Track = surface.view {
+                        // Check if cueknob should respond immediately
+                        let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
+                        let is_first_turn = surface.event_memory
+                            .last_occurred_controller_event_after(self.offset_x, &[InputEvent::is_cue_knob], usecs)
+                            .is_none();
 
-                    let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
+                        let track_index = surface.track_shown();
+                        let (grid_offset_x, grid_width, loopable_display) = surface.loopable_display_mut(self.offset_x);
+                        let loopable_length = loopable_display.loopable_length(sequencer, track_index);
 
-                    match surface.view {
-                        View::Track => {
-                            let loopable = self.shown_loopable(sequencer, surface);
-                            let loopable_grid = self.loopable_grid_mut(surface);
-                            let delta_ticks = delta_buttons as i32 * loopable_grid.ticks_per_button() as i32;
-                            let new_offset = loopable_grid.offset_x() as i32 + delta_ticks;
-                            let offset = if new_offset < 0 { 0 } else { new_offset as u32 };
-
-                            let max_offset_x = loopable_grid.max_offset_x(loopable.length(), 8);
-                            loopable_grid.set_offset_x(offset, max_offset_x);
-                        },
-                        View::Timeline => {
-                            let new_offset = surface.timeline_grid.offset_x() as i32 + (delta_buttons as i32 * surface.timeline_grid.ticks_per_button() as i32);
-
-                            if new_offset >= 0 {
-                                let max_offset_x = surface.timeline_grid.max_offset_x(sequencer.timeline_end(), 8);
-                                surface.timeline_grid.set_offset_x(max_offset_x, new_offset as u32);
-                            }
-                        },
-                        _ => (),
+                        let delta_buttons = self.cue_knob.process_turn(value, is_first_turn) as i32;
+                        let delta_ticks = delta_buttons * loopable_display.parameters().ticks_per_button() as i32;
+                        let offset = loopable_display.parameters().offset_x() as i32 + delta_ticks;
+                        loopable_display.parameters_mut().set_offset_x(offset, loopable_length, grid_width);
                     }
                 },
+                InputEventType::ButtonPressed(button_type) => {
+                    // Register press in memory to keep track of modifing buttons
+                    surface.button_memory.press(self.offset_x, button_type);
+                    let global_modifier = surface.button_memory.global_modifier(button_type);
+
+                    // Do the right thing in the right visualization
+                    match surface.view {
+                        View::Track => {
+                            match button_type {
+                                ButtonType::Solo(index) => {
+                                    // We divide by zoom level, so don't start at 0
+                                    let (grid_offset_x, grid_width, loopable_display) = surface.loopable_display_mut(self.offset_x);
+                                    let zoom_level = grid_offset_x + index + 1;
+                                    loopable_display.parameters_mut().set_zoom_level(zoom_level);
+                                },
+                                _ => (),
+                            }
+                        },
+                        View::Sequence => {
+                            let sequence = sequencer.get_sequence(surface.sequence_shown());
+
+                            match button_type {
+                                ButtonType::Grid(x, row) => {
+                                    let track = (x + self.offset_x) as usize;
+                                    
+                                    if let Some(true) = sequence.get_phrase(track).and_then(|phrase| Some(phrase == row)) {
+                                        sequence.unset_phrase(track)
+                                    } else {
+                                        sequence.set_phrase(track, row);
+                                    }
+                                },
+                                ButtonType::Side(index) => {
+                                    // TODO - Move double click logic to surface
+                                    let filters = vec![|event_type: &InputEventType| -> bool {
+                                        *event_type == event.event_type
+                                    }];
+                                    let usecs = cycle.time_stop - DOUBLE_CLICK_USECS;
+                                    let last_occurred_event = surface.event_memory.last_occurred_controller_event_after(self.offset_x, &filters, usecs);
+
+                                    if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
+                                        sequence.set_phrases(index);
+                                    } else if let Some(_) = last_occurred_event {
+                                        // If we double clicked sequence button, queue it
+                                        sequencer.sequence_queued = Some(index as usize);
+                                    } else {
+                                        surface.show_sequence(index);
+                                    }
+                                },
+                                ButtonType::Activator(track) => {
+                                    sequence.toggle_active((track + self.offset_x) as usize)
+                                },
+                                _ => (),
+                            }
+                        },
+                        /*
+                        View::Timeline => {
+                            match button_type {
+                                ButtonType::Grid(x, y) => {
+                                    let track = sequencer.track_mut(surface.track_shown());
+
+                                    // Add track offset to make it possible to draw across multiple controllers
+                                    let start = (Self::TRACK_OFFSET + x) as u32 * surface.timeline_grid.ticks_per_button() + surface.timeline_grid.offset_x();
+                                    let mut tick_range = TickRange::new(start, start + surface.timeline_grid.ticks_per_button());
+
+                                    // Should we delete the event we're clicking?
+                                    if let (None, true) = (global_modifier, track.timeline.contains_events_starting_in(tick_range, y)) {
+                                        track.timeline.remove_events_starting_in(tick_range, y);
+                                    } else {
+                                        // Add event get x from modifier when its a grid button in the same row
+                                        if let Some(ButtonPress { button_type: ButtonType::Grid(mod_x, mod_y), controller_track_offset }) = global_modifier {
+                                            if *mod_y == y { 
+                                                // Add track offset off modifier to make it possible to draw across controllers
+                                                tick_range.start = (mod_x + controller_track_offset) as u32 * surface.timeline_grid.ticks_per_button() + surface.timeline_grid.offset_x();
+                                            }
+                                        }
+
+                                        // Switch start & stop if stop button was pressed before start button
+                                        if tick_range.start > tick_range.stop {
+                                            let start = tick_range.start;
+                                            // As stop is @ end of button & start is @ start of
+                                            // button, offset start & stop by a button
+                                            tick_range.start = tick_range.stop - surface.timeline_grid.ticks_per_button();
+                                            tick_range.stop = start + surface.timeline_grid.ticks_per_button();
+                                        }
+
+                                        track.timeline.add_complete_event(LoopablePhraseEvent::new(tick_range.start, tick_range.stop, y));
+                                    }
+                                },
+                                _ => (),
+                            }
+                        }
+                        */
+                    }
+
+                    // Independent of current view
+                    match button_type {
+                        ButtonType::Track(index) => {
+                            /*
+                            match surface.view {
+                                View::Track | View::Timeline => {
+                                    if surface.track_shown() == index as usize {
+                                        let view = if matches!(surface.view, View::Timeline) { View::Track } else { View::Timeline };
+                                        surface.switch_view(view);
+                                    } else {
+                                        surface.show_track(index + self.offset_x);
+                                    }
+                                },
+                                _ => {
+                                    surface.switch_view(View::Timeline);
+                                    surface.show_track(index + self.offset_x);
+                                },
+                            }
+                            */
+                        },
+                        _ => (),
+                        // Switch to timeline, when timeline already shown, switch to track
+                        /*
+                        ButtonType::Master => {
+                            let view = match surface.view {
+                                View::Sequence => View::Track,
+                                _ => View::Sequence,
+                            };
+                            surface.switch_view(view);
+                        },
+                        _ => self.process_inputevent(&event, cycle, sequencer, surface, mixer),
+                        */
+                    }
+                },
+                _ => (),
+            }
+
+            // Keep track of event so we can use it to calculate double presses etc.
+            surface.event_memory.register_event(self.offset_x, cycle.time_at_frame(event.time), event.event_type);
+        }
+    /*
+        for event in self.input_events(cycle.scope) {
+            // Only process channel note messages
+            match event.event_type {
+                // TODO - Shift events in loopable to right/left when holding shift
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep track of modifing buttons
                     surface.button_memory.press(Self::TRACK_OFFSET, button_type);
@@ -468,202 +756,130 @@ pub trait APC {
             // Keep track of event so we can use it to calculate double presses etc.
             surface.event_memory.register_event(Self::TRACK_OFFSET, cycle.time_at_frame(event.time), event.event_type);
         }
+    */
+
+
+
+        //self.apc40.process_midi_input(&cycle, sequencer, self, mixer);
     }
 
-    fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
-        let mut messages = vec![];
-
-        // Identify when no controller found yet
-        if self.identified_cycles() == 0 {
-            messages.push(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
-        } else if self.identified_cycles() < IDENTIFY_CYCLES {
-            // Output introduction if APC just responded to inquiry
-            if self.identified_cycles() == 1 {
-                let message = Message::Introduction([0xF0, 0x47, self.local_id(), self.device_id(), 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
-                messages.push(TimedMessage::new(0, message));
-            }
-
-            self.set_identified_cycles(self.identified_cycles() + 1);
-        } else {
-            // APC 40 / 20 specific messages
-            self.draw(sequencer, surface);
-
-            // Always draw track grid
-            // This if statement is here to see if we can subtract TRACK_OFFSET
-            if surface.track_shown() >= Self::TRACK_OFFSET as usize && ! matches!(surface.view, View::Sequence) {
-                let track = surface.track_shown() - Self::TRACK_OFFSET as usize;
-                self.track().draw(track as u8, 1);
-            }
-            messages.append(&mut self.track().output_messages(0));
-
-            match surface.view {
-                View::Track => {
-                    // Draw zoom grid
-                    for index in 0 .. self.loopable_grid(surface).zoom_level() { self.solo().draw(index, 1); }
-                },
-                View::Timeline => {
-                    self.draw_timeline(sequencer, surface);
-                },
-                View::Sequence => {
-                    self.master().draw(1);
-                    let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();
-                    self.draw_phrases(phrases);
-                    self.side().draw(surface.sequence_shown() as u8, 1);
-                },
-            };
-
-            messages.append(&mut self.master().output_messages(0));
-            messages.append(&mut self.solo().output_messages(0));
-            messages.append(&mut self.grid().output_messages(0));
-            messages.append(&mut self.activator().output_messages(0));
-            messages.append(&mut self.output_side(cycle, sequencer, surface));
-            messages.append(&mut self.output_indicator(cycle, sequencer, surface));
-        }
-
-        // from this function
-        self.output().write_midi(cycle.scope, &mut messages);
-    }
-
-    fn output(&mut self) -> &mut MidiOut;
-    fn input(&self) -> &jack::Port<jack::MidiIn>;
-
-    fn input_events(&self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
-        self.input().iter(scope).map(|message| InputEvent::new(message.time, message.bytes)).collect()
-    }
-
-    fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer);
-    fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface);
-}
-
-pub struct APC40 {
-    // Ports that connect to APC
-    input: jack::Port<jack::MidiIn>,
-    output: MidiOut,
-
-    identified_cycles: u8,
-    device_id: u8,
-    local_id: u8,
-    //knob_offset: u8,
-
-    cue_knob: CueKnob,
-    master: Single,
-
-    grid: Grid,
-    side: Side,
-    indicator: WideRow,
-    track: WideRow,
-    activator: WideRow,
-    solo: WideRow,
-    //arm: WideRow,
-}
-
-impl APC for APC40 {
-    type Loopable = Pattern;
-
-    const TRACK_OFFSET: u8 = 8;
-    const HEAD_COLOR: u8 = 1;
-    const TAIL_COLOR: u8 = 5;
-
-    fn identified_cycles(&self) -> u8 { self.identified_cycles }
-    fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
-    fn local_id(&self) -> u8 { self.local_id }
-    fn set_local_id(&mut self, local_id: u8) { self.local_id = local_id }
-    fn device_id(&self) -> u8 { self.device_id }
-    fn set_device_id(&mut self, device_id: u8) { self.device_id = device_id }
-
-    fn loopable_grid<'a>(&self, surface: &'a Surface) -> &'a LoopableGrid { &surface.pattern_grid }
-    fn loopable_grid_mut<'a>(&self, surface: &'a mut Surface) -> &'a mut LoopableGrid { &mut surface.pattern_grid }
-
-    fn output(&mut self) -> &mut MidiOut { &mut self.output }
-    fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
-
-    fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.pattern_shown(surface.track_shown()) }
-
-    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable { 
-        let track = sequencer.track(surface.track_shown());
-        track.pattern(self.shown_loopable_index(surface))
-    }
-    fn shown_loopable_mut<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
-        let track = sequencer.track_mut(surface.track_shown());
-        track.pattern_mut(self.shown_loopable_index(surface))
-    }
-
-    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8> {
-        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
-            .flat_map(|(tick_range, sequence_start, phrase_index)| {
-                sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
-                    .map(|(pattern_index, _, _, _, _)| pattern_index)
-            })
-            .collect()
-    }
-
-    fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
-        // Get playing phrases of currently selected track
-        let shown_pattern_index = self.shown_loopable_index(surface);
-        let pattern = sequencer.track(surface.track_shown()).pattern(shown_pattern_index);
-
-        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
-            .flat_map(|(tick_range, sequence_start, phrase_index)| {
-                sequencer.playing_patterns(&tick_range, surface.track_shown(), phrase_index, sequence_start).into_iter()
-                    .filter(|(pattern_index, _, _, _, _)| *pattern_index == shown_pattern_index)
-                    .map(move |(_, absolute_start, relative_range, _, _)| {
-                        let absolute_range = relative_range.plus(absolute_start);
-
-                        // Make sure indicator loops around when pattern has explicit length
-                        let start = if pattern.has_explicit_length() {
-                            let length = pattern.length();
-                            let iterations = relative_range.start / length;
-                            absolute_start + iterations * length
-                        } else {
-                            absolute_start
-                        };
-
-                        (absolute_range, start)
-                    })
-            })
-            .collect()
-    }
-
-    fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
-    fn master(&mut self) -> &mut Single { &mut self.master }
-    fn grid(&mut self) -> &mut Grid { &mut self.grid }
-    fn side(&mut self) -> &mut Side { &mut self.side }
-    fn track(&mut self) -> &mut WideRow { &mut self.track }
-    fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
-    fn activator(&mut self) -> &mut WideRow { &mut self.activator }
-    fn solo(&mut self) -> &mut WideRow { &mut self.solo }
-
-    fn new(client: &jack::Client) -> Self {
-        let input = client.register_port("APC40 in", jack::MidiIn::default()).unwrap();
-        let output = client.register_port("APC40 out", jack::MidiOut::default()).unwrap();
-        
-        Self {
-            input,
-            output: MidiOut::new(output),
-
-            identified_cycles: 0,
-            local_id: 0,
-            device_id: 0,
-            // Offset knobs by this value to support multiple groups
-            //knob_offset: 0,
-
-            cue_knob: CueKnob::new(),
-            master: Single::new(0x50),
-
-            grid: Grid::new(),
-            side: Side::new(),
-            indicator: WideRow::new(0x34),
-            track: WideRow::new(0x33),
-            activator: WideRow::new(0x32),
-            solo: WideRow::new(0x31),
-            // TODO - Put length indicator here, get length from longest LoopablePatternEvent in phrases?
-            //arm: WideRow::new(0x30),
+    fn color_output(color: &LedColor) -> u8 {
+        match color {
+            LedColor::Green => 1,
+            LedColor::Orange => 3,
+            LedColor::Red => 5,
         }
     }
 
     /*
+     * Draw loopable events to grid
+     */
+    pub fn output_midi(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) {
+        let mut messages = vec![];
+
+        // Identify when no controller found yet
+        if self.identified_cycles == 0 {
+            messages.push(TimedMessage::new(0, Message::Inquiry([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])));
+        } else if self.identified_cycles < IDENTIFY_CYCLES {
+            // Output introduction if APC just responded to inquiry
+            if self.identified_cycles == 1 {
+                let message = Message::Introduction([0xF0, 0x47, self.local_id, self.device_id, 0x60, 0x00, 0x04, 0x41, 0x00, 0x00, 0x00, 0xF7]);
+                messages.push(TimedMessage::new(0, message));
+            }
+
+            self.identified_cycles = self.identified_cycles + 1;
+        } else {
+            // APC 40 / 20 specific messages
+            //self.draw(sequencer, surface);
+
+            match surface.view {
+                View::Track => {
+                    let track_index = surface.track_shown();
+
+                    // Draw track grid
+                    if track_index >= self.offset_x as usize {
+                        let track = track_index - self.offset_x as usize;
+                        self.lights.track.draw(track as u8, 1);
+                    }
+                    messages.append(&mut self.lights.track.output_messages(0));
+
+                    let (grid_offset_x, grid_width, loopable_display) = surface.loopable_display_mut(self.offset_x);
+
+                    // Draw zoom grid
+                    for index in grid_offset_x .. loopable_display.parameters().zoom_level() { self.lights.solo.draw(index, 1); }
+
+                    // Draw main grid
+                    let grid_start_x = loopable_display.parameters().offset_x() + grid_offset_x as u32 * loopable_display.parameters().ticks_per_button();
+                    let grid_stop_x = grid_start_x + loopable_display.parameters().ticks_in_grid(grid_width);
+
+                    /*
+                    let events = loopable_display.loopable_events(sequencer, track_index);
+                    events
+                        .filter(|event| { 
+                            let grid_contains_event = event.start() < grid_stop_x 
+                                && (event.stop().is_none() || event.stop().unwrap() > grid_start_x);
+
+                            grid_contains_event || event.is_looping()
+                        })
+                        .for_each(|event| {
+                            // Get buttons from event ticks
+                            let start_button = (event.start() as i32 - grid_start_x as i32) / loopable_display.parameters().ticks_per_button();
+                            let stop_button = if event.stop().is_none() { 
+                                start_button + 1
+                            } else { 
+                                // Could be event is to short for 1 button, in that case, draw 1 button
+                                // TODO
+                                (event.stop().unwrap() as i32 - grid_start_x as i32) / loopable_display.parameters().ticks_per_button()
+                            };
+
+                            // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
+                            let row = event.row(loopable_display.parameters().offset_y());
+
+                            // Always draw first button head
+                            self.lights.grid.try_draw(start_button, row, Self::color_output(loopable_display.parameters().head_color()));
+                            // Draw tail depending on wether this is looping note
+                            let tails = if stop_button >= start_button {
+                                vec![(start_button + 1) .. stop_button]
+                            } else {
+                                vec![(start_button + 1) .. self.lights.grid.width() as i32, 0 .. stop_button]
+                            };
+
+                            for range in tails {
+                                while let Some(x) = range.next() { 
+                                    self.lights.grid.try_draw(x, row, Self::color_output(loopable_display.parameters().tail_color())) 
+                                }
+                            }
+                        });
+                    */
+                },
+                //View::Timeline => {
+                    //self.draw_timeline(sequencer, surface);
+                //},
+                View::Sequence => {
+                    //self.master().draw(1);
+                    //let phrases = sequencer.get_sequence(surface.sequence_shown()).phrases();
+                    //self.draw_phrases(phrases);
+                    //self.side().draw(surface.sequence_shown() as u8, 1);
+                },
+            };
+
+            messages.append(&mut self.lights.master.output_messages(0));
+            messages.append(&mut self.lights.solo.output_messages(0));
+            messages.append(&mut self.lights.grid.output_messages(0));
+            messages.append(&mut self.lights.activator.output_messages(0));
+            //messages.append(&mut self.output_side(cycle, sequencer, surface));
+            //messages.append(&mut self.output_indicator(cycle, sequencer, surface));
+        }
+
+        // from this function
+        self.output.write_midi(cycle.scope, &mut messages);
+    }
+
+
+    /*
      * Process APC40 specific midi input, shared input is handled by APC trait
      */
+    /*
     fn process_inputevent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
 
         // Only process channel note messages
@@ -811,7 +1027,9 @@ impl APC for APC40 {
             _ => (),
         }
     }
+    */
 
+        /*
     fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface) {
         match surface.view {
             View::Track => {
@@ -840,14 +1058,17 @@ impl APC for APC40 {
             }
         }
     }
+        */
 }
 
 
+/*
 pub struct APC20 {
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
 
+    button_offset_x: u8,
     identified_cycles: u8,
     device_id: u8,
     local_id: u8,
@@ -864,7 +1085,9 @@ pub struct APC20 {
     solo: WideRow,
     //arm: WideRow,
 }
+*/
 
+/*
 impl APC for APC20 {
     type Loopable = Phrase;
 
@@ -872,6 +1095,7 @@ impl APC for APC20 {
     const HEAD_COLOR: u8 = 3;
     const TAIL_COLOR: u8 = 5;
 
+    fn button_offset_x(&self) -> u8 { self.button_offset_x }
     fn identified_cycles(&self) -> u8 { self.identified_cycles }
     fn set_identified_cycles(&mut self, cycles: u8) { self.identified_cycles = cycles }
     fn local_id(&self) -> u8 { self.local_id }
@@ -879,30 +1103,31 @@ impl APC for APC20 {
     fn device_id(&self) -> u8 { self.device_id }
     fn set_device_id(&mut self, device_id: u8) { self.device_id = device_id }
 
-    fn loopable_grid<'a>(&self, surface: &'a Surface) -> &'a LoopableGrid { &surface.phrase_grid }
-    fn loopable_grid_mut<'a>(&self, surface: &'a mut Surface) -> &'a mut LoopableGrid { &mut surface.phrase_grid }
+    //fn loopable_grid<'a>(&self, surface: &'a Surface) -> &'a LoopableGrid { &surface.phrase_grid }
+    //fn loopable_grid_mut<'a>(&self, surface: &'a mut Surface) -> &'a mut LoopableGrid { &mut surface.phrase_grid }
 
     fn output(&mut self) -> &mut MidiOut { &mut self.output }
     fn input(&self) -> &jack::Port<jack::MidiIn> { &self.input }
 
-    fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.phrase_shown(surface.track_shown()) }
+    //fn shown_loopable_index(&self, surface: &Surface) -> u8 { surface.phrase_shown(surface.track_shown()) }
 
-    fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable { 
-        let track = sequencer.track(surface.track_shown());
-        track.phrase(self.shown_loopable_index(surface))
-    }
-    fn shown_loopable_mut<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
-        let track = sequencer.track_mut(surface.track_shown());
-        track.phrase_mut(self.shown_loopable_index(surface))
-    }
+    //fn shown_loopable<'a>(&self, sequencer: &'a Sequencer, surface: &Surface) -> &'a Self::Loopable { 
+        //let track = sequencer.track(surface.track_shown());
+        //track.phrase(self.shown_loopable_index(surface))
+    //}
+    //fn shown_loopable_mut<'a>(&self, sequencer: &'a mut Sequencer, surface: &mut Surface) -> &'a mut Self::Loopable { 
+        //let track = sequencer.track_mut(surface.track_shown());
+        //track.phrase_mut(self.shown_loopable_index(surface))
+    //}
 
     // Get indexes of currently playing phrases in showed track
-    fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8> {
-        sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
-            .map(|(_, _, phrase_index)| phrase_index)
-            .collect()
-    }
+    //fn playing_loopable_indexes(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<u8> {
+        //sequencer.playing_phrases(surface.track_shown(), &cycle.tick_range).into_iter()
+            //.map(|(_, _, phrase_index)| phrase_index)
+            //.collect()
+    //}
 
+    /*
     fn playing_loopable_ranges(&self, cycle: &ProcessCycle, sequencer: &Sequencer, surface: &mut Surface) -> Vec<(TickRange, u32)> {
         // Get playing phrases for currently selected track
         let shown_phrase_index = self.shown_loopable_index(surface);
@@ -917,6 +1142,7 @@ impl APC for APC20 {
             })
             .collect()
     }
+    */
 
     fn cue_knob(&mut self) -> &mut CueKnob { &mut self.cue_knob }
     fn master(&mut self) -> &mut Single { &mut self.master }
@@ -927,7 +1153,7 @@ impl APC for APC20 {
     fn indicator(&mut self) -> &mut WideRow { &mut self.indicator }
     fn solo(&mut self) -> &mut WideRow { &mut self.solo }
 
-    fn new(client: &jack::Client) -> Self {
+    fn new(client: &jack::Client, button_offset_x: u8) -> Self {
         let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
         let output = client.register_port("APC20 out", jack::MidiOut::default()).unwrap();
         
@@ -935,6 +1161,7 @@ impl APC for APC20 {
             input,
             output: MidiOut::new(output),
 
+            button_offset_x,
             identified_cycles: 0,
             local_id: 0,
             device_id: 0,
@@ -952,6 +1179,7 @@ impl APC for APC20 {
         }
     }
 
+    /*
     fn process_inputevent(&mut self, event: &InputEvent, _cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, _mixer: &mut Mixer) {
         let track = sequencer.track_mut(surface.track_shown());
         let phrase = track.phrase_mut(surface.phrase_shown(surface.track_shown()));
@@ -1002,8 +1230,10 @@ impl APC for APC20 {
             _ => (),
         }
     }
+    */
 
     // Draw APC specific things
+    /*
     fn draw(&mut self, sequencer: &mut Sequencer, surface: &mut Surface) {
         match surface.view {
             View::Track => {
@@ -1025,4 +1255,6 @@ impl APC for APC20 {
             }
         }
     }
+    */
 }
+*/
