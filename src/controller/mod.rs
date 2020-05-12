@@ -288,11 +288,26 @@ pub trait APC {
 
     fn new(client: &jack::Client) -> Self;
 
+    fn fc(&self, display: &mut impl LoopableDisplay, loopable: &mut impl Loopable) {
+    
+    }
+
     /*
      * Process incoming midi, handle generic midi here, pass controller specific input to
      * controller via process_inputevent
      */ 
     fn process_midi_input(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface, mixer: &mut Mixer) {
+        let track_index = surface.track_shown();
+        match surface.track_view {
+            TrackView::Pattern => {
+                let display = &mut surface.pattern_display;
+                let loopable = sequencer.track_mut(track_index).pattern_mut(display.shown_pattern(track_index));
+
+                self.fc(display, loopable);
+            },
+            _ => (),
+        }
+
         for event in self.input_events(cycle.scope) {
             // Only process channel note messages
             match event.event_type {

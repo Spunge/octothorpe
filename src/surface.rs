@@ -105,9 +105,15 @@ impl LoopableDisplay for PatternDisplay {
     fn parameters(&self) -> &DisplayParameters { &self.parameters }
     fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
 }
+impl PatternDisplay {
+    pub fn shown_pattern(&self, track_index: usize) -> u8 { self.shown[track_index] }
+}
 impl LoopableDisplay for PhraseDisplay {
     fn parameters(&self) -> &DisplayParameters { &self.parameters }
     fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
+}
+impl PhraseDisplay {
+    pub fn shown_phrase(&self, track_index: usize) -> u8 { self.shown[track_index] }
 }
 impl LoopableDisplay for TimelineDisplay {
     fn parameters(&self) -> &DisplayParameters { &self.parameters }
@@ -117,6 +123,7 @@ impl LoopableDisplay for TimelineDisplay {
 
 pub struct Surface {
     pub view: View,
+    pub track_view: TrackView,
     pub button_memory: ButtonMemory,
     pub event_memory: EventMemory,
 
@@ -124,9 +131,9 @@ pub struct Surface {
     sequence_shown: u8,
     timeline_offset: u32,
 
-    pattern_display: PatternDisplay,
-    phrase_display: PhraseDisplay,
-    timeline_display: TimelineDisplay,
+    pub pattern_display: PatternDisplay,
+    pub phrase_display: PhraseDisplay,
+    pub timeline_display: TimelineDisplay,
 
     phrase_shown: [u8; 16],
     phrase_zoom_level: u8,
@@ -150,6 +157,7 @@ impl Surface {
 
         Surface { 
             view: View::Track, 
+            track_view: TrackView::Split,
             button_memory: ButtonMemory::new(),
             event_memory: EventMemory::new(),
 
