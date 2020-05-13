@@ -27,6 +27,7 @@ pub enum ButtonType {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum FaderType {
     Track(u8),
+    Velocity,
     CrossFade,
     Master,
 }
@@ -47,6 +48,7 @@ pub enum InputEventType {
     Unknown,
 }
 
+#[derive(Debug)]
 pub struct InputEvent {
     pub time: u32,
     pub event_type: InputEventType,
@@ -77,6 +79,59 @@ impl ButtonType {
             0x31 => ButtonType::Solo(channel),
             0x32 => ButtonType::Activator(channel),
             _ => ButtonType::Unknown,
+        }
+    }
+}
+
+pub enum ControllerInput {
+    APC40,
+    APC20,
+}
+
+impl ControllerInput {
+    pub fn message_to_input_event(&self, message: jack::RawMidi, button_offset_x: u8, button_offset_y: u8) -> InputEvent {
+        InputEvent {
+            time: message.time,
+            event_type: self.bytes_to_input_event_type(message.bytes, button_offset_x, button_offset_y),
+        }
+    }
+
+    fn bytes_to_input_event_type(&self, bytes: &[u8], button_offset_x: u8, button_offset_y: u8) -> InputEventType {
+        match bytes[0] {
+            0xF0 => {
+                // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
+                if bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && (bytes[6] == 0x73 || bytes[6] == 0x7b) {
+                    InputEventType::InquiryResponse(bytes[13], bytes[6])
+                } else {
+                    InputEventType::Unknown
+                }
+            },
+            0x90 ..= 0x9F => InputEventType::ButtonPressed(ButtonType::new(bytes[0] - 0x90 + button_offset_x, bytes[1] + button_offset_y)),
+            0x80 ..= 0x8F => InputEventType::ButtonReleased(ButtonType::new(bytes[0] - 0x80 + button_offset_x, bytes[1] + button_offset_y)),
+            0xB0 ..= 0xB8 => self.cc_to_input_event_type(bytes, button_offset_x, button_offset_y),
+            _ => InputEventType::Unknown,
+        }
+    }
+
+    fn cc_to_input_event_type(&self, bytes: &[u8], button_offset_x: u8, _offset_y: u8) -> InputEventType {
+        match bytes[1] {
+            0x30 ..= 0x37 | 0x10 ..= 0x17 => {
+                // APC effect knobs are ordered weird, reorder them from to 0..16
+                let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
+                let index = bytes[1] - modifier;
+
+                InputEventType::KnobTurned { value: bytes[2], knob_type: KnobType::Effect(index) }
+            },
+            0x7 => InputEventType::FaderMoved { value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0 + button_offset_x) },
+            0xE => {
+                match self {
+                    ControllerInput::APC20 => InputEventType::FaderMoved { value: bytes[2], fader_type: FaderType::Velocity },
+                    ControllerInput::APC40 => InputEventType::FaderMoved { value: bytes[2], fader_type: FaderType::Master },
+                }
+            }
+            0xF => InputEventType::FaderMoved { value: bytes[2], fader_type: FaderType::CrossFade },
+            0x2F => InputEventType::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
+            _ => InputEventType::Unknown,
         }
     }
 }

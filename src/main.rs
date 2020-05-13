@@ -24,6 +24,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
 use sequencer::Sequencer;
 use controller::*;
+use controller::input::*;
 use mixer::*;
 use surface::Surface;
 use cycle::*;
@@ -124,10 +125,7 @@ impl jack::TimebaseHandler for TimebaseHandler {
 
 
 pub struct ProcessHandler {
-    // Controllers
-    apc20: APC20,
-    apc40: APC40,
-
+    controllers: Vec<APC>,
     mixer: Mixer,
     sequencer: Sequencer,
     surface: Surface,
@@ -139,8 +137,10 @@ impl ProcessHandler {
         client: &jack::Client
     ) -> Self {
         ProcessHandler { 
-            apc20: APC20::new(client),
-            apc40: APC40::new(client),
+            controllers: vec![
+                APC::new(client, "APC20", 0, 0, ControllerInput::APC20), 
+                APC::new(client, "APC40", 8, 0, ControllerInput::APC40)
+            ],
 
             mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
@@ -154,8 +154,17 @@ impl jack::ProcessHandler for ProcessHandler {
         // Get something representing this process cycle
         let cycle = ProcessCycle::new(client, scope);
 
-        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
-        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        // Identify unidentified controllers
+        for controller in self.controllers.iter_mut().filter(|controller| ! controller.is_identified) {
+            controller.identify(&cycle);
+        }
+
+        // Are all controllers ready?
+        let ready = self.controllers.iter().fold(true, |acc, controller| acc && controller.is_identified);
+
+        if ready {
+            self.surface.process_midi_input(&cycle, &mut self.controllers, &mut self.sequencer, &mut self.mixer);
+        }
 
         if cycle.is_rolling {
             self.sequencer.autoqueue_next_sequence(&cycle);
@@ -165,8 +174,9 @@ impl jack::ProcessHandler for ProcessHandler {
         self.sequencer.output_midi(&cycle);
         self.mixer.output_midi(&cycle);
 
-        self.apc20.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
-        self.apc40.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
+        if ready {
+            self.surface.output_midi(&cycle, &self.controllers, &self.sequencer);
+        }
 
         jack::Control::Continue
     }

@@ -31,6 +31,6 @@ impl Mixer {
 
     pub fn output_midi(&mut self, cycle: &ProcessCycle) {
         // This wil drain buffer as write_midi uses vec.drain
-        self.output.write_midi(cycle.scope, &mut self.buffer);
+        self.output.write_messages(cycle.scope, &mut self.buffer);
     }
 }

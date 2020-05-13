@@ -61,7 +61,7 @@ impl Track {
             .map(|note| TimedMessage::new(0, Message::Note([0x90, note.note, note.start_velocity])))
             .collect();
 
-        self.output.write_midi(cycle.scope, &mut messages);
+        self.output.write_messages(cycle.scope, &mut messages);
     }
 
     // Stop playing notes, used when stopping mid-track
@@ -70,7 +70,7 @@ impl Track {
             .map(|note| TimedMessage::new(0, Message::Note([0x80, note.note, note.stop_velocity])))
             .collect();
 
-        self.output.write_midi(cycle.scope, &mut messages);
+        self.output.write_messages(cycle.scope, &mut messages);
     }
 
     pub fn output_midi(&mut self, cycle: &ProcessCycle, starting_notes: Vec<PlayingNoteEvent>) {
@@ -103,6 +103,6 @@ impl Track {
 
         // Output note off mesassages && write midi
         //self.output.output_messages(&mut messages);
-        self.output.write_midi(cycle.scope, &mut messages);
+        self.output.write_messages(cycle.scope, &mut messages);
     }
 }

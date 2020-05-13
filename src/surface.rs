@@ -1,14 +1,17 @@
 
+use super::controller::*;
 use super::controller::input::*;
 use super::TimebaseHandler;
 use super::Sequencer;
 use super::loopable::*;
+use super::cycle::*;
+use super::mixer::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
     Track,
     Sequence,
-    Timeline,
+    //Timeline,
 }
 pub enum TrackView {
     Split,
@@ -99,6 +102,10 @@ pub struct TimelineDisplay {
 pub trait LoopableDisplay {
     fn parameters(&self) -> &DisplayParameters;
     fn parameters_mut(&mut self) -> &mut DisplayParameters;
+
+    fn process_inputevent(&mut self, event: &InputEvent, button_offset_x: u8, grid_width: u8) {
+    
+    }
 }
 
 impl LoopableDisplay for PatternDisplay {
@@ -126,6 +133,7 @@ pub struct Surface {
     pub track_view: TrackView,
     pub button_memory: ButtonMemory,
     pub event_memory: EventMemory,
+    pub cue_knob: CueKnob,
 
     track_shown: u8,
     sequence_shown: u8,
@@ -160,6 +168,7 @@ impl Surface {
             track_view: TrackView::Split,
             button_memory: ButtonMemory::new(),
             event_memory: EventMemory::new(),
+            cue_knob: CueKnob::new(),
 
             track_shown: 0,
             sequence_shown: 0,
@@ -292,11 +301,82 @@ impl Surface {
         self.set_timeline_offset(sequencer, timeline_offset);
         // TODO - Timeline
     }
+
+    pub fn process_midi_input(&mut self, cycle: &ProcessCycle, controllers: &mut Vec<APC>, sequencer: &mut Sequencer, mixer: &mut Mixer) {
+        controllers.iter_mut()
+            .flat_map(|controller| controller.input_events(cycle))
+            .for_each(|event| {
+                // Process inputs that are same over all views
+                match event.event_type {
+                    InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
+                        mixer.fader_adjusted(event.time, index, value);
+                    },
+                    // TODO - Shift events in loopable to right/left when holding shift
+                    InputEventType::KnobTurned { value, knob_type: KnobType::Cue } => {
+                        /*
+                        // Check if cueknob should respond immediately
+                        let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
+                        let is_first_turn = self.event_memory
+                            .last_occurred_event_after(&[InputEvent::is_cue_knob], usecs)
+                            .is_none();
+
+                        let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
+
+                        match surface.view {
+                            View::Track => {
+                                let delta_ticks = delta_buttons as i32 * self.loopable_ticks_per_button(surface) as i32;
+                                let new_offset = self.shown_loopable_offset(surface) as i32 + delta_ticks;
+                                let offset = if new_offset < 0 { 0 } else { new_offset as u32 };
+
+                                self.set_shown_loopable_offset(sequencer, surface, offset);
+                            },
+                            View::Timeline => {
+                                let new_offset = surface.timeline_offset() as i32 + (delta_buttons as i32 * Surface::TIMELINE_TICKS_PER_BUTTON as i32);
+
+                                if new_offset >= 0 {
+                                    surface.set_timeline_offset(sequencer, new_offset as u32);
+                                }
+                            },
+                            _ => (),
+                        }
+                        */
+                    },
+                    _ => (),
+                }
+
+                // Process view specific controls
+                match self.view {
+                    View::Track => {
+                        match self.track_view {
+                            TrackView::Split => {
+                                self.phrase_display.process_inputevent(&event, 0, 8);
+                                self.pattern_display.process_inputevent(&event, 8, 8);
+                            },
+                            TrackView::Pattern => {
+                                self.pattern_display.process_inputevent(&event, 0, 16);
+                            },
+                            TrackView::Phrase => {
+                                self.phrase_display.process_inputevent(&event, 0, 16);
+                            },
+                            TrackView::Timeline => {
+                                self.timeline_display.process_inputevent(&event, 0, 16);
+                            },
+                        }
+                    },
+                    View::Sequence => {
+                
+                    }
+                }
+            });
+    }
+
+    pub fn output_midi(&mut self, cycle: &ProcessCycle, controllers: &Vec<APC>, sequencer: &Sequencer) {
+    
+    }
 }
 
 #[derive(Debug)]
 struct OccurredInputEvent {
-    controller_track_offset: u8,
     time: u64,
     event_type: InputEventType,
 }
@@ -312,33 +392,21 @@ impl EventMemory {
         Self { occurred_events: vec![] }
     }
 
-    pub fn register_event(&mut self, controller_track_offset: u8, time: u64, event_type: InputEventType) {
+    pub fn register_event(&mut self, time: u64, event_type: InputEventType) {
         let previous = self.occurred_events.iter_mut()
-            .find(|event| event.controller_track_offset == controller_track_offset && event.event_type == event_type);
+            .find(|event| event.event_type == event_type);
 
         if let Some(event) = previous {
             event.time = time;
         } else {
-            self.occurred_events.push(OccurredInputEvent { controller_track_offset, time, event_type });
+            self.occurred_events.push(OccurredInputEvent { time, event_type });
         }
     }
 
-    pub fn last_occurred_global_event_after<F>(&self, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
+    pub fn last_occurred_event_after<F>(&self, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
         self.occurred_events.iter()
             .filter(|event| {
-                event.time >= usecs
-                    && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
-            })
-            .map(|event| event.time)
-            .max()
-    }
-
-    pub fn last_occurred_controller_event_after<F>(&self, controller_track_offset: u8, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
-        self.occurred_events.iter()
-            .filter(|event| {
-                controller_track_offset == event.controller_track_offset
-                    && event.time >= usecs
-                    && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
+                event.time >= usecs && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
             })
             .map(|event| event.time)
             .max()
