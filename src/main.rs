@@ -18,6 +18,8 @@ pub mod port;
 pub mod mixer;
 pub mod events;
 pub mod instrument;
+pub mod memory;
+pub mod display;
 
 use std::io;
 use std::sync::mpsc::channel;
@@ -28,6 +30,7 @@ use controller::input::*;
 use mixer::*;
 use surface::Surface;
 use cycle::*;
+use memory::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct TickRange {
@@ -129,6 +132,7 @@ pub struct ProcessHandler {
     mixer: Mixer,
     sequencer: Sequencer,
     surface: Surface,
+    memory: Memory,
 }
 
 impl ProcessHandler {
@@ -145,6 +149,7 @@ impl ProcessHandler {
             mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
             surface: Surface::new(),
+            memory: Memory::new(),
         }
     }
 }
@@ -162,10 +167,13 @@ impl jack::ProcessHandler for ProcessHandler {
         // Are all controllers ready?
         let ready = self.controllers.iter().fold(true, |acc, controller| acc && controller.is_identified);
 
+        // Process input before doing anything else
         if ready {
-            self.surface.process_midi_input(&cycle, &mut self.controllers, &mut self.sequencer, &mut self.mixer);
+            self.surface.process_midi_input(&cycle, &mut self.controllers, &mut self.memory, &mut self.sequencer, &mut self.mixer);
         }
 
+        // We want the music to keep on rolling 
+        // when timeline is empty, requeue playing sequence
         if cycle.is_rolling {
             self.sequencer.autoqueue_next_sequence(&cycle);
         }

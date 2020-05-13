@@ -9,6 +9,7 @@ pub trait Loopable {
     fn length(&self) -> u32;
     fn events(&self) -> &Vec<Self::Event>;
     fn events_mut(&mut self) -> &mut Vec<Self::Event>;
+    fn add_default_event(&mut self, tick_range: TickRange, y: u8);
 
     fn clear_events(&mut self) {
         self.events_mut().clear();
@@ -114,6 +115,11 @@ impl Loopable for Timeline {
 
     fn events(&self) -> &Vec<Self::Event> { &self.phrase_events }
     fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.phrase_events }
+
+    // TODO - This will add multiple events, don't want that
+    fn add_default_event(&mut self, tick_range: TickRange, y: u8) {
+        self.add_complete_event(Self::Event::new(tick_range.start, tick_range.stop, y));
+    }
 }
 
 impl Timeline {
@@ -141,6 +147,14 @@ impl Loopable for Phrase {
     fn length(&self) -> u32 { self.length } 
     fn events(&self) -> &Vec<Self::Event> { &self.pattern_events }
     fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.pattern_events }
+
+    fn add_default_event(&mut self, tick_range: TickRange, y: u8) {
+        self.try_add_starting_event(Self::Event::new(tick_range.start, y));
+        let mut event = self.get_last_event_on_row(y);
+        event.set_stop(tick_range.stop);
+
+        self.add_complete_event(event);
+    }
 }
 
 impl Phrase {
@@ -197,6 +211,16 @@ impl Loopable for Pattern {
 
     fn events(&self) -> &Vec<Self::Event> { &self.note_events }
     fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.note_events }
+    // TODO - Velocity
+    fn add_default_event(&mut self, tick_range: TickRange, y: u8) {
+        self.try_add_starting_event(Self::Event::new(tick_range.start, y, 127));
+
+        let mut event = self.get_last_event_on_row(y);
+        event.set_stop(tick_range.stop);
+        event.stop_velocity = Some(127);
+
+        self.add_complete_event(event);
+    }
 }
 
 impl Pattern {

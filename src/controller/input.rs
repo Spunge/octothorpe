@@ -35,7 +35,8 @@ pub enum FaderType {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum KnobType {
     Effect(u8),
-    Cue,
+    Left,
+    Right,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -44,6 +45,7 @@ pub enum InputEventType {
     ButtonPressed(ButtonType),
     ButtonReleased(ButtonType),
     KnobTurned { value: u8, knob_type: KnobType },
+    DeltaKnobTurned { delta: i8, knob_type: KnobType },
     FaderMoved { value: u8, fader_type: FaderType },
     Unknown,
 }
@@ -130,58 +132,21 @@ impl ControllerInput {
                 }
             }
             0xF => InputEventType::FaderMoved { value: bytes[2], fader_type: FaderType::CrossFade },
-            0x2F => InputEventType::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
+            0x2F => {
+                // Transform 0->up / 128->down to -delta / +delta
+                let delta = (bytes[2] as i8).rotate_left(1) / 2;
+
+                match self {
+                    ControllerInput::APC20 => InputEventType::DeltaKnobTurned { delta, knob_type: KnobType::Left },
+                    ControllerInput::APC40 => InputEventType::DeltaKnobTurned { delta, knob_type: KnobType::Right },
+                }
+            },
             _ => InputEventType::Unknown,
         }
     }
 }
 
-/*
- * Get input event type from sent bytes
- */
-impl InputEventType {
-    pub fn new(bytes: &[u8]) -> Self {
-         match bytes[0] {
-            0xF0 => {
-                // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
-                if bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && (bytes[6] == 0x73 || bytes[6] == 0x7b) {
-                    Self::InquiryResponse(bytes[13], bytes[6])
-                } else {
-                    Self::Unknown
-                }
-            },
-            0x90 ..= 0x9F => Self::ButtonPressed(ButtonType::new(bytes[0] - 0x90, bytes[1])),
-            0x80 ..= 0x8F => Self::ButtonReleased(ButtonType::new(bytes[0] - 0x80, bytes[1])),
-            0xB0 ..= 0xB8 => {
-                match bytes[1] {
-                    0x30 ..= 0x37 | 0x10 ..= 0x17 => {
-                        // APC effect knobs are ordered weird, reorder them from to 0..16
-                        let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
-                        let index = bytes[1] - modifier;
-
-                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect(index) }
-                    },
-                    0x7 => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0) },
-                    0xE => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Master },
-                    0xF => Self::FaderMoved { value: bytes[2], fader_type: FaderType::CrossFade },
-                    0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
-                    _ => Self::Unknown,
-                }
-            },
-            _ => Self::Unknown,
-        }
-    }
-}
-
 impl InputEvent {
-    pub fn new(time: u32, bytes: &[u8]) -> Self {
-        Self { time, event_type: InputEventType::new(bytes) }
-    }
-
-    pub fn is_cue_knob(event_type: &InputEventType) -> bool { 
-        matches!(event_type, InputEventType::KnobTurned { knob_type: KnobType::Cue, .. }) 
-    }
-
     pub fn is_crossfader(event_type: &InputEventType) -> bool { 
         matches!(event_type, InputEventType::FaderMoved { fader_type: FaderType::CrossFade, .. }) 
     }
@@ -208,39 +173,6 @@ impl InputEvent {
 
     pub fn is_left_button(event_type: &InputEventType) -> bool { 
         matches!(event_type, InputEventType::ButtonPressed(ButtonType::Left))
-    }
-}
-
-/*
- * Struct that will decrease cueknob rotation speed a bit
- */
-impl CueKnob {
-    const DELTA_PER_BUTTON: i8 = 6;
-
-    pub fn new() -> Self { CueKnob { delta: 0 } }
-
-    // TODO - Use time for this aswell, so that turning knob instantly moves grid
-    pub fn process_turn(&mut self, value: u8, is_first_turn: bool) -> i8 {
-        // Transform 0->up / 128->down to -delta / +delta
-        let delta = (value as i8).rotate_left(1) / 2;
-
-        // Reset on first turn and return 1 step
-        if is_first_turn {
-            self.delta = 0;
-
-            if delta > 0 { 1 } else { -1 }
-        } else {
-            self.delta = self.delta + delta;
-
-            let steps = self.delta / Self::DELTA_PER_BUTTON;
-            let remainder = self.delta % Self::DELTA_PER_BUTTON;
-
-            if steps != 0 {
-                self.delta = remainder;
-            }
-
-            steps
-        }
     }
 }
 

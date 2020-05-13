@@ -6,6 +6,8 @@ use super::Sequencer;
 use super::loopable::*;
 use super::cycle::*;
 use super::mixer::*;
+use super::memory::*;
+use super::display::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
@@ -20,137 +22,17 @@ pub enum TrackView {
     Timeline,
 }
 
-pub enum LedColor {
-    Green,
-    Orange,
-    Red,
-}
-pub struct DisplayParameters {
-    offset_x: u32,
-    offset_y: u8,
-    min_offset_y: u8,
-    max_offset_y: u8,
-    zoom_level: u8,
-    ticks_per_button: u32,
-    head_color: LedColor,
-    tail_color: LedColor,
-}
-
-impl DisplayParameters {
-    pub fn new(offset_y: u8, min_offset_y: u8, max_offset_y: u8, ticks_per_button: u32, head_color: LedColor, tail_color: LedColor) -> Self {
-        Self { 
-            offset_x: 0, 
-            offset_y,
-            min_offset_y,
-            max_offset_y,
-            zoom_level: 4,
-            ticks_per_button,
-            head_color,
-            tail_color,
-        }
-    }
-    pub fn ticks_per_button(&self) -> u32 { self.ticks_per_button / self.zoom_level as u32 }
-    pub fn ticks_in_grid(&self, grid_width: u8) -> u32 { self.ticks_per_button() * grid_width as u32 }
-
-    pub fn zoom_level(&self) -> u8 { self.zoom_level }
-    pub fn set_zoom_level(&mut self, level: u8) {
-        if level != 7 { self.zoom_level = level };
-    }
-
-    pub fn offset_x(&self) -> u32 { self.offset_x }
-    pub fn max_offset_x(&self, loopable_length: u32, grid_width: u8) -> u32 {
-        let ticks_in_grid = self.ticks_per_button() * grid_width as u32;
-        if ticks_in_grid < loopable_length { loopable_length - ticks_in_grid } else { 0 }
-    }
-    pub fn adjust_offset_x(&self, ticks: i32) -> i32 {
-        (ticks / self.ticks_per_button() as i32) * self.ticks_per_button() as i32
-    }
-    pub fn set_offset_x(&mut self, ticks: i32, loopable_length: u32, grid_width: u8) {
-        let max_offset = self.max_offset_x(loopable_length, grid_width);
-        let offset = self.adjust_offset_x(ticks);
-
-        if offset >= 0 && ticks <= max_offset as i32 {
-            self.offset_x = offset as u32;
-        }
-    }
-
-    pub fn offset_y(&self) -> u8 { self.offset_y }
-    pub fn adjust_offset_y(&self, offset: u8) -> u8 { 
-        if offset > self.max_offset_y { 
-            self.max_offset_y 
-        } else if offset < self.min_offset_y {
-            self.min_offset_y 
-        } else { offset }
-    }
-
-    pub fn head_color(&self) -> &LedColor { &self.head_color }
-    pub fn tail_color(&self) -> &LedColor { &self.tail_color }
-}
-
-pub struct PatternDisplay {
-    parameters: DisplayParameters,
-    shown: [u8; 16],
-}
-pub struct PhraseDisplay {
-    parameters: DisplayParameters,
-    shown: [u8; 16],
-}
-pub struct TimelineDisplay {
-    parameters: DisplayParameters,
-}
-
-pub trait LoopableDisplay {
-    fn parameters(&self) -> &DisplayParameters;
-    fn parameters_mut(&mut self) -> &mut DisplayParameters;
-
-    fn process_inputevent(&mut self, event: &InputEvent, button_offset_x: u8, grid_width: u8) {
-    
-    }
-}
-
-impl LoopableDisplay for PatternDisplay {
-    fn parameters(&self) -> &DisplayParameters { &self.parameters }
-    fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
-}
-impl PatternDisplay {
-    pub fn shown_pattern(&self, track_index: usize) -> u8 { self.shown[track_index] }
-}
-impl LoopableDisplay for PhraseDisplay {
-    fn parameters(&self) -> &DisplayParameters { &self.parameters }
-    fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
-}
-impl PhraseDisplay {
-    pub fn shown_phrase(&self, track_index: usize) -> u8 { self.shown[track_index] }
-}
-impl LoopableDisplay for TimelineDisplay {
-    fn parameters(&self) -> &DisplayParameters { &self.parameters }
-    fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
-}
-
 
 pub struct Surface {
     pub view: View,
     pub track_view: TrackView,
-    pub button_memory: ButtonMemory,
-    pub event_memory: EventMemory,
-    pub cue_knob: CueKnob,
 
     track_shown: u8,
     sequence_shown: u8,
-    timeline_offset: u32,
 
     pub pattern_display: PatternDisplay,
     pub phrase_display: PhraseDisplay,
     pub timeline_display: TimelineDisplay,
-
-    phrase_shown: [u8; 16],
-    phrase_zoom_level: u8,
-    phrase_offsets: [u32; 16],
-
-    pattern_shown: [u8; 16],
-    pattern_zoom_level: u8,
-    pattern_offsets: [u32; 16],
-    pattern_base_notes: [u8; 16],
 }
 
 impl Surface {
@@ -166,34 +48,13 @@ impl Surface {
         Surface { 
             view: View::Track, 
             track_view: TrackView::Split,
-            button_memory: ButtonMemory::new(),
-            event_memory: EventMemory::new(),
-            cue_knob: CueKnob::new(),
 
             track_shown: 0,
             sequence_shown: 0,
-            timeline_offset: 0,
 
-            pattern_display: PatternDisplay {
-                parameters: DisplayParameters::new(58, 22, 118, pattern_button_ticks, LedColor::Green, LedColor::Orange),
-                shown: [0; 16],
-            },
-            phrase_display: PhraseDisplay {
-                parameters: DisplayParameters::new(0, 0, 4, phrase_button_ticks, LedColor::Red, LedColor::Orange),
-                shown: [0; 16],
-            },
-            timeline_display: TimelineDisplay {
-                parameters: DisplayParameters::new(0, 0, 4, timeline_button_ticks, LedColor::Red, LedColor::Green),
-            },
-
-            phrase_shown: [0; 16],
-            phrase_zoom_level: 4,
-            phrase_offsets: [0; 16],
-
-            pattern_shown: [0; 16],
-            pattern_zoom_level: 4,
-            pattern_offsets: [0; 16],
-            pattern_base_notes: [60; 16],
+            pattern_display: PatternDisplay::new(pattern_button_ticks),
+            phrase_display: PhraseDisplay::new(phrase_button_ticks),
+            timeline_display: TimelineDisplay::new(timeline_button_ticks),
         }
     }
 
@@ -205,104 +66,8 @@ impl Surface {
     pub fn track_shown(&self) -> usize { self.track_shown as usize }
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
     pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }
-    pub fn phrase_shown(&self, track_index: usize) -> u8 { self.phrase_shown[track_index] }
-    pub fn show_phrase(&mut self, track_index: usize, index: u8) { self.phrase_shown[track_index] = index }
-    pub fn pattern_shown(&self, track_index: usize) -> u8 { self.pattern_shown[track_index] }
-    pub fn show_pattern(&mut self, track_index: usize, index: u8) { self.pattern_shown[track_index] = index }
 
-    pub fn pattern_ticks_per_button(&self) -> u32 { Self::PATTERN_TICKS_PER_BUTTON / self.pattern_zoom_level() as u32 }
-    pub fn pattern_ticks_in_grid(&self) -> u32 { self.pattern_ticks_per_button() * 8 }
-    pub fn phrase_ticks_per_button(&self) -> u32 { Self::PHRASE_TICKS_PER_BUTTON / self.phrase_zoom_level() as u32 }
-    pub fn phrase_ticks_in_grid(&self) -> u32 { self.phrase_ticks_per_button() * 8 }
-    pub fn timeline_ticks_in_grid(&self) -> u32 { Self::TIMELINE_TICKS_PER_BUTTON * 16 }
-
-    pub fn timeline_offset(&self) -> u32 { self.timeline_offset }
-    pub fn set_timeline_offset(&mut self, sequencer: &Sequencer, offset: u32) { 
-        let max_offset = self.max_timeline_offset(sequencer);
-        let adjusted_offset = (offset / Self::TIMELINE_TICKS_PER_BUTTON) * Self::TIMELINE_TICKS_PER_BUTTON;
-        self.timeline_offset = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
-    }
-    pub fn get_timeline_length(&self, sequencer: &Sequencer) -> u32 {
-        let timeline_end = sequencer.get_timeline_end();
-        timeline_end + Self::TIMELINE_TICKS_PER_BUTTON * 12
-    }
-    pub fn max_timeline_offset(&self, sequencer: &Sequencer) -> u32 {
-        let timeline_length = self.get_timeline_length(sequencer);
-        if self.timeline_ticks_in_grid() < timeline_length {
-            timeline_length - self.timeline_ticks_in_grid()
-        } else { 0 }
-    }
-
-    pub fn pattern_offset(&self, index: usize) -> u32 { self.pattern_offsets[index] }
-    pub fn max_pattern_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
-        let pattern_length = sequencer.track(track_index).pattern(self.pattern_shown(track_index)).length();
-
-        if self.pattern_ticks_in_grid() < pattern_length {
-            pattern_length - self.pattern_ticks_in_grid()
-        } else { 0 }
-    }
-    pub fn set_pattern_offset(&mut self, sequencer: &Sequencer, track_index: usize, ticks: u32) {
-        let max_offset = self.max_pattern_offset(sequencer, track_index);
-        let adjusted_offset = (ticks / self.pattern_ticks_per_button()) * self.pattern_ticks_per_button();
-        self.pattern_offsets[track_index] = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
-    }
-
-    pub fn pattern_zoom_level(&self) -> u8 { self.pattern_zoom_level }
-    pub fn set_pattern_zoom_level(&mut self, sequencer: &Sequencer, level: u8) { 
-        self.pattern_zoom_level = level;
-        // - loop shown patterns & adjust offsets so they don't exceed max_offset
-        for track_index in 0 .. self.pattern_offsets.len() {
-            self.set_pattern_offset(sequencer, track_index, self.pattern_offset(track_index))
-        }
-    }
-
-    pub fn pattern_base_note(&self, index: usize) -> u8 { self.pattern_base_notes[index] }
-    pub fn set_pattern_base_note(&mut self, track_index: usize, base_note: u8) { 
-        if base_note <= 118 && base_note >= 22 { 
-            self.pattern_base_notes[track_index] = base_note;
-        }
-    }
-
-    pub fn phrase_offset(&self, track_index: usize) -> u32 { self.phrase_offsets[track_index] }
-    pub fn max_phrase_offset(&self, sequencer: &Sequencer, track_index: usize) -> u32 {
-        let phrase_length = sequencer.track(track_index).phrase(self.phrase_shown(track_index)).length();
-
-        if self.phrase_ticks_in_grid() < phrase_length {
-            phrase_length - self.phrase_ticks_in_grid()
-        } else { 0 }
-    }
-    pub fn set_phrase_offset(&mut self, sequencer: &Sequencer, track_index: usize, ticks: u32) {
-        let max_offset = self.max_phrase_offset(sequencer, track_index);
-        // Round offset to button
-        let adjusted_offset = (ticks / self.phrase_ticks_per_button()) * self.phrase_ticks_per_button();
-
-        // Make sure offset is not > max-offset
-        self.phrase_offsets[track_index] = if adjusted_offset < max_offset { adjusted_offset } else { max_offset };
-    }
-
-    pub fn phrase_zoom_level(&self) -> u8 { self.phrase_zoom_level }
-    pub fn set_phrase_zoom_level(&mut self, sequencer: &Sequencer, level: u8) { 
-        self.phrase_zoom_level = level;
-        // Loop shown phrases & make sure offset does not exceed max_offset
-        for track_index in 0 .. self.phrase_offsets.len() {
-            self.set_phrase_offset(sequencer, track_index, self.phrase_offset(track_index))
-        }
-    }
-
-    pub fn set_offsets_by_factor(&mut self, sequencer: &Sequencer, track_index: usize, factor: f64) {
-        let max_phrase_offset = self.max_phrase_offset(sequencer, track_index);
-        let phrase_offset = (max_phrase_offset as f64 * factor) as u32;
-        self.set_phrase_offset(sequencer, track_index, phrase_offset);
-        let max_pattern_offset = self.max_pattern_offset(sequencer, track_index);
-        let pattern_offset = (max_pattern_offset as f64 * factor) as u32;
-        self.set_pattern_offset(sequencer, track_index, pattern_offset);
-        let max_timeline_offset = self.max_timeline_offset(sequencer);
-        let timeline_offset = (max_timeline_offset as f64 * factor) as u32;
-        self.set_timeline_offset(sequencer, timeline_offset);
-        // TODO - Timeline
-    }
-
-    pub fn process_midi_input(&mut self, cycle: &ProcessCycle, controllers: &mut Vec<APC>, sequencer: &mut Sequencer, mixer: &mut Mixer) {
+    pub fn process_midi_input(&mut self, cycle: &ProcessCycle, controllers: &mut Vec<APC>, memory: &mut Memory, sequencer: &mut Sequencer, mixer: &mut Mixer) {
         controllers.iter_mut()
             .flat_map(|controller| controller.input_events(cycle))
             .for_each(|event| {
@@ -311,57 +76,33 @@ impl Surface {
                     InputEventType::FaderMoved { value, fader_type: FaderType::Track(index) } => {
                         mixer.fader_adjusted(event.time, index, value);
                     },
-                    // TODO - Shift events in loopable to right/left when holding shift
-                    InputEventType::KnobTurned { value, knob_type: KnobType::Cue } => {
-                        /*
-                        // Check if cueknob should respond immediately
-                        let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
-                        let is_first_turn = self.event_memory
-                            .last_occurred_event_after(&[InputEvent::is_cue_knob], usecs)
-                            .is_none();
-
-                        let delta_buttons = self.cue_knob.process_turn(value, is_first_turn);
-
-                        match surface.view {
-                            View::Track => {
-                                let delta_ticks = delta_buttons as i32 * self.loopable_ticks_per_button(surface) as i32;
-                                let new_offset = self.shown_loopable_offset(surface) as i32 + delta_ticks;
-                                let offset = if new_offset < 0 { 0 } else { new_offset as u32 };
-
-                                self.set_shown_loopable_offset(sequencer, surface, offset);
-                            },
-                            View::Timeline => {
-                                let new_offset = surface.timeline_offset() as i32 + (delta_buttons as i32 * Surface::TIMELINE_TICKS_PER_BUTTON as i32);
-
-                                if new_offset >= 0 {
-                                    surface.set_timeline_offset(sequencer, new_offset as u32);
-                                }
-                            },
-                            _ => (),
-                        }
-                        */
-                    },
+                    // Make sure that button memory stays up - to - date
+                    InputEventType::ButtonPressed(button_type) => memory.buttons.press(button_type),
+                    InputEventType::ButtonReleased(button_type) => memory.buttons.release(button_type),
                     _ => (),
-                }
+                };
 
                 // Process view specific controls
                 match self.view {
                     View::Track => {
+                        let track_index = self.track_shown();
+                        let track = sequencer.track_mut(track_index);
+
                         match self.track_view {
                             TrackView::Split => {
-                                self.phrase_display.process_inputevent(&event, 0, 8);
-                                self.pattern_display.process_inputevent(&event, 8, 8);
+                                self.phrase_display.process_inputevent(&event, 0, 8, memory, track, track_index);
+                                self.pattern_display.process_inputevent(&event, 8, 8, memory, track, track_index);
                             },
                             TrackView::Pattern => {
-                                self.pattern_display.process_inputevent(&event, 0, 16);
+                                self.pattern_display.process_inputevent(&event, 0, 16, memory, track, track_index);
                             },
                             TrackView::Phrase => {
-                                self.phrase_display.process_inputevent(&event, 0, 16);
+                                self.phrase_display.process_inputevent(&event, 0, 16, memory, track, track_index);
                             },
                             TrackView::Timeline => {
-                                self.timeline_display.process_inputevent(&event, 0, 16);
+                                self.timeline_display.process_inputevent(&event, 0, 16, memory, track, track_index);
                             },
-                        }
+                        };
                     },
                     View::Sequence => {
                 
@@ -372,101 +113,5 @@ impl Surface {
 
     pub fn output_midi(&mut self, cycle: &ProcessCycle, controllers: &Vec<APC>, sequencer: &Sequencer) {
     
-    }
-}
-
-#[derive(Debug)]
-struct OccurredInputEvent {
-    time: u64,
-    event_type: InputEventType,
-}
-
-pub struct EventMemory {
-    // Remember when the last occurence of input event was for each input event on the controller,
-    // this was we can keep track of double clicks or show info based on touched buttons
-    occurred_events: Vec<OccurredInputEvent>,
-}
-
-impl EventMemory {
-    fn new() -> Self {
-        Self { occurred_events: vec![] }
-    }
-
-    pub fn register_event(&mut self, time: u64, event_type: InputEventType) {
-        let previous = self.occurred_events.iter_mut()
-            .find(|event| event.event_type == event_type);
-
-        if let Some(event) = previous {
-            event.time = time;
-        } else {
-            self.occurred_events.push(OccurredInputEvent { time, event_type });
-        }
-    }
-
-    pub fn last_occurred_event_after<F>(&self, filters: &[F], usecs: u64) -> Option<u64> where F: Fn(&InputEventType) -> bool {
-        self.occurred_events.iter()
-            .filter(|event| {
-                event.time >= usecs && filters.iter().fold(false, |acc, filter| acc || filter(&event.event_type)) 
-            })
-            .map(|event| event.time)
-            .max()
-    }
-}
-
-#[derive(Debug)]
-pub struct ButtonPress {
-    pub controller_track_offset: u8,
-    pub button_type: ButtonType,
-}
-
-pub struct ButtonMemory {
-    // Remember pressed buttons to provide "modifier" functionality, we *could* use occurred_events
-    // for this, but the logic will be a lot easier to understand when we use seperate struct
-    pressed_buttons: Vec<ButtonPress>,
-}
-
-/*
- * This will keep track of button presses so we can support double press & range press
- */
-impl ButtonMemory {
-    pub fn new() -> Self {
-        Self { pressed_buttons: vec![] }
-    }
-
-    //pub fn register_event(&mut self, controller_track_offset: u8, time: u64, InputEvent:)
-
-    // We pressed a button!
-    pub fn press(&mut self, controller_track_offset: u8, button_type: ButtonType) {
-        // Save pressed_button to keep track of modifing keys (multiple keys pressed twice)
-        self.pressed_buttons.push(ButtonPress { controller_track_offset, button_type, });
-    }
-
-    pub fn release(&mut self, controller_track_offset: u8, _end: u64, button_type: ButtonType) {
-        let pressed_button = self.pressed_buttons.iter().enumerate().rev().find(|(_, pressed_button)| {
-            pressed_button.button_type == button_type
-                && pressed_button.controller_track_offset == controller_track_offset
-        });
-
-        // We only use if let instead of unwrap to not crash when first event is button release
-        if let Some((index, _)) = pressed_button {
-            self.pressed_buttons.remove(index);
-        }
-    }
-
-    pub fn modifier(&self, controller_track_offset: u8, button_type: ButtonType) -> Option<ButtonType> {
-        self.pressed_buttons.iter()
-            .filter(|pressed_button| {
-                pressed_button.button_type != button_type
-                    && pressed_button.controller_track_offset == controller_track_offset
-            })
-            .next()
-            .and_then(|pressed_button| Some(pressed_button.button_type))
-    }
-
-    pub fn global_modifier(&self, button_type: ButtonType) -> Option<&ButtonPress> {
-        self.pressed_buttons.iter()
-            .filter(|pressed_button| pressed_button.button_type != button_type)
-            .next()
-            .and_then(|pressed_button| Some(pressed_button))
     }
 }

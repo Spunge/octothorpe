@@ -43,6 +43,9 @@ impl Track {
     pub fn phrase(&self, index: u8) -> &Phrase { &self.phrases[index as usize] }
     pub fn phrase_mut(&mut self, index: u8) -> &mut Phrase { &mut self.phrases[index as usize] }
 
+    pub fn timeline(&self) -> &Timeline { &self.timeline }
+    pub fn timeline_mut(&mut self) -> &mut Timeline { &mut self.timeline }
+
     pub fn clone_pattern(&mut self, from: u8, to: u8) {
         self.patterns[to as usize] = self.patterns[from as usize].clone();
     }
