@@ -58,14 +58,31 @@ impl Surface {
         }
     }
 
-    pub fn switch_view(&mut self, view: View) { 
-        self.view = view;
-    }
-
+    pub fn switch_view(&mut self, view: View) { self.view = view }
     pub fn show_track(&mut self, index: u8) { self.track_shown = index; }
     pub fn track_shown(&self) -> usize { self.track_shown as usize }
     pub fn show_sequence(&mut self, index: u8) { self.sequence_shown = index; }
     pub fn sequence_shown(&self) -> usize { self.sequence_shown as usize }
+
+    pub fn process_display_input(&mut self, display: &mut impl Display, display_offset: u8, display_width: u8, event: &InputEvent, memory: &mut Memory) {
+        let display_range = display_offset .. (display_offset + display_width);
+
+        match event.event_type {
+            InputEventType::ButtonPressed(button_type) => {
+                let modifier = memory.buttons.modifier(button_type);
+
+                match button_type {
+                    // TODO - button offset & width
+                    ButtonType::Grid(x, y) => {
+                        if display_range.contains(&x) {
+                        }
+                    }
+                    _ => (),
+                }
+            },
+            _ => (),
+        }
+    }
 
     pub fn process_midi_input(&mut self, cycle: &ProcessCycle, controllers: &mut Vec<APC>, memory: &mut Memory, sequencer: &mut Sequencer, mixer: &mut Mixer) {
         controllers.iter_mut()
