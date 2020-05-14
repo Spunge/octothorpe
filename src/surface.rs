@@ -90,17 +90,17 @@ impl Surface {
 
                         match self.track_view {
                             TrackView::Split => {
-                                self.phrase_display.process_inputevent(&event, 0, 8, memory, track, track_index);
-                                self.pattern_display.process_inputevent(&event, 8, 8, memory, track, track_index);
+                                self.phrase_display.process_inputevent(&event, 0..8, 0, memory, track, track_index);
+                                self.pattern_display.process_inputevent(&event, 9..16, 8, memory, track, track_index);
                             },
                             TrackView::Pattern => {
-                                self.pattern_display.process_inputevent(&event, 0, 16, memory, track, track_index);
+                                self.pattern_display.process_inputevent(&event, 0..16, 0, memory, track, track_index);
                             },
                             TrackView::Phrase => {
-                                self.phrase_display.process_inputevent(&event, 0, 16, memory, track, track_index);
+                                self.phrase_display.process_inputevent(&event, 0..16, 0, memory, track, track_index);
                             },
                             TrackView::Timeline => {
-                                self.timeline_display.process_inputevent(&event, 0, 16, memory, track, track_index);
+                                self.timeline_display.process_inputevent(&event, 0..16, 0, memory, track, track_index);
                             },
                         };
                     },
@@ -111,7 +111,40 @@ impl Surface {
             });
     }
 
-    pub fn output_midi(&mut self, cycle: &ProcessCycle, controllers: &Vec<APC>, sequencer: &Sequencer) {
-    
+    pub fn output_midi(&mut self, cycle: &ProcessCycle, controllers: &mut Vec<APC>, memory: &Memory, sequencer: &Sequencer) {
+        controllers.iter_mut().for_each(|controller| {
+            match self.view {
+                View::Track => {
+                    let track_index = self.track_shown();
+                    let track = sequencer.track(track_index);
+
+                    match self.track_view {
+                        TrackView::Split => {
+                            if controller.button_offset_x == 8 {
+                                controller.draw_display(&self.pattern_display, 0, 8, memory, track, track_index);
+                            } else {
+                                controller.draw_display(&self.phrase_display, 0, 8, memory, track, track_index);
+                            }
+                            //self.phrase_display.process_inputevent(&event, 0, 8, memory, track, track_index);
+                            //self.pattern_display.process_inputevent(&event, 8, 8, memory, track, track_index);
+                        },
+                        TrackView::Pattern => {
+                            //self.pattern_display.process_inputevent(&event, 0, 16, memory, track, track_index);
+                        },
+                        TrackView::Phrase => {
+                            //self.phrase_display.process_inputevent(&event, 0, 16, memory, track, track_index);
+                        },
+                        TrackView::Timeline => {
+                            //self.timeline_display.process_inputevent(&event, 0, 16, memory, track, track_index);
+                        },
+                    };
+                },
+                View::Sequence => {
+
+                }
+            }
+
+            controller.output_midi(cycle);
+        })
     }
 }

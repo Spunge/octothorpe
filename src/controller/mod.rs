@@ -12,6 +12,9 @@ use super::surface::*;
 use super::port::MidiOut;
 use super::mixer::*;
 use super::TimebaseHandler;
+use super::display::*;
+use super::memory::*;
+use super::track::*;
 use super::events::*;
 use input::*;
 use lights::*;
@@ -33,8 +36,8 @@ pub struct APC {
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
 
-    button_offset_x: u8,
-    button_offset_y: u8,
+    pub button_offset_x: u8,
+    pub button_offset_y: u8,
     controller_input: ControllerInput,
 
     identified_cycles: u8,
@@ -119,6 +122,80 @@ impl APC {
             self.identified_cycles = self.identified_cycles + 1;
         } else {
             self.is_identified = true;
+        }
+    }
+
+    /*
+     * Draw loopable display
+     */
+    pub fn draw_display(&mut self, display: &impl Display, button_offset_x: u8, grid_width: u8, memory: &Memory, track: &Track, track_index: usize) {
+        let grid_stop = display.parameters().offset_x() + display.parameters().ticks_in_grid(grid_width);
+        let ticks_per_button = display.parameters().ticks_per_button() as i32;
+        let loopable = display.loopable(track, track_index);
+
+        // Draw main grid
+        loopable.events().iter()
+            .filter(|event| { 
+                let grid_contains_event = event.start() < grid_stop 
+                    && (event.stop().is_none() || event.stop().unwrap() > display.parameters().offset_x());
+
+                grid_contains_event || event.is_looping()
+            })
+            .for_each(|event| {
+                // Get buttons from event ticks
+                let max_button = self.grid.width() as i32;
+                let start_button = (event.start() as i32 - display.parameters().offset_x() as i32) / ticks_per_button;
+                let stop_button = if event.stop().is_none() { 
+                    start_button + 1
+                } else { 
+                    // Could be event is to short for 1 button, in that case, draw 1 button
+                    // TODO
+                    (event.stop().unwrap() as i32 - display.parameters().offset_x() as i32) / ticks_per_button
+                };
+
+                // Flip grid around to show higher notes higher on the grid (for patterns this does not matter)
+                let row = event.row(display.parameters().offset_y());
+
+                // Always draw first button head
+                self.grid.try_draw(start_button, row, Self::ledcolor_to_int(&display.parameters().head_color()));
+
+                // Draw tail depending on wether this is looping note
+                let tails = if stop_button >= start_button {
+                    vec![(start_button + 1) .. stop_button]
+                } else {
+                    vec![(start_button + 1) .. max_button, 0 .. stop_button]
+                };
+
+                tails.into_iter().for_each(|mut x_range| {
+                    for x in x_range {
+                        self.grid.try_draw(x, row, Self::ledcolor_to_int(&display.parameters().tail_color())) 
+                    }
+                })
+            });
+
+        // pattern length selector
+        if loopable.has_explicit_length() {
+            for index in 0 .. loopable.length_factor() {
+                self.activator.draw(index as u8, 1);
+            }
+        }
+    }
+
+    pub fn output_midi(&mut self, cycle: &ProcessCycle) {
+        let mut messages = vec![];
+
+        messages.append(&mut self.grid.output_messages(0));
+        messages.append(&mut self.activator.output_messages(0));
+
+        // from this function
+        self.output.write_messages(cycle.scope, &mut messages);
+    }
+
+    fn ledcolor_to_int(color: &LedColor) -> u8 {
+        match color {
+            LedColor::Red => 3,
+            LedColor::Orange => 5,
+            LedColor::Green => 1,
         }
     }
 }

@@ -7,6 +7,11 @@ pub trait Loopable {
     type Event: LoopableEvent;
 
     fn length(&self) -> u32;
+    fn minimum_length() -> u32;
+    fn length_factor(&self) -> u32 {
+        self.length() / Self::minimum_length()
+    }
+    fn has_explicit_length(&self) -> bool { false }
     fn events(&self) -> &Vec<Self::Event>;
     fn events_mut(&mut self) -> &mut Vec<Self::Event>;
     fn add_default_event(&mut self, tick_range: TickRange, y: u8);
@@ -99,6 +104,8 @@ pub struct Timeline {
 impl Loopable for Timeline {
     type Event = LoopablePhraseEvent;
 
+    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4 * 4 }
+
     // Get max stop tick & add some padding
     fn length(&self) -> u32 { 
         let max_stop_tick = self.phrase_events.iter()
@@ -107,9 +114,9 @@ impl Loopable for Timeline {
             .max();
 
         if max_stop_tick.is_some() {
-            max_stop_tick.unwrap() + Phrase::default_length() * 4
+            max_stop_tick.unwrap() + Phrase::minimum_length() * 4
         } else {
-            Phrase::default_length() * 8
+            Phrase::minimum_length() * 8
         }
     } 
 
@@ -145,6 +152,8 @@ impl Loopable for Phrase {
     type Event = LoopablePatternEvent;
 
     fn length(&self) -> u32 { self.length } 
+    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4 }
+    fn has_explicit_length(&self) -> bool { true }
     fn events(&self) -> &Vec<Self::Event> { &self.pattern_events }
     fn events_mut(&mut self) -> &mut Vec<Self::Event> { &mut self.pattern_events }
 
@@ -159,11 +168,10 @@ impl Loopable for Phrase {
 
 impl Phrase {
     pub fn new() -> Self {
-        Phrase { length: Self::default_length(), pattern_events: vec![] }
+        Phrase { length: Self::minimum_length(), pattern_events: vec![] }
     }
 
     // Default phrase length = 4 bars
-    pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4 }
     pub fn set_length(&mut self, length: u32) { 
         self.length = length; 
 
@@ -191,6 +199,8 @@ pub struct Pattern {
 
 impl Loopable for Pattern {
     type Event = LoopableNoteEvent;
+
+    fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 }
 
     // Pattern will adjust it's length based on the maximum tick it contains
     fn length(&self) -> u32 {
@@ -221,17 +231,15 @@ impl Loopable for Pattern {
 
         self.add_complete_event(event);
     }
+
+    fn has_explicit_length(&self) -> bool {
+        self.length.is_some()
+    }
 }
 
 impl Pattern {
-    pub fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 }
-
     pub fn new() -> Self {
         Pattern { note_events: vec![], length: None }
-    }
-
-    pub fn has_explicit_length(&self) -> bool {
-        self.length.is_some()
     }
 
     pub fn unset_length(&mut self) {

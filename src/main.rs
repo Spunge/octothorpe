@@ -183,7 +183,7 @@ impl jack::ProcessHandler for ProcessHandler {
         self.mixer.output_midi(&cycle);
 
         if ready {
-            self.surface.output_midi(&cycle, &self.controllers, &self.sequencer);
+            self.surface.output_midi(&cycle, &mut self.controllers, &self.memory, &self.sequencer);
         }
 
         jack::Control::Continue

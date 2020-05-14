@@ -20,7 +20,7 @@ pub enum ButtonType {
     Down,
     Right,
     Left,
-    Master,
+    Master(u8),
     Unknown,
 }
 
@@ -35,8 +35,7 @@ pub enum FaderType {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum KnobType {
     Effect(u8),
-    Left,
-    Right,
+    Move(u8),
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -56,35 +55,6 @@ pub struct InputEvent {
     pub event_type: InputEventType,
 }
 
-impl ButtonType {
-    fn new(channel: u8, note: u8) -> Self {
-        match note {
-            0x5B => ButtonType::Play,
-            0x5C => ButtonType::Stop,
-            0x33 => ButtonType::Track(channel),
-            0x3F => ButtonType::Quantization,
-            // These used to be sequence buttons, but will now be more control groups for plugin parameters
-            //0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
-            // Side grid is turned upside down as we draw the phrases upside down as we draw notes
-            // updside down due to lower midi nodes having lower numbers, therefore the 4 -
-            0x52 ..= 0x56 => ButtonType::Side(4 - (note - 0x52)),
-            0x51 => ButtonType::Shift,
-            0x50 => ButtonType::Master,
-            // Grid should add notes & add phrases
-            0x35 ..= 0x39 => ButtonType::Grid(channel, 4 - (note - 0x35)),
-            0x5E => ButtonType::Up,
-            0x5F => ButtonType::Down,
-            0x60 => ButtonType::Right,
-            0x61 => ButtonType::Left,
-            0x62 => ButtonType::Shift,
-            0x30 => ButtonType::Arm(channel),
-            0x31 => ButtonType::Solo(channel),
-            0x32 => ButtonType::Activator(channel),
-            _ => ButtonType::Unknown,
-        }
-    }
-}
-
 pub enum ControllerInput {
     APC40,
     APC20,
@@ -98,6 +68,38 @@ impl ControllerInput {
         }
     }
 
+    fn button_type(&self, channel: u8, note: u8) -> ButtonType {
+         match note {
+            0x5B => ButtonType::Play,
+            0x5C => ButtonType::Stop,
+            0x33 => ButtonType::Track(channel),
+            0x3F => ButtonType::Quantization,
+            // These used to be sequence buttons, but will now be more control groups for plugin parameters
+            //0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
+            // Side grid is turned upside down as we draw the phrases upside down as we draw notes
+            // updside down due to lower midi nodes having lower numbers, therefore the 4 -
+            0x52 ..= 0x56 => ButtonType::Side(4 - (note - 0x52)),
+            0x51 => ButtonType::Shift,
+            0x50 => {
+                match self {
+                    ControllerInput::APC20 => ButtonType::Master(0),
+                    ControllerInput::APC40 => ButtonType::Master(1),
+                }
+            },
+            // Grid should add notes & add phrases
+            0x35 ..= 0x39 => ButtonType::Grid(channel, 4 - (note - 0x35)),
+            0x5E => ButtonType::Up,
+            0x5F => ButtonType::Down,
+            0x60 => ButtonType::Right,
+            0x61 => ButtonType::Left,
+            0x62 => ButtonType::Shift,
+            0x30 => ButtonType::Arm(channel),
+            0x31 => ButtonType::Solo(channel),
+            0x32 => ButtonType::Activator(channel),
+            _ => ButtonType::Unknown,
+        }
+    }
+
     fn bytes_to_input_event_type(&self, bytes: &[u8], button_offset_x: u8, button_offset_y: u8) -> InputEventType {
         match bytes[0] {
             0xF0 => {
@@ -108,8 +110,8 @@ impl ControllerInput {
                     InputEventType::Unknown
                 }
             },
-            0x90 ..= 0x9F => InputEventType::ButtonPressed(ButtonType::new(bytes[0] - 0x90 + button_offset_x, bytes[1] + button_offset_y)),
-            0x80 ..= 0x8F => InputEventType::ButtonReleased(ButtonType::new(bytes[0] - 0x80 + button_offset_x, bytes[1] + button_offset_y)),
+            0x90 ..= 0x9F => InputEventType::ButtonPressed(self.button_type(bytes[0] - 0x90 + button_offset_x, bytes[1] + button_offset_y)),
+            0x80 ..= 0x8F => InputEventType::ButtonReleased(self.button_type(bytes[0] - 0x80 + button_offset_x, bytes[1] + button_offset_y)),
             0xB0 ..= 0xB8 => self.cc_to_input_event_type(bytes, button_offset_x, button_offset_y),
             _ => InputEventType::Unknown,
         }
@@ -137,8 +139,8 @@ impl ControllerInput {
                 let delta = (bytes[2] as i8).rotate_left(1) / 2;
 
                 match self {
-                    ControllerInput::APC20 => InputEventType::DeltaKnobTurned { delta, knob_type: KnobType::Left },
-                    ControllerInput::APC40 => InputEventType::DeltaKnobTurned { delta, knob_type: KnobType::Right },
+                    ControllerInput::APC20 => InputEventType::DeltaKnobTurned { delta, knob_type: KnobType::Move(0) },
+                    ControllerInput::APC40 => InputEventType::DeltaKnobTurned { delta, knob_type: KnobType::Move(1) },
                 }
             },
             _ => InputEventType::Unknown,

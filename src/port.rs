@@ -28,11 +28,19 @@ impl MidiOut {
      * Sort & output messages to jack
      */
     pub fn write_messages(&mut self, scope: &jack::ProcessScope, messages: &mut Vec<TimedMessage>) {
+        let mut writer = self.port.writer(scope);
+
         // Sort messages based on time in timed message as jack will complain about unordered
         // messages
         messages.sort();
         messages.drain(0..).for_each(|message| { 
-            self.write_message(scope, message);
+            match writer.write(&message.to_raw_midi()) {
+                Err(e) => {
+                    println!("Error: {}", e);
+                    println!("{:?}\n", message);
+                },
+                Ok(_) => (),
+            }
         });
     }
 }

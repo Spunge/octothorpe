@@ -5,6 +5,7 @@ use super::loopable::*;
 use super::track::*;
 use super::memory::*;
 use super::TickRange;
+use std::ops::Range;
 
 pub enum LedColor {
     Green,
@@ -91,8 +92,9 @@ pub trait Display {
     fn parameters(&self) -> &DisplayParameters;
     fn parameters_mut(&mut self) -> &mut DisplayParameters;
     fn loopable_mut<'a>(&self, track: &'a mut Track, track_index: usize) -> &'a mut Self::Loopable;
+    fn loopable<'a>(&self, track: &'a Track, track_index: usize) -> &'a Self::Loopable;
 
-    fn process_inputevent(&mut self, event: &InputEvent, button_offset_x: u8, grid_width: u8, memory: &mut Memory, track: &mut Track, track_index: usize) {
+    fn process_inputevent(&mut self, event: &InputEvent, grid_x_range: Range<u8>, grid_offset_x: u8, memory: &mut Memory, track: &mut Track, track_index: usize) {
         match event.event_type {
             InputEventType::ButtonPressed(button_type) => {
                 let modifier = memory.buttons.modifier(button_type);
@@ -144,6 +146,9 @@ impl Display for PatternDisplay {
     fn loopable_mut<'a>(&self, track: &'a mut Track, track_index: usize) -> &'a mut Self::Loopable { 
         track.pattern_mut(self.shown[track_index])
     }
+    fn loopable<'a>(&self, track: &'a Track, track_index: usize) -> &'a Self::Loopable {
+        track.pattern(self.shown[track_index])
+    }
 }
 impl PatternDisplay {
     pub fn shown_pattern(&self, track_index: usize) -> u8 { self.shown[track_index] }
@@ -161,6 +166,9 @@ impl Display for PhraseDisplay {
     fn loopable_mut<'a>(&self, track: &'a mut Track, track_index: usize) -> &'a mut Self::Loopable { 
         track.phrase_mut(self.shown[track_index])
     }
+    fn loopable<'a>(&self, track: &'a Track, track_index: usize) -> &'a Self::Loopable {
+        track.phrase(self.shown[track_index])
+    }
 }
 impl PhraseDisplay {
     pub fn shown_phrase(&self, track_index: usize) -> u8 { self.shown[track_index] }
@@ -176,6 +184,9 @@ impl Display for TimelineDisplay {
     fn parameters_mut(&mut self) -> &mut DisplayParameters { &mut self.parameters }
     fn loopable_mut<'a>(&self, track: &'a mut Track, _track_index: usize) -> &'a mut Self::Loopable { 
         track.timeline_mut()
+    }
+    fn loopable<'a>(&self, track: &'a Track, track_index: usize) -> &'a Self::Loopable {
+        track.timeline()
     }
 }
 
