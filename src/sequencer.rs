@@ -19,6 +19,7 @@ impl Sequencer {
     pub fn new(client: &jack::Client) -> Self {
         // Build tracks array, shame there's no way to do this elegantly without a macro as far as i can tell
         let tracks = [
+            Track::new(client, 0),
             Track::new(client, 1),
             Track::new(client, 2),
             Track::new(client, 3),
@@ -34,7 +35,6 @@ impl Sequencer {
             Track::new(client, 13),
             Track::new(client, 14),
             Track::new(client, 15),
-            Track::new(client, 16),
         ];
 
         // Build sequence we can trigger

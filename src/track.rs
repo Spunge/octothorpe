@@ -15,6 +15,7 @@ pub struct Track {
 
     //knob_values: [u8; 128],
 
+    id: u8,
     output: MidiOut,
 }
 
@@ -33,6 +34,7 @@ impl Track {
 
             playing_notes: vec![],
 
+            id,
             output: MidiOut::new(output),
         }
     }
@@ -58,7 +60,7 @@ impl Track {
     // Start all notes in playing notes array. Used when starting mid-track
     pub fn start_playing_notes(&mut self, cycle: &ProcessCycle) {
         let mut messages = self.playing_notes.iter()
-            .map(|note| TimedMessage::new(0, Message::Note([0x90, note.note, note.start_velocity])))
+            .map(|note| TimedMessage::new(0, Message::Note([0x90 + self.id, note.note, note.start_velocity])))
             .collect();
 
         self.output.write_midi(cycle.scope, &mut messages);
@@ -67,7 +69,7 @@ impl Track {
     // Stop playing notes, used when stopping mid-track
     pub fn stop_playing_notes(&mut self, cycle: &ProcessCycle) {
         let mut messages = self.playing_notes.iter()
-            .map(|note| TimedMessage::new(0, Message::Note([0x80, note.note, note.stop_velocity])))
+            .map(|note| TimedMessage::new(0, Message::Note([0x80 + self.id, note.note, note.stop_velocity])))
             .collect();
 
         self.output.write_midi(cycle.scope, &mut messages);
@@ -76,12 +78,13 @@ impl Track {
     pub fn output_midi(&mut self, cycle: &ProcessCycle, starting_notes: Vec<PlayingNoteEvent>) {
         // Always play note off messages
         let mut messages = vec![];
+        let id = self.id;
 
         self.playing_notes.retain(|note| {
             // Play & remove notes that fall in cycle
             if cycle.tick_range.contains(note.stop) {
                 let frame = cycle.tick_to_frame(note.stop);
-                messages.push(TimedMessage::new(frame, Message::Note([0x80, note.note, note.stop_velocity])));
+                messages.push(TimedMessage::new(frame, Message::Note([0x80 + id, note.note, note.stop_velocity])));
                 false
             } else {
                 true
@@ -92,7 +95,7 @@ impl Track {
         let note_on = starting_notes.iter()
             .map(|note| {
                 let frame = cycle.tick_to_frame(note.start);
-                TimedMessage::new(frame, Message::Note([0x90, note.note, note.start_velocity]))
+                TimedMessage::new(frame, Message::Note([0x90 + self.id, note.note, note.start_velocity]))
             });
 
         messages.extend(note_on);
