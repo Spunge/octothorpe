@@ -5,7 +5,6 @@ extern crate matches;
 
 extern crate jack;
 use jack_sys as j;
-use std::thread;
 
 pub mod controller;
 pub mod message;
@@ -20,6 +19,7 @@ pub mod mixer;
 pub mod events;
 pub mod instrument;
 
+use std::io;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
 use sequencer::Sequencer;
@@ -188,6 +188,10 @@ fn main() {
         .activate_async((), processhandler, timebasehandler)
         .unwrap();
 
-    thread::park();
+    // Wait for user to input string
+    loop {
+        let mut user_input = String::new();
+        io::stdin().read_line(&mut user_input).ok();
+    }
 }
 
