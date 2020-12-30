@@ -1,9 +1,9 @@
 
-use super::track::Track;
+use super::channel::Channel;
 use super::loopable::*;
 
 pub struct Sequence {
-    // Phrase that's playing for track, array index = track
+    // Phrase that's playing for channel, array index = channel
     phrases: [Option<u8>; 16],
     active: [bool; 16],
 }
@@ -20,35 +20,35 @@ impl Sequence {
         &self.phrases
     }
 
-    pub fn get_phrase(&self, track: usize) -> Option<u8> {
-        self.phrases[track]
+    pub fn get_phrase(&self, channel: usize) -> Option<u8> {
+        self.phrases[channel]
     }
 
     pub fn set_phrases(&mut self, phrase: u8) {
         self.phrases = [Some(phrase); 16];
     }
 
-    pub fn set_phrase(&mut self, track: usize, phrase: u8) {
-        self.phrases[track] = Some(phrase);
+    pub fn set_phrase(&mut self, channel: usize, phrase: u8) {
+        self.phrases[channel] = Some(phrase);
     }
 
-    pub fn unset_phrase(&mut self, track: usize) {
-        self.phrases[track] = None;
+    pub fn unset_phrase(&mut self, channel: usize) {
+        self.phrases[channel] = None;
     }
 
-    pub fn active_phrase(&self, track: usize) -> Option<u8> {
-        self.phrases[track].and_then(|phrase| if self.active[track] { Some(phrase) } else { None })
+    pub fn active_phrase(&self, channel: usize) -> Option<u8> {
+        self.phrases[channel].and_then(|phrase| if self.active[channel] { Some(phrase) } else { None })
     }
 
-    pub fn toggle_active(&mut self, track: usize) {
-        self.active[track as usize] = ! self.active[track as usize];
+    pub fn toggle_active(&mut self, channel: usize) {
+        self.active[channel as usize] = ! self.active[channel as usize];
     }
 
-    pub fn length(&self, tracks: &[Track]) -> u32 {
+    pub fn length(&self, channels: &[Channel]) -> u32 {
         self.phrases().iter().enumerate()
-            .filter_map(|(track_index, phrase_option)| {
+            .filter_map(|(channel_index, phrase_option)| {
                 phrase_option.and_then(|phrase_index| {
-                    Some(tracks[track_index].phrases[phrase_index as usize].length())
+                    Some(channels[channel_index].phrases[phrase_index as usize].length())
                 })
             })
             .max()

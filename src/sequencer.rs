@@ -1,13 +1,13 @@
 
 use super::TickRange;
 use super::cycle::*;
-use super::track::Track;
+use super::channel::Channel;
 use super::sequence::Sequence;
 use super::loopable::*;
 use super::events::*;
 
 pub struct Sequencer {
-    pub tracks: [Track; 16],
+    pub channels: [Channel; 16],
     pub sequences: [Sequence; 5],
 
     pub sequence_playing: usize,
@@ -17,24 +17,24 @@ pub struct Sequencer {
 
 impl Sequencer {
     pub fn new(client: &jack::Client) -> Self {
-        // Build tracks array, shame there's no way to do this elegantly without a macro as far as i can tell
-        let tracks = [
-            Track::new(client, 0),
-            Track::new(client, 1),
-            Track::new(client, 2),
-            Track::new(client, 3),
-            Track::new(client, 4),
-            Track::new(client, 5),
-            Track::new(client, 6),
-            Track::new(client, 7),
-            Track::new(client, 8),
-            Track::new(client, 9),
-            Track::new(client, 10),
-            Track::new(client, 11),
-            Track::new(client, 12),
-            Track::new(client, 13),
-            Track::new(client, 14),
-            Track::new(client, 15),
+        // Build channels array, shame there's no way to do this elegantly without a macro as far as i can tell
+        let channels = [
+            Channel::new(client, 0),
+            Channel::new(client, 1),
+            Channel::new(client, 2),
+            Channel::new(client, 3),
+            Channel::new(client, 4),
+            Channel::new(client, 5),
+            Channel::new(client, 6),
+            Channel::new(client, 7),
+            Channel::new(client, 8),
+            Channel::new(client, 9),
+            Channel::new(client, 10),
+            Channel::new(client, 11),
+            Channel::new(client, 12),
+            Channel::new(client, 13),
+            Channel::new(client, 14),
+            Channel::new(client, 15),
         ];
 
         // Build sequence we can trigger
@@ -47,7 +47,7 @@ impl Sequencer {
         ];
 
         Sequencer {
-            tracks,
+            channels,
             sequences,
 
             sequence_playing: 0,
@@ -56,12 +56,12 @@ impl Sequencer {
         }
     }
 
-    pub fn track_mut(&mut self, index: usize) -> &mut Track {
-        &mut self.tracks[index]
+    pub fn channel_mut(&mut self, index: usize) -> &mut Channel {
+        &mut self.channels[index]
     }
 
-    pub fn track(&self, index: usize) -> &Track {
-        &self.tracks[index]
+    pub fn channel(&self, index: usize) -> &Channel {
+        &self.channels[index]
     }
 
     pub fn get_sequence(&mut self, index: usize) -> &mut Sequence {
@@ -69,9 +69,9 @@ impl Sequencer {
     }
 
     pub fn start(&mut self, cycle: &ProcessCycle) {
-        // Start playing notes, as it could be we halted mid track
-        self.tracks.iter_mut().for_each(|track| {
-            track.start_playing_notes(cycle);
+        // Start playing notes, as it could be we halted mid channel
+        self.channels.iter_mut().for_each(|channel| {
+            channel.start_playing_notes(cycle);
         });
 
         cycle.client.transport_start();
@@ -80,9 +80,9 @@ impl Sequencer {
     pub fn stop(&mut self, cycle: &ProcessCycle) {
         cycle.client.transport_stop();
 
-        // Output start of playing notes, as it could be we're starting mid track
-        self.tracks.iter_mut().for_each(|track| {
-            track.stop_playing_notes(cycle);
+        // Output start of playing notes, as it could be we're starting mid channel
+        self.channels.iter_mut().for_each(|channel| {
+            channel.stop_playing_notes(cycle);
         });
     }
 
@@ -91,40 +91,40 @@ impl Sequencer {
         cycle.client.transport_reposition(jack::Position::default());
 
         // Clear playing notes
-        self.tracks.iter_mut().for_each(|track| {
-            track.clear_playing_notes();
+        self.channels.iter_mut().for_each(|channel| {
+            channel.clear_playing_notes();
         });
     }
 
     pub fn reset_timeline(&mut self) {
-        self.tracks.iter_mut().for_each(|track| {
-            track.timeline.clear_events();
+        self.channels.iter_mut().for_each(|channel| {
+            channel.timeline.clear_events();
         });
     }
 
     /*
-     * Add playing phrases in sequence to respective track timelines
+     * Add playing phrases in sequence to respective channel timelines
      */
     pub fn play_sequence(&mut self, start: u32, sequence_index: usize) {
         let sequence = &self.sequences[sequence_index];
-        let sequence_length = sequence.length(&self.tracks);
+        let sequence_length = sequence.length(&self.channels);
         let stop = start + sequence_length;
 
         let active_phrases: Vec<(usize, u8)> = sequence.phrases().iter().enumerate()
             .filter(|(_, phrase_option)| phrase_option.is_some())
-            .map(|(track_index, phrase_option)| (track_index, phrase_option.unwrap()))
+            .map(|(channel_index, phrase_option)| (channel_index, phrase_option.unwrap()))
             .collect();
         
-        for (track_index, phrase_index) in active_phrases {
+        for (channel_index, phrase_index) in active_phrases {
             let mut phrase_start = start;
-            let phrase_length = self.track(track_index).phrase(phrase_index).length();
+            let phrase_length = self.channel(channel_index).phrase(phrase_index).length();
 
             // When phrase is smaller than sequence, queue multiple smaller events
             while phrase_start < stop {
                 let phrase_stop = if phrase_start + phrase_length > stop { stop } else { phrase_start + phrase_length };
 
                 let event = LoopablePhraseEvent::new(phrase_start, phrase_stop, phrase_index);
-                self.track_mut(track_index).timeline.add_complete_event(event);
+                self.channel_mut(channel_index).timeline.add_complete_event(event);
 
                 phrase_start += phrase_length;
             }
@@ -134,8 +134,8 @@ impl Sequencer {
 
     // Get tick at which timeline stops
     pub fn get_timeline_end(&self) -> u32 {
-        self.tracks.iter()
-            .map(|track| track.timeline.get_last_stop())
+        self.channels.iter()
+            .map(|channel| channel.timeline.get_last_stop())
             .max()
             .unwrap()
     }
@@ -154,9 +154,9 @@ impl Sequencer {
     }
 
     // Get tick ranges of phrases that are playing in current cycle
-    pub fn playing_phrases(&self, track_index: usize, tick_range: &TickRange) -> Vec<(TickRange, u32, u8)> {
+    pub fn playing_phrases(&self, channel_index: usize, tick_range: &TickRange) -> Vec<(TickRange, u32, u8)> {
         // Get phrase events that fall in tick_range
-        self.track(track_index).timeline.events().iter()
+        self.channel(channel_index).timeline.events().iter()
             .filter(|event| event.stop().is_some())
             .filter(|event| tick_range.overlaps(&TickRange::new(event.start(), event.stop().unwrap())))
             // Only play start or only play end when they fall within tick_range
@@ -173,9 +173,9 @@ impl Sequencer {
     }
 
     // Get tick ranges of patterns that are playing in tick_range
-    pub fn playing_patterns(&self, tick_range: &TickRange, track_index: usize, phrase_index: u8, sequence_start: u32) -> Vec<(u8, u32, TickRange, u32, u32)> {
-        let track = &self.tracks[track_index];
-        let phrase = track.phrase(phrase_index);
+    pub fn playing_patterns(&self, tick_range: &TickRange, channel_index: usize, phrase_index: u8, sequence_start: u32) -> Vec<(u8, u32, TickRange, u32, u32)> {
+        let channel = &self.channels[channel_index];
+        let phrase = channel.phrase(phrase_index);
 
         // Get range relative to sequence
         let sequence_range = TickRange::new(tick_range.start - sequence_start, tick_range.stop - sequence_start);
@@ -220,17 +220,17 @@ impl Sequencer {
             return
         }
 
-        for track_index in 0 .. self.tracks.len() {
-            let playing_phrases = self.playing_phrases(track_index, &cycle.tick_range);
+        for channel_index in 0 .. self.channels.len() {
+            let playing_phrases = self.playing_phrases(channel_index, &cycle.tick_range);
 
             //let mut starting_notes = vec![];
             let notes: Vec<PlayingNoteEvent> = playing_phrases.into_iter()
                 .flat_map(|(tick_range, sequence_start, phrase_index)| {
                     // TODO - Make the switch to first getting pattern events, then converting
                     // those to notes
-                    self.playing_patterns(&tick_range, track_index, phrase_index, sequence_start).into_iter()
+                    self.playing_patterns(&tick_range, channel_index, phrase_index, sequence_start).into_iter()
                         .flat_map(|(pattern_index, absolute_start, relative_range, pattern_event_length, absolute_offset)| {
-                            let pattern = self.tracks[track_index].pattern(pattern_index);
+                            let pattern = self.channels[channel_index].pattern(pattern_index);
 
                             // Get pattern based starting notes, and add offset based on phrase
                             // iteration & sequence start
@@ -244,7 +244,7 @@ impl Sequencer {
                 })
                 .collect();
 
-            self.tracks[track_index].output_midi(cycle, notes);
+            self.channels[channel_index].output_midi(cycle, notes);
         }
     }
 }

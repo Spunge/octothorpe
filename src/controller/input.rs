@@ -8,7 +8,7 @@ pub enum ButtonType {
     Grid(u8, u8),
     Side(u8),
     Indicator(u8),
-    Track(u8),
+    Channel(u8),
     Activator(u8),
     Solo(u8),
     Arm(u8),
@@ -26,7 +26,7 @@ pub enum ButtonType {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum FaderType {
-    Track(u8),
+    Channel(u8),
     CrossFade,
     Master,
 }
@@ -57,7 +57,7 @@ impl ButtonType {
         match note {
             0x5B => ButtonType::Play,
             0x5C => ButtonType::Stop,
-            0x33 => ButtonType::Track(channel),
+            0x33 => ButtonType::Channel(channel),
             0x3F => ButtonType::Quantization,
             // These used to be sequence buttons, but will now be more control groups for plugin parameters
             //0x57 ..= 0x5A => ButtonType::Sequence(note - 0x57),
@@ -106,7 +106,7 @@ impl InputEventType {
 
                         Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect(index) }
                     },
-                    0x7 => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Track(bytes[0] - 0xB0) },
+                    0x7 => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Channel(bytes[0] - 0xB0) },
                     0xE => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Master },
                     0xF => Self::FaderMoved { value: bytes[2], fader_type: FaderType::CrossFade },
                     0x2F => Self::KnobTurned { value: bytes[2], knob_type: KnobType::Cue },
@@ -135,8 +135,8 @@ impl InputEvent {
         matches!(event_type, InputEventType::ButtonPressed(ButtonType::Activator(_)))
     }
 
-    pub fn is_track_button(event_type: &InputEventType) -> bool {
-        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Track(_)))
+    pub fn is_channel_button(event_type: &InputEventType) -> bool {
+        matches!(event_type, InputEventType::ButtonPressed(ButtonType::Channel(_)))
     }
 
     pub fn is_solo_button(event_type: &InputEventType) -> bool { 

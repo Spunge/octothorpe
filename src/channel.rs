@@ -5,7 +5,7 @@ use super::cycle::*;
 use super::events::*;
 use super::message::*;
 
-pub struct Track {
+pub struct Channel {
     // TODO - these are public as we're testing with premade patterns
     pub patterns: [Pattern; 5],
     pub phrases: [Phrase; 5],
@@ -19,15 +19,15 @@ pub struct Track {
     output: MidiOut,
 }
 
-impl Track {
+impl Channel {
     pub fn new(client: &jack::Client, id: u8) -> Self {
         let patterns = [Pattern::new(), Pattern::new(), Pattern::new(), Pattern::new(), Pattern::new()];
         let phrases = [Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new(), Phrase::new()];
 
         //let input = client.register_port("APC20 in", jack::MidiIn::default()).unwrap();
-        let output = client.register_port(format!("Track {}", id).as_str(), jack::MidiOut::default()).unwrap();
+        let output = client.register_port(format!("channel_{}", id).as_str(), jack::MidiOut::default()).unwrap();
 
-        Track {
+        Channel {
             phrases,
             patterns,
             timeline: Timeline::new(),

@@ -10,7 +10,7 @@ pub mod controller;
 pub mod message;
 pub mod sequencer;
 pub mod cycle;
-pub mod track;
+pub mod channel;
 pub mod loopable;
 pub mod sequence;
 pub mod surface;
@@ -172,11 +172,79 @@ impl jack::ProcessHandler for ProcessHandler {
     }
 }
 
+// Get JACK midi port representations
+fn get_midi_ports(client: &jack::Client, port_flags: jack::PortFlags) -> Vec<jack::Port<jack::Unowned>> {
+    return client
+        .ports(None, Some("midi"), port_flags)
+        .iter()
+        // Strip own ports
+        .filter(|port_name| ! port_name.contains("octothorpe"))
+        // Get jack portSpecs
+        .map(|port_name| client.port_by_name(&port_name).unwrap())
+        .collect();
+}
+
+fn find_port_with_alias<'a>(ports: &'a Vec<jack::Port<jack::Unowned>>, alias_pattern: &str) -> Option<&'a jack::Port<jack::Unowned>> {
+    ports.iter().find(|port| {
+        port.aliases().unwrap().iter().find(|alias| alias.contains(alias_pattern)).is_some()
+    })
+}
+
+// Connect octothorpe to external midi devices
+fn connect_midi_ports(client: &jack::Client) {
+    // For me it seems logical to call ports that read midi from outside "input", 
+    // But jack has other ideas, it calls ports that output midi "output", which is why i switch them here
+    let input_ports = get_midi_ports(client, jack::PortFlags::IS_OUTPUT);
+    let output_ports = get_midi_ports(client, jack::PortFlags::IS_INPUT);
+    
+    // TODO - brevity?
+    if let Some(port) = find_port_with_alias(&input_ports, "APC20") {
+        client.connect_ports_by_name(&port.name().unwrap(), "octothorpe:apc20_in");
+    }
+    if let Some(port) = find_port_with_alias(&output_ports, "APC20") {
+        client.connect_ports_by_name("octothorpe:apc20_out", &port.name().unwrap());
+    }
+    if let Some(port) = find_port_with_alias(&input_ports, "APC40") {
+        client.connect_ports_by_name(&port.name().unwrap(), "octothorpe:apc40_in");
+    }
+    if let Some(port) = find_port_with_alias(&output_ports, "APC40") {
+        client.connect_ports_by_name("octothorpe:apc40_out", &port.name().unwrap());
+    }
+
+    // Get all input ports that are not APC ports
+    let external_input_ports: Vec<&jack::Port<jack::Unowned>> = input_ports
+        .iter()
+        .filter(|port| port.aliases().unwrap().iter().find(|alias| alias.contains("APC")).is_none())
+        .collect();
+    let external_output_ports: Vec<&jack::Port<jack::Unowned>> = output_ports
+        .iter()
+        .filter(|port| port.aliases().unwrap().iter().find(|alias| alias.contains("APC")).is_none())
+        .collect();
+
+    for input_port in external_input_ports {
+        let input_port_name = input_port.name().unwrap();
+        let input_port_num = input_port_name.split("_").last().unwrap();
+
+        for output_port in &external_output_ports {
+            let output_port_name = output_port.name().unwrap();
+            let output_port_num = output_port_name.split("_").last().unwrap();
+
+            if(input_port_num != output_port_num) {
+                println!("connect {:?} to {:?}", input_port_num, output_port_num);
+            }
+        }
+    }
+
+    //for port_name in midi_port_names {
+        //let port = async_client.as_client().port_by_name(&port_name);
+        //println!("{:?}", port);
+    //}
+}
 
 fn main() {
     // Setup client
     let (client, _status) =
-        jack::Client::new("Octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
+        jack::Client::new("octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
     let (timebase_sender, timebase_receiver) = channel();
 
@@ -184,9 +252,12 @@ fn main() {
     let timebasehandler = TimebaseHandler::new(timebase_receiver);
 
     // Activate client
-    let _async_client = client
+    let async_client = client
         .activate_async((), processhandler, timebasehandler)
         .unwrap();
+
+    // Connect Octo to APC's and connect system ports
+    connect_midi_ports(async_client.as_client());
 
     // Wait for user to input string
     loop {
