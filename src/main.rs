@@ -221,6 +221,9 @@ fn connect_midi_ports(client: &jack::Client) {
         .filter(|port| port.aliases().unwrap().iter().find(|alias| alias.contains("APC")).is_none())
         .collect();
 
+    // Connect each input to every output, except the output that has the same number as the input
+    // port. This way we can hook up devices with input & output without sending them the midi
+    // events they output themselves
     for input_port in external_input_ports {
         let input_port_name = input_port.name().unwrap();
         let input_port_num = input_port_name.split("_").last().unwrap();
@@ -230,8 +233,18 @@ fn connect_midi_ports(client: &jack::Client) {
             let output_port_num = output_port_name.split("_").last().unwrap();
 
             if(input_port_num != output_port_num) {
-                println!("connect {:?} to {:?}", input_port_num, output_port_num);
+                println!("connect {:?} to {:?}", input_port_name, output_port_name);
             }
+        }
+    }
+
+    // Hook up every octothorpe channel output to every system output port. We have seperated the
+    // channel outputs so we can have control over what channel gets routed where
+    for num in 0..16 {
+        for output_port in &external_output_ports {
+            let output_port_name = output_port.name().unwrap();
+
+            println!("connect octothorpe:channel_{:?} to {:?}", num, output_port_name);
         }
     }
 
