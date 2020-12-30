@@ -233,7 +233,7 @@ fn connect_midi_ports(client: &jack::Client) {
             let output_port_num = output_port_name.split("_").last().unwrap();
 
             if(input_port_num != output_port_num) {
-                println!("connect {:?} to {:?}", input_port_name, output_port_name);
+                client.connect_ports_by_name(&input_port_name, &output_port_name);
             }
         }
     }
@@ -244,7 +244,7 @@ fn connect_midi_ports(client: &jack::Client) {
         for output_port in &external_output_ports {
             let output_port_name = output_port.name().unwrap();
 
-            println!("connect octothorpe:channel_{:?} to {:?}", num, output_port_name);
+            client.connect_ports_by_name(&format!("octothorpe:channel_{}", num), &output_port_name);
         }
     }
 
