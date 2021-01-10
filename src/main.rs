@@ -132,12 +132,12 @@ pub struct ProcessHandler {
     sequencer: Sequencer,
     surface: Surface,
 
-    notification_receiver: Receiver<jack::PortId>,
+    introduction_receiver: Receiver<(jack::PortId, bool)>,
 }
 
 impl ProcessHandler {
     pub fn new(
-        notification_receiver: Receiver<jack::PortId>,
+        introduction_receiver: Receiver<(jack::PortId, bool)>,
         _timebase_sender: Sender<f64>,
         client: &jack::Client
     ) -> Self {
@@ -148,7 +148,7 @@ impl ProcessHandler {
             mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
             surface: Surface::new(),
-            notification_receiver,
+            introduction_receiver,
         }
     }
 }
@@ -158,13 +158,11 @@ impl jack::ProcessHandler for ProcessHandler {
         // Get something representing this process cycle
         let cycle = ProcessCycle::new(client, scope);
 
-        // TODO - Handle notifications
-        //self.router.process_notifications(&cycle.client);
-        while let result = self.notification_receiver.try_recv() {
+        while let result = self.introduction_receiver.try_recv() {
             match result {
-                Result::Ok(port_id) => {
+                Result::Ok((port_id, is_registered)) => {
                     let port = client.port_by_id(port_id);
-                    println!("{:?}", port);
+                    println!("INTRO {:?}", port);
                 },
                 Result::Err(_) => break,
             }
@@ -207,12 +205,12 @@ fn find_port_with_alias<'a>(ports: &'a Vec<jack::Port<jack::Unowned>>, alias_pat
 }
 
 pub struct NotificationHandler {
-    sender: Sender<jack::PortId>,
+    sender: Sender<(jack::PortId, bool)>,
 }
 
 impl NotificationHandler {
     pub fn new(
-        sender: Sender<jack::PortId>,
+        sender: Sender<(jack::PortId, bool)>,
         //client: &jack::Client
     ) -> Self {
         NotificationHandler { 
@@ -223,9 +221,7 @@ impl NotificationHandler {
 
 impl jack::NotificationHandler for NotificationHandler {
     fn port_registration(&mut self, client: &jack::Client, port_id: jack::PortId, is_registered: bool) {
-        if is_registered  {
-            self.sender.send(port_id);
-        }
+        self.sender.send((port_id, is_registered));
         //let port = client.port_by_id(port_id);
         //println!("{:?}", port);
         //println!("{:?}", is_registered);
@@ -304,12 +300,12 @@ fn connect_midi_ports(client: &jack::Client) {
  * executed from the main thread
  */
 pub struct Router {
-    connection_receive: Receiver<jack::PortId>,
-    introduction_send: Sender<jack::PortId>,
+    connection_receive: Receiver<(jack::PortId, bool)>,
+    introduction_send: Sender<(jack::PortId, bool)>,
 }
 
 impl Router {
-    fn new(connection_receive: Receiver<jack::PortId>, introduction_send: Sender<jack::PortId>) -> Self {
+    fn new(connection_receive: Receiver<(jack::PortId, bool)>, introduction_send: Sender<(jack::PortId, bool)>) -> Self {
         Router { 
             connection_receive,
             introduction_send,
@@ -317,29 +313,76 @@ impl Router {
     }
 
     // Connect a port to it's intended input / output
-    pub fn route(&self, port: jack::Port<jack::Unowned>) {
-        // Is this a octothorpe (our own) port?
-        if port.name().unwrap().split(':').next().unwrap() == "octothorpe" {
-            println!("OWN {:?} {:?}", port.name().unwrap(), port.flags());
+    pub fn connect(&self, client: &jack::Client, port: jack::Port<jack::Unowned>) {
+        // IS_OUTPUT = midi_capture
+        // IS_INPUT = midi_playback
+        let known_ports = vec![
+            // Part of alias, port flags, connect to port
+            ("APC40", jack::PortFlags::IS_OUTPUT, "octothorpe:apc40_in"),
+            ("APC40", jack::PortFlags::IS_INPUT, "octothorpe:apc40_out"),
+            ("APC20", jack::PortFlags::IS_OUTPUT, "octothorpe:apc40_in"),
+            ("APC20", jack::PortFlags::IS_INPUT, "octothorpe:apc40_out"),
+        ];
+
+        for (alias_pattern, flag, target_port_name) in known_ports {
+            let has_alias_with_pattern = port.aliases().unwrap().iter().find(|alias| alias.contains("APC40")).is_some();
+            if has_alias_with_pattern && port.flags().contains(flag) {
+                if flag == jack::PortFlags::IS_INPUT {
+                    client.connect_ports_by_name(target_port_name, &port.name().unwrap());
+                }
+                if flag == jack::PortFlags::IS_OUTPUT {
+                    client.connect_ports_by_name(&port.name().unwrap(), target_port_name);
+                }
+                // TODO - Send introduction
+            }
         }
 
-        // Is this a hardware APC port?
-        if port.aliases().unwrap().iter().find(|alias| alias.contains("APC40")).is_some() {
-            println!("APC40 {:?} {:?}", port.name().unwrap(), port.flags());
+        // TODO - Connect all "unknown" ports (midi interfaces etc)
+
+        /*
+        if port.flags().contains(jack::PortFlags::IS_PHYSICAL) {
+            if port.flags().contains(jack::PortFlags::IS_OUTPUT) {
+                if {
+                    println!("APC40 INPUT {:?} {:?}", port.name().unwrap(), port.flags());
+                } else if port.aliases().unwrap().iter().find(|alias| alias.contains("APC20")).is_some() {
+                    println!("APC20 INPUT {:?} {:?}", port.name().unwrap(), port.flags());
+                } else {
+                    println!("UNKNOWN INPUT {:?} {:?}", port.name().unwrap(), port.flags());
+                }
+            }
+            if port.flags().contains(jack::PortFlags::IS_INPUT) {
+                if port.aliases().unwrap().iter().find(|alias| alias.contains("APC40")).is_some() {
+                    println!("APC40 OUTPUT {:?} {:?}", port.name().unwrap(), port.flags());
+                    //self.introduction_send((port.port_id()))
+                } else if port.aliases().unwrap().iter().find(|alias| alias.contains("APC20")).is_some() {
+                    println!("APC20 OUTPUT {:?} {:?}", port.name().unwrap(), port.flags());
+                } else {
+                    println!("UNKNOWN OUTPUT {:?} {:?}", port.name().unwrap(), port.flags());
+                }
+            }
+
+
+            //client.connect_ports_by_name(port.name().unwrap(), "octothorpe:apc40_in")
         }
-        if port.aliases().unwrap().iter().find(|alias| alias.contains("APC20")).is_some() {
-            println!("APC20 {:?} {:?}", port.name().unwrap(), port.flags());
-        }
+        */
     }
 
     // Start routing, this function halts and waits for notifications of connected midi ports
     pub fn start(&mut self, client: &jack::Client) {
-        while let result = self.connection_receive.try_recv() {
+        // Connect existing ports
+        for port_name in client.ports(None, Some("midi"), jack::PortFlags::IS_PHYSICAL).iter() {
+            if let Some(port) = client.port_by_name(port_name) {
+                self.connect(client, port);
+            }
+        }
+
+        // Wait for notifications about new ports
+        while let result = self.connection_receive.recv() {
             // New port registered
             match result {
-                Result::Ok(port_id) => {
+                Result::Ok((port_id, is_registered)) => {
                     if let Some(port) = client.port_by_id(port_id) {
-                        self.route(port);
+                        self.connect(client, port);
                     }
                 },
                 Result::Err(_) => (),
@@ -356,8 +399,8 @@ fn main() {
         jack::Client::new("octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
     let (timebase_sender, timebase_receiver) = channel();
-    let (introduction_send, introduction_receive): (Sender<jack::PortId>, Receiver<jack::PortId>) = channel();
-    let (connection_send, connection_receive): (Sender<jack::PortId>, Receiver<jack::PortId>) = channel();
+    let (introduction_send, introduction_receive) = channel();
+    let (connection_send, connection_receive) = channel();
 
     let mut router = Router::new(connection_receive, introduction_send);
 
@@ -375,7 +418,7 @@ fn main() {
 
 
     //client.connect_ports_by_name("system:midi_capture_16", "system:midi_playback_16");
-    //while let test = notification_receiver.recv() {
+    //while let test = introduction_receiver.recv() {
         //connect_midi_ports(async_client.as_client());
         //println!("{:?}", test);
     //}
