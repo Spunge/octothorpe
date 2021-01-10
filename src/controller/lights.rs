@@ -11,6 +11,8 @@ pub trait Drawable {
     }
 
     fn output(&mut self) -> Vec<(u8, u8, u8)>;
+
+    fn reset(&mut self);
 }
 
 // 40 boi at the top
@@ -78,6 +80,10 @@ impl Grid {
 }
 
 impl Drawable for Grid {
+    fn reset(&mut self) {
+        self.state = [9; 40];
+    }
+
     fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
@@ -120,6 +126,10 @@ impl Side {
 }
 
 impl Drawable for Side {
+    fn reset(&mut self) {
+        self.state = [9; 5];
+    }
+
     fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
@@ -155,6 +165,10 @@ impl WideRow {
 }
 
 impl Drawable for WideRow {
+    fn reset(&mut self) {
+        self.state = [9; 8];
+    }
+
     fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 
@@ -201,6 +215,10 @@ impl Single {
 }
 
 impl Drawable for Single {
+    fn reset(&mut self) {
+        self.state = 9;
+    }
+
     fn output(&mut self) -> Vec<(u8, u8, u8)> {
         let mut output = vec![];
 

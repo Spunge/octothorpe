@@ -64,6 +64,16 @@ pub trait APC {
     fn activator(&mut self) -> &mut WideRow;
     fn solo(&mut self) -> &mut WideRow;
 
+    fn reset_grids(&mut self) {
+        self.master().reset();
+        self.grid().reset();
+        self.side().reset();
+        self.channel().reset();
+        self.indicator().reset();
+        self.activator().reset();
+        self.solo().reset();
+    }
+
     /*
      * Remove existing events when there's starting events in tick range, otherwise, remove tick
      * range so we can add new event
@@ -304,6 +314,7 @@ pub trait APC {
                     self.set_local_id(local_id);
                     // Make sure we stop inquiring
                     // TODO - Make sure every grid is re-initialized after identifying
+                    self.reset_grids();
                     self.set_identified_cycles(1);
                 },
                 InputEventType::FaderMoved { value, fader_type: FaderType::Channel(index) } => {
