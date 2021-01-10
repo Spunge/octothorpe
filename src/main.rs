@@ -131,10 +131,13 @@ pub struct ProcessHandler {
     mixer: Mixer,
     sequencer: Sequencer,
     surface: Surface,
+
+    notification_receiver: Receiver<jack::PortId>,
 }
 
 impl ProcessHandler {
     pub fn new(
+        notification_receiver: Receiver<jack::PortId>,
         _timebase_sender: Sender<f64>,
         client: &jack::Client
     ) -> Self {
@@ -145,6 +148,7 @@ impl ProcessHandler {
             mixer: Mixer::new(client),
             sequencer: Sequencer::new(client), 
             surface: Surface::new(),
+            notification_receiver,
         }
     }
 }
@@ -153,6 +157,18 @@ impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
         // Get something representing this process cycle
         let cycle = ProcessCycle::new(client, scope);
+
+        // TODO - Handle notifications
+        //self.router.process_notifications(&cycle.client);
+        while let result = self.notification_receiver.try_recv() {
+            match result {
+                Result::Ok(port_id) => {
+                    let port = client.port_by_id(port_id);
+                    println!("{:?}", port);
+                },
+                Result::Err(_) => break,
+            }
+        }
 
         self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
         self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
@@ -190,6 +206,33 @@ fn find_port_with_alias<'a>(ports: &'a Vec<jack::Port<jack::Unowned>>, alias_pat
     })
 }
 
+pub struct NotificationHandler {
+    sender: Sender<jack::PortId>,
+}
+
+impl NotificationHandler {
+    pub fn new(
+        sender: Sender<jack::PortId>,
+        //client: &jack::Client
+    ) -> Self {
+        NotificationHandler { 
+            sender,
+        }
+    }
+}
+
+impl jack::NotificationHandler for NotificationHandler {
+    fn port_registration(&mut self, client: &jack::Client, port_id: jack::PortId, is_registered: bool) {
+        if is_registered  {
+            self.sender.send(port_id);
+        }
+        //let port = client.port_by_id(port_id);
+        //println!("{:?}", port);
+        //println!("{:?}", is_registered);
+    }
+}
+
+
 // Connect octothorpe to external midi devices
 fn connect_midi_ports(client: &jack::Client) {
     // For me it seems logical to call ports that read midi from outside "input", 
@@ -199,15 +242,19 @@ fn connect_midi_ports(client: &jack::Client) {
     
     // TODO - brevity?
     if let Some(port) = find_port_with_alias(&input_ports, "APC20") {
+        println!("connect apc20");
         client.connect_ports_by_name(&port.name().unwrap(), "octothorpe:apc20_in");
     }
     if let Some(port) = find_port_with_alias(&output_ports, "APC20") {
+        println!("connect apc20 outpu");
         client.connect_ports_by_name("octothorpe:apc20_out", &port.name().unwrap());
     }
     if let Some(port) = find_port_with_alias(&input_ports, "APC40") {
+        println!("connect apc40");
         client.connect_ports_by_name(&port.name().unwrap(), "octothorpe:apc40_in");
     }
     if let Some(port) = find_port_with_alias(&output_ports, "APC40") {
+        println!("connect apc40 output");
         client.connect_ports_by_name("octothorpe:apc40_out", &port.name().unwrap());
     }
 
@@ -247,12 +294,61 @@ fn connect_midi_ports(client: &jack::Client) {
             client.connect_ports_by_name(&format!("octothorpe:channel_{}", num), &output_port_name);
         }
     }
-
-    //for port_name in midi_port_names {
-        //let port = async_client.as_client().port_by_name(&port_name);
-        //println!("{:?}", port);
-    //}
 }
+
+/*
+ * Router will process port connected signals from the notification handler. It will connect the
+ * octothorpe ports to other clients and vice versa, also, it will notify the processhandler of (re-)connected APC's.
+ *
+ * I was unable to make jack connections from the process handler, therefore this is done here, and
+ * executed from the main thread
+ */
+pub struct Router {
+    connection_receive: Receiver<jack::PortId>,
+    introduction_send: Sender<jack::PortId>,
+}
+
+impl Router {
+    fn new(connection_receive: Receiver<jack::PortId>, introduction_send: Sender<jack::PortId>) -> Self {
+        Router { 
+            connection_receive,
+            introduction_send,
+        }
+    }
+
+    // Connect a port to it's intended input / output
+    pub fn route(&self, port: jack::Port<jack::Unowned>) {
+        // Is this a octothorpe (our own) port?
+        if port.name().unwrap().split(':').next().unwrap() == "octothorpe" {
+            println!("OWN {:?} {:?}", port.name().unwrap(), port.flags());
+        }
+
+        // Is this a hardware APC port?
+        if port.aliases().unwrap().iter().find(|alias| alias.contains("APC40")).is_some() {
+            println!("APC40 {:?} {:?}", port.name().unwrap(), port.flags());
+        }
+        if port.aliases().unwrap().iter().find(|alias| alias.contains("APC20")).is_some() {
+            println!("APC20 {:?} {:?}", port.name().unwrap(), port.flags());
+        }
+    }
+
+    // Start routing, this function halts and waits for notifications of connected midi ports
+    pub fn start(&mut self, client: &jack::Client) {
+        while let result = self.connection_receive.try_recv() {
+            // New port registered
+            match result {
+                Result::Ok(port_id) => {
+                    if let Some(port) = client.port_by_id(port_id) {
+                        self.route(port);
+                    }
+                },
+                Result::Err(_) => (),
+            }
+        }
+    
+    }
+}
+
 
 fn main() {
     // Setup client
@@ -260,22 +356,35 @@ fn main() {
         jack::Client::new("octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
     let (timebase_sender, timebase_receiver) = channel();
+    let (introduction_send, introduction_receive): (Sender<jack::PortId>, Receiver<jack::PortId>) = channel();
+    let (connection_send, connection_receive): (Sender<jack::PortId>, Receiver<jack::PortId>) = channel();
 
-    let processhandler = ProcessHandler::new(timebase_sender, &client);
+    let mut router = Router::new(connection_receive, introduction_send);
+
+    let notificationhandler = NotificationHandler::new(connection_send);
     let timebasehandler = TimebaseHandler::new(timebase_receiver);
+    let processhandler = ProcessHandler::new(introduction_receive, timebase_sender, &client);
 
     // Activate client
     let async_client = client
-        .activate_async((), processhandler, timebasehandler)
+        .activate_async(notificationhandler, processhandler, timebasehandler)
         .unwrap();
 
     // Connect Octo to APC's and connect system ports
     connect_midi_ports(async_client.as_client());
 
+
+    //client.connect_ports_by_name("system:midi_capture_16", "system:midi_playback_16");
+    //while let test = notification_receiver.recv() {
+        //connect_midi_ports(async_client.as_client());
+        //println!("{:?}", test);
+    //}
+
     // Wait for user to input string
-    loop {
-        let mut user_input = String::new();
-        io::stdin().read_line(&mut user_input).ok();
-    }
+    //loop {
+        //let mut user_input = String::new();
+        //io::stdin().read_line(&mut user_input).ok();
+    //}
+    router.start(async_client.as_client());
 }
 
