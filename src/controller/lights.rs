@@ -1,4 +1,5 @@
 
+use std::mem;
 use super::super::message::*;
 
 // TODO - We could probably macro these grids, but.. alas, i'm not familiar enough with macros
@@ -13,6 +14,107 @@ pub trait Drawable {
     fn output(&mut self) -> Vec<(u8, u8, u8)>;
 
     fn reset(&mut self);
+}
+
+pub struct Coordinate {
+    pub x: u8,
+    pub y: u8,
+}
+
+impl Coordinate {
+    pub fn new(x: u8, y: u8) -> Self {
+        Self { x, y }
+    }
+}
+
+pub struct ButtonState {
+    pub coordinate: Coordinate,
+    pub value: u8,
+}
+
+impl ButtonState {
+    pub fn new(coordinate: Coordinate, value: u8) -> Self {
+        Self { coordinate, value }
+    }
+}
+
+/*
+ * Grid of buttons that will remember button states so we'll only have to send midi messages when a
+ * button state changes for buttons with lights
+ */
+pub struct ButtonGrid {
+    width: u8,
+    height: u8,
+
+    state: Vec<u8>,
+    next_state: Vec<u8>,
+}
+
+impl ButtonGrid {
+    pub fn new(width: u8, height: u8) -> Self {
+        Self { 
+            width,
+            height,
+            state: vec![9; Self::buffer_length(width, height)],
+            next_state: vec![0; Self::buffer_length(width, height)],
+        }
+    }
+
+    // Get length of buffer based on width & height
+    fn buffer_length(width: u8, height: u8) -> usize {
+        width as usize * height as usize
+    }
+
+    // Get the position in the buffer array from coordinate
+    fn coordinate_to_buffer_index(coordinate: Coordinate) -> usize {
+        coordinate.y as usize * 8 + coordinate.x as usize
+    }
+
+    // Get coordinate from buffer index
+    fn buffer_index_to_coordinate(&self, index: usize) -> Coordinate {
+        Coordinate {
+            x: (index % self.height as usize) as u8,
+            y: (index / self.width as usize) as u8,
+        }
+    }
+
+    // Check if a coordinate falls within the grid
+    fn contains(&self, coordinate: Coordinate) -> bool {
+        Self::coordinate_to_buffer_index(coordinate) < self.state.len()
+    }
+
+    // Set state for next draw
+    pub fn set_next_state(&mut self, state: ButtonState) {
+        self.next_state[Self::coordinate_to_buffer_index(state.coordinate)] = state.value;
+    }
+
+    // Set current state to specific value
+    // This is also used to force-clear the grid by setting a unused value. This way next draw all
+    // buttons will seem changed
+    pub fn state_vector(&mut self, value: u8) -> Vec<u8> {
+        vec![value; Self::buffer_length(self.width, self.height)]
+    }
+
+    // Get all coordinates that changed value
+    pub fn changed_state(&mut self) -> Vec<ButtonState> {
+        // Meeeeeh, rust array comparison works up to 32 elements...
+        // https://doc.rust-lang.org/std/primitive.array.html#impl-PartialEq%3C%5BB%3B%20N%5D%3E
+
+        // Create array of changed buttonstates
+        let changed = self.state.iter().enumerate()
+            // We only want to return changed state
+            .filter(|(index, _)| self.state[*index] != self.next_state[*index])
+            // Return a buttonstate for every changed state in buffer
+            .map(|(index, value)| ButtonState::new(self.buffer_index_to_coordinate(index), self.next_state[index]))
+            .collect();
+
+        mem::swap(&mut self.state, &mut self.next_state);
+
+        self.next_state = self.state_vector(0);
+
+        // Return changed button states
+        changed
+    }
 }
 
 // 40 boi at the top

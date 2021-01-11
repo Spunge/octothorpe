@@ -33,7 +33,7 @@ pub enum FaderType {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum KnobType {
-    Effect(u8),
+    Control(u8),
     Cue,
 }
 
@@ -104,7 +104,7 @@ impl InputEventType {
                         let modifier = if (0x30 ..= 0x37).contains(&bytes[1]) { 48 } else { 8 };
                         let index = bytes[1] - modifier;
 
-                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Effect(index) }
+                        Self::KnobTurned { value: bytes[2], knob_type: KnobType::Control(index) }
                     },
                     0x7 => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Channel(bytes[0] - 0xB0) },
                     0xE => Self::FaderMoved { value: bytes[2], fader_type: FaderType::Master },

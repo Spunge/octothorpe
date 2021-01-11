@@ -7,6 +7,7 @@ extern crate jack;
 use jack_sys as j;
 
 pub mod controller;
+pub mod hardware;
 pub mod message;
 pub mod sequencer;
 pub mod cycle;
@@ -25,7 +26,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
 use sequencer::Sequencer;
 use controller::*;
-use mixer::*;
+use hardware::*;
 use surface::Surface;
 use cycle::*;
 
@@ -129,7 +130,7 @@ pub struct ProcessHandler {
     apc20: APC20,
     apc40: APC40,
 
-    mixer: Mixer,
+    //mixer: Mixer,
     sequencer: Sequencer,
     surface: Surface,
 
@@ -146,7 +147,7 @@ impl ProcessHandler {
             apc20: APC20::new(client),
             apc40: APC40::new(client),
 
-            mixer: Mixer::new(client),
+            //mixer: Mixer::new(client),
             sequencer: Sequencer::new(client),
             surface: Surface::new(),
             introduction_receiver,
@@ -175,8 +176,8 @@ impl jack::ProcessHandler for ProcessHandler {
             }
         }
 
-        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
-        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface, &mut self.mixer);
+        self.apc20.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface);
+        self.apc40.process_midi_input(&cycle, &mut self.sequencer, &mut self.surface);
 
         if cycle.is_rolling {
             self.sequencer.autoqueue_next_sequence(&cycle);
@@ -184,7 +185,7 @@ impl jack::ProcessHandler for ProcessHandler {
 
         // Sequencer first at it will cache playing notes, these we can use for sequence visualization
         self.sequencer.output_midi(&cycle);
-        self.mixer.output_midi(&cycle);
+        //self.mixer.output_midi(&cycle);
 
         self.apc20.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
         self.apc40.output_midi(&cycle, &mut self.sequencer, &mut self.surface);
