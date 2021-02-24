@@ -28,7 +28,7 @@ impl Coordinate {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum ButtonState {
+pub enum IlluminatedButtonState {
     Off,
     Green,
     Orange,
@@ -39,21 +39,21 @@ pub enum ButtonState {
  * Grid of buttons that will remember button states so we'll only have to send midi messages when a
  * button state changes for buttons with lights
  */
-pub struct ButtonGrid {
+pub struct IlluminatedButtonGrid {
     width: u8,
     height: u8,
 
-    state: Vec<ButtonState>,
-    next_state: Vec<ButtonState>,
+    state: Vec<IlluminatedButtonState>,
+    next_state: Vec<IlluminatedButtonState>,
 }
 
-impl ButtonGrid {
+impl IlluminatedButtonGrid {
     pub fn new(width: u8, height: u8) -> Self {
         Self { 
             width,
             height,
-            state: vec![ButtonState::Off; Self::buffer_length(width, height)],
-            next_state: vec![ButtonState::Off; Self::buffer_length(width, height)],
+            state: vec![IlluminatedButtonState::Off; Self::buffer_length(width, height)],
+            next_state: vec![IlluminatedButtonState::Off; Self::buffer_length(width, height)],
         }
     }
 
@@ -81,12 +81,12 @@ impl ButtonGrid {
     }
 
     // Set state for next draw
-    pub fn set_next_state(&mut self, coordinate: Coordinate, state: ButtonState) {
+    pub fn set_next_state(&mut self, coordinate: Coordinate, state: IlluminatedButtonState) {
         self.next_state[Self::coordinate_to_buffer_index(coordinate)] = state;
     }
 
     // Get all coordinates that changed value
-    pub fn changed_state(&mut self) -> Vec<(Coordinate, ButtonState)> {
+    pub fn changed_state(&mut self) -> Vec<(Coordinate, IlluminatedButtonState)> {
         // Meeeeeh, rust array comparison works up to 32 elements...
         // https://doc.rust-lang.org/std/primitive.array.html#impl-PartialEq%3C%5BB%3B%20N%5D%3E
 
@@ -100,7 +100,7 @@ impl ButtonGrid {
 
         mem::swap(&mut self.state, &mut self.next_state);
 
-        self.next_state = vec![ButtonState::Off; Self::buffer_length(self.width, self.height)];
+        self.next_state = vec![IlluminatedButtonState::Off; Self::buffer_length(self.width, self.height)];
 
         // Return changed button states
         changed

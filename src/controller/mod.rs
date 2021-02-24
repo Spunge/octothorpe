@@ -1,7 +1,6 @@
 
 pub mod input;
 pub mod lights;
-pub mod controllers;
 
 use std::ops::Range;
 use super::TickRange;
@@ -15,6 +14,7 @@ use super::TimebaseHandler;
 use super::events::*;
 use input::*;
 use lights::*;
+
 
 const SEQUENCE_COLOR: u8 = 1;
 const TIMELINE_HEAD_COLOR: u8 = 1;
@@ -31,7 +31,7 @@ const QUEUED_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as 
 pub trait APC {
     type Loopable: Loopable;
 
-    const CHANNNEL_OFFSET: u8;
+    const CHANNEL_OFFSET: u8;
     const HEAD_COLOR: u8;
     const TAIL_COLOR: u8;
 
@@ -171,7 +171,7 @@ pub trait APC {
                 let global_filters = [InputEvent::is_crossfader];
                 // Show length/offset indicator when events occurred that changed length/offset
                 let last_occurred_controller_event = surface.event_memory
-                    .last_occurred_controller_event_after(Self::CHANNNEL_OFFSET, &controller_filters, usecs)
+                    .last_occurred_controller_event_after(Self::CHANNEL_OFFSET, &controller_filters, usecs)
                     .or_else(|| surface.event_memory.last_occurred_global_event_after(&global_filters, usecs));
 
                 // TODO - move this timing logic to seperate function when we need it for other things
@@ -211,7 +211,7 @@ pub trait APC {
             },
             View::Timeline => {
                 let button = cycle.tick_range.start / Surface::TIMELINE_TICKS_PER_BUTTON;
-                let offset_buttons = surface.timeline_offset() / Surface::TIMELINE_TICKS_PER_BUTTON + Self::CHANNNEL_OFFSET as u32;
+                let offset_buttons = surface.timeline_offset() / Surface::TIMELINE_TICKS_PER_BUTTON + Self::CHANNEL_OFFSET as u32;
 
                 if button >= offset_buttons {
                     self.indicator().draw((button - offset_buttons) as u8, 1);
@@ -285,7 +285,7 @@ pub trait APC {
 
         // Draw main grid
         let events = channel.timeline.events().iter();
-        let offset = Surface::TIMELINE_TICKS_PER_BUTTON * Self::CHANNNEL_OFFSET as u32 + surface.timeline_offset();
+        let offset = Surface::TIMELINE_TICKS_PER_BUTTON * Self::CHANNEL_OFFSET as u32 + surface.timeline_offset();
         self.draw_loopable_events(events, offset, 0, Surface::TIMELINE_TICKS_PER_BUTTON * 8, TIMELINE_HEAD_COLOR, TIMELINE_TAIL_COLOR);
     }
 
@@ -293,7 +293,7 @@ pub trait APC {
      * Draw grid that we can use to select what phrases are playing
      */
     fn draw_phrases(&mut self, phrases: &[Option<u8>; 16]) {
-        for (index, option) in phrases[Self::CHANNNEL_OFFSET as usize .. (Self::CHANNNEL_OFFSET + 8) as usize].iter().enumerate() {
+        for (index, option) in phrases[Self::CHANNEL_OFFSET as usize .. (Self::CHANNEL_OFFSET + 8) as usize].iter().enumerate() {
             if let Some(phrase) = option {
                 self.try_draw_to_grid(index as i32, *phrase, SEQUENCE_COLOR);
             }
@@ -326,8 +326,8 @@ pub trait APC {
                     self.set_identified_cycles(1);
                 },
                 InputEventType::FaderMoved { value, fader_type: FaderType::Channel(index) } => {
-                    println!("fader {:?} adjusted to {:?}", index + Self::CHANNNEL_OFFSET, value);
-                    //mixer.fader_adjusted(event.time, index + Self::CHANNNEL_OFFSET, value);
+                    println!("fader {:?} adjusted to {:?}", index + Self::CHANNEL_OFFSET, value);
+                    //mixer.fader_adjusted(event.time, index + Self::CHANNEL_OFFSET, value);
                 },
                 // TODO - Shift events in loopable to right/left when holding shift
                 InputEventType::KnobTurned { value, knob_type: KnobType::Control(index) } => {
@@ -338,7 +338,7 @@ pub trait APC {
                     // Check if cueknob should respond immediately
                     let usecs = cycle.time_at_frame(event.time) - LENGTH_INDICATOR_USECS;
                     let is_first_turn = surface.event_memory
-                        .last_occurred_controller_event_after(Self::CHANNNEL_OFFSET, &[InputEvent::is_cue_knob], usecs)
+                        .last_occurred_controller_event_after(Self::CHANNEL_OFFSET, &[InputEvent::is_cue_knob], usecs)
                         .is_none();
 
                     let delta_buttons = self.cue_knob().process_turn(value, is_first_turn);
@@ -363,7 +363,7 @@ pub trait APC {
                 },
                 InputEventType::ButtonPressed(button_type) => {
                     // Register press in memory to keep channel of modifing buttons
-                    surface.button_memory.press(Self::CHANNNEL_OFFSET, button_type);
+                    surface.button_memory.press(Self::CHANNEL_OFFSET, button_type);
                     let global_modifier = surface.button_memory.global_modifier(button_type);
 
                     // Do the right thing in the right visualization
@@ -385,7 +385,7 @@ pub trait APC {
 
                             match button_type {
                                 ButtonType::Grid(x, row) => {
-                                    let channel = (x + Self::CHANNNEL_OFFSET) as usize;
+                                    let channel = (x + Self::CHANNEL_OFFSET) as usize;
                                     
                                     if let Some(true) = sequence.get_phrase(channel).and_then(|phrase| Some(phrase == row)) {
                                         sequence.unset_phrase(channel)
@@ -399,7 +399,7 @@ pub trait APC {
                                         *event_type == event.event_type
                                     }];
                                     let usecs = cycle.time_stop - DOUBLE_CLICK_USECS;
-                                    let last_occurred_event = surface.event_memory.last_occurred_controller_event_after(Self::CHANNNEL_OFFSET, &filters, usecs);
+                                    let last_occurred_event = surface.event_memory.last_occurred_controller_event_after(Self::CHANNEL_OFFSET, &filters, usecs);
 
                                     if let Some(ButtonPress { button_type: ButtonType::Shift, .. }) = global_modifier {
                                         sequence.set_phrases(index);
@@ -411,7 +411,7 @@ pub trait APC {
                                     }
                                 },
                                 ButtonType::Activator(channel) => {
-                                    sequence.toggle_active((channel + Self::CHANNNEL_OFFSET) as usize)
+                                    sequence.toggle_active((channel + Self::CHANNEL_OFFSET) as usize)
                                 },
                                 _ => (),
                             }
@@ -422,7 +422,7 @@ pub trait APC {
                                     let channel = sequencer.channel_mut(surface.channel_shown());
 
                                     // Add channel offset to make it possible to draw across multiple controllers
-                                    let start = (Self::CHANNNEL_OFFSET + x) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset();
+                                    let start = (Self::CHANNEL_OFFSET + x) as u32 * Surface::TIMELINE_TICKS_PER_BUTTON + surface.timeline_offset();
                                     let mut tick_range = TickRange::new(start, start + Surface::TIMELINE_TICKS_PER_BUTTON);
 
                                     // Should we delete the event we're clicking?
@@ -459,16 +459,16 @@ pub trait APC {
                         ButtonType::Channel(index) => {
                             match surface.view {
                                 View::Channel | View::Timeline => {
-                                    if surface.channel_shown() == index as usize {
+                                    if surface.channel_shown() == (index + Self::CHANNEL_OFFSET) as usize {
                                         let view = if matches!(surface.view, View::Timeline) { View::Channel } else { View::Timeline };
                                         surface.switch_view(view);
                                     } else {
-                                        surface.show_channel(index + Self::CHANNNEL_OFFSET);
+                                        surface.show_channel(index + Self::CHANNEL_OFFSET);
                                     }
                                 },
                                 _ => {
                                     surface.switch_view(View::Timeline);
-                                    surface.show_channel(index + Self::CHANNNEL_OFFSET);
+                                    surface.show_channel(index + Self::CHANNEL_OFFSET);
                                 },
                             }
                         },
@@ -484,14 +484,14 @@ pub trait APC {
                     }
                 },
                 InputEventType::ButtonReleased(button_type) => {
-                    surface.button_memory.release(Self::CHANNNEL_OFFSET, cycle.time_at_frame(event.time), button_type);
+                    surface.button_memory.release(Self::CHANNEL_OFFSET, cycle.time_at_frame(event.time), button_type);
                 },
                 // This message is controller specific, handle it accordingly
                 _ => self.process_inputevent(&event, cycle, sequencer, surface),
             }
 
             // Keep channel of event so we can use it to calculate double presses etc.
-            surface.event_memory.register_event(Self::CHANNNEL_OFFSET, cycle.time_at_frame(event.time), event.event_type);
+            surface.event_memory.register_event(Self::CHANNEL_OFFSET, cycle.time_at_frame(event.time), event.event_type);
         }
     }
 
@@ -514,9 +514,9 @@ pub trait APC {
             self.draw(sequencer, surface);
 
             // Always draw channel grid
-            // This if statement is here to see if we can subtract CHANNNEL_OFFSET
-            if surface.channel_shown() >= Self::CHANNNEL_OFFSET as usize && ! matches!(surface.view, View::Sequence) {
-                let channel = surface.channel_shown() - Self::CHANNNEL_OFFSET as usize;
+            // This if statement is here to see if we can subtract CHANNEL_OFFSET
+            if surface.channel_shown() >= Self::CHANNEL_OFFSET as usize && ! matches!(surface.view, View::Sequence) {
+                let channel = surface.channel_shown() - Self::CHANNEL_OFFSET as usize;
                 self.channel().draw(channel as u8, 1);
             }
             messages.append(&mut self.channel().output_messages(0));

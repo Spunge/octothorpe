@@ -38,7 +38,7 @@ pub struct APC40 {
 impl APC for APC40 {
     type Loopable = Pattern;
 
-    const CHANNNEL_OFFSET: u8 = 8;
+    const CHANNEL_OFFSET: u8 = 8;
     const HEAD_COLOR: u8 = 1;
     const TAIL_COLOR: u8 = 5;
 
@@ -175,7 +175,7 @@ impl APC for APC40 {
             },
             InputEventType::ButtonPressed(button_type) => {
                 // Get modifier (other currently pressed key)
-                let modifier = surface.button_memory.modifier(Self::CHANNNEL_OFFSET, button_type);
+                let modifier = surface.button_memory.modifier(Self::CHANNEL_OFFSET, button_type);
 
                 match surface.view {
                     View::Channel => {

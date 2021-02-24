@@ -38,7 +38,7 @@ pub struct APC20 {
 impl APC for APC20 {
     type Loopable = Phrase;
 
-    const CHANNNEL_OFFSET: u8 = 0;
+    const CHANNEL_OFFSET: u8 = 0;
     const HEAD_COLOR: u8 = 3;
     const TAIL_COLOR: u8 = 5;
 
@@ -139,7 +139,7 @@ impl APC for APC20 {
             // TODO - Use indicator row as fast movement
             InputEventType::ButtonPressed(button_type) => {
                 // Get modifier (other currently pressed key)
-                let modifier = surface.button_memory.modifier(Self::CHANNNEL_OFFSET, button_type);
+                let modifier = surface.button_memory.modifier(Self::CHANNEL_OFFSET, button_type);
 
                 match surface.view {
                     View::Channel => {
