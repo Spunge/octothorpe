@@ -27,15 +27,12 @@ impl Coordinate {
     }
 }
 
-pub struct ButtonState {
-    pub coordinate: Coordinate,
-    pub value: u8,
-}
-
-impl ButtonState {
-    pub fn new(coordinate: Coordinate, value: u8) -> Self {
-        Self { coordinate, value }
-    }
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ButtonState {
+    Off,
+    Green,
+    Orange,
+    Red,
 }
 
 /*
@@ -46,8 +43,8 @@ pub struct ButtonGrid {
     width: u8,
     height: u8,
 
-    state: Vec<u8>,
-    next_state: Vec<u8>,
+    state: Vec<ButtonState>,
+    next_state: Vec<ButtonState>,
 }
 
 impl ButtonGrid {
@@ -55,8 +52,8 @@ impl ButtonGrid {
         Self { 
             width,
             height,
-            state: vec![9; Self::buffer_length(width, height)],
-            next_state: vec![0; Self::buffer_length(width, height)],
+            state: vec![ButtonState::Off; Self::buffer_length(width, height)],
+            next_state: vec![ButtonState::Off; Self::buffer_length(width, height)],
         }
     }
 
@@ -84,19 +81,12 @@ impl ButtonGrid {
     }
 
     // Set state for next draw
-    pub fn set_next_state(&mut self, state: ButtonState) {
-        self.next_state[Self::coordinate_to_buffer_index(state.coordinate)] = state.value;
-    }
-
-    // Set current state to specific value
-    // This is also used to force-clear the grid by setting a unused value. This way next draw all
-    // buttons will seem changed
-    pub fn state_vector(&mut self, value: u8) -> Vec<u8> {
-        vec![value; Self::buffer_length(self.width, self.height)]
+    pub fn set_next_state(&mut self, coordinate: Coordinate, state: ButtonState) {
+        self.next_state[Self::coordinate_to_buffer_index(coordinate)] = state;
     }
 
     // Get all coordinates that changed value
-    pub fn changed_state(&mut self) -> Vec<ButtonState> {
+    pub fn changed_state(&mut self) -> Vec<(Coordinate, ButtonState)> {
         // Meeeeeh, rust array comparison works up to 32 elements...
         // https://doc.rust-lang.org/std/primitive.array.html#impl-PartialEq%3C%5BB%3B%20N%5D%3E
 
@@ -105,12 +95,12 @@ impl ButtonGrid {
             // We only want to return changed state
             .filter(|(index, _)| self.state[*index] != self.next_state[*index])
             // Return a buttonstate for every changed state in buffer
-            .map(|(index, value)| ButtonState::new(self.buffer_index_to_coordinate(index), self.next_state[index]))
+            .map(|(index, value)| (self.buffer_index_to_coordinate(index), self.next_state[index]))
             .collect();
 
         mem::swap(&mut self.state, &mut self.next_state);
 
-        self.next_state = self.state_vector(0);
+        self.next_state = vec![ButtonState::Off; Self::buffer_length(self.width, self.height)];
 
         // Return changed button states
         changed
