@@ -1,5 +1,5 @@
 
-use super::TickRange;
+use crate::*;
 
 // All the things we can show in grid
 pub trait LoopableEvent: Clone + std::fmt::Debug {

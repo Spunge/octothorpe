@@ -1,17 +1,5 @@
 
-use std::ops::Range;
-use super::super::TickRange;
-use super::super::message::{TimedMessage, Message};
-use super::super::cycle::ProcessCycle;
-use super::super::loopable::*;
-use super::super::sequencer::*;
-use super::super::surface::*;
-use super::super::port::MidiOut;
-use super::super::TimebaseHandler;
-use super::super::events::*;
-use super::super::input::*;
-use super::super::lights::*;
-use super::super::APC;
+use crate::*;
 
 pub struct APC40 {
     // Ports that connect to APC
@@ -34,6 +22,8 @@ pub struct APC40 {
     solo: WideRow,
     //arm: WideRow,
 }
+
+impl ControllerType for APC40 {}
 
 impl APC for APC40 {
     type Loopable = Pattern;

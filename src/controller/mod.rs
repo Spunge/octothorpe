@@ -10,10 +10,10 @@ use super::loopable::*;
 use super::sequencer::*;
 use super::surface::*;
 use super::port::MidiOut;
-use super::TimebaseHandler;
+use crate::TimebaseHandler;
 use super::events::*;
-use input::*;
-use lights::*;
+pub use input::*;
+pub use lights::*;
 
 
 const SEQUENCE_COLOR: u8 = 1;

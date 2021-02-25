@@ -1,8 +1,7 @@
 
-use super::controller::input::*;
-use super::TimebaseHandler;
-use super::Sequencer;
-use super::loopable::*;
+use crate::*;
+//use super::controller::input::*;
+//use super::loopable::*;
 
 #[derive(Debug, PartialEq)]
 pub enum View {
@@ -12,6 +11,7 @@ pub enum View {
 }
 
 pub struct Surface {
+    pub controllers: Vec<Controller>,
     pub view: View,
     pub button_memory: ButtonMemory,
     pub event_memory: EventMemory,
@@ -37,6 +37,8 @@ impl Surface {
 
     pub fn new() -> Self {
         Surface { 
+            controllers: vec![],
+
             view: View::Channel, 
             button_memory: ButtonMemory::new(),
             event_memory: EventMemory::new(),

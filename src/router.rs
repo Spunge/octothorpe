@@ -129,17 +129,17 @@ impl Router<'_> {
     // Start routing, this function halts and waits for notifications of connected midi ports
     pub fn start(&mut self, client: &jack::Client) {
         // Connect existing ports
-        for port_name in client.ports(None, Some("midi"), jack::PortFlags::IS_PHYSICAL).iter() {
-            if let Some(port) = client.port_by_name(port_name) {
-                self.handle_port_registration(client, port, true);
-            }
-        }
+        //for port_name in client.ports(None, Some("midi"), jack::PortFlags::IS_PHYSICAL).iter() {
+            //if let Some(port) = client.port_by_name(port_name) {
+                //self.handle_port_registration(client, port, true);
+            //}
+        //}
 
         // Wait for notifications about new ports
         while let Ok((port, is_registered)) = self.connection_receive.recv() {
-            if port.port_type().unwrap().contains("midi") && port.flags().contains(jack::PortFlags::IS_PHYSICAL) {
-                self.handle_port_registration(client, port, is_registered);
-            }
+            //if port.port_type().unwrap().contains("midi") && port.flags().contains(jack::PortFlags::IS_PHYSICAL) {
+                //self.handle_port_registration(client, port, is_registered);
+            //}
         }
     }
 }
