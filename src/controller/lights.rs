@@ -28,7 +28,7 @@ impl Coordinate {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum IlluminatedButtonState {
+pub enum LedState {
     Off,
     Green,
     Orange,
@@ -43,8 +43,8 @@ pub struct IlluminatedButtonGrid {
     width: u8,
     height: u8,
 
-    state: Vec<IlluminatedButtonState>,
-    next_state: Vec<IlluminatedButtonState>,
+    state: Vec<LedState>,
+    next_state: Vec<LedState>,
 }
 
 impl IlluminatedButtonGrid {
@@ -52,8 +52,8 @@ impl IlluminatedButtonGrid {
         Self { 
             width,
             height,
-            state: vec![IlluminatedButtonState::Off; Self::buffer_length(width, height)],
-            next_state: vec![IlluminatedButtonState::Off; Self::buffer_length(width, height)],
+            state: vec![LedState::Off; Self::buffer_length(width, height)],
+            next_state: vec![LedState::Off; Self::buffer_length(width, height)],
         }
     }
 
@@ -81,12 +81,12 @@ impl IlluminatedButtonGrid {
     }
 
     // Set state for next draw
-    pub fn set_next_state(&mut self, coordinate: Coordinate, state: IlluminatedButtonState) {
+    pub fn set_next_state(&mut self, coordinate: Coordinate, state: LedState) {
         self.next_state[Self::coordinate_to_buffer_index(coordinate)] = state;
     }
 
     // Get all coordinates that changed value
-    pub fn changed_state(&mut self) -> Vec<(Coordinate, IlluminatedButtonState)> {
+    pub fn changed_state(&mut self) -> Vec<(Coordinate, LedState)> {
         // Meeeeeh, rust array comparison works up to 32 elements...
         // https://doc.rust-lang.org/std/primitive.array.html#impl-PartialEq%3C%5BB%3B%20N%5D%3E
 
@@ -100,7 +100,7 @@ impl IlluminatedButtonGrid {
 
         mem::swap(&mut self.state, &mut self.next_state);
 
-        self.next_state = vec![IlluminatedButtonState::Off; Self::buffer_length(self.width, self.height)];
+        self.next_state = vec![LedState::Off; Self::buffer_length(self.width, self.height)];
 
         // Return changed button states
         changed
