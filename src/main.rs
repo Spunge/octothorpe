@@ -83,9 +83,9 @@ fn main() {
 
                 // Add controller if port has an alias we know
                 if aliases.iter().find(|alias| alias.contains("APC40")).is_some() {
-                    surface.controllers.push(Controller::new(port, APC40::new(client)));
+                    surface.controllers.push(Controller::new(port, client, APC::new(APC40::new())));
                 } else if aliases.iter().find(|alias| alias.contains("APC20")).is_some() {
-                    surface.controllers.push(Controller::new(port, APC20::new(client)));
+                    surface.controllers.push(Controller::new(port, client, APC::new(APC20::new())));
                 }
             } else {
                 // Sink port registered, add it to correct controller
@@ -94,17 +94,29 @@ fn main() {
                 let controller = surface.controllers.iter_mut()
                     .find(|controller| controller.system_source.name().unwrap() == capture_port_name);
 
-                if controller.is_some() {
-                    controller.unwrap().system_sink = Some(port);
+                if let Some(controller) = controller {
+                    controller.system_sink = Some(port);
+                    client.connect_ports(&controller.system_source, &controller.input);
+                    client.connect_ports(&controller.output, &controller.system_sink.as_ref().unwrap());
                 }
             }
         } else {
             // Destroy controller in surface when ports disconnect
             // Only destroy on output port disconnect as controllers have multiple ports
-            println!("{:?}", surface.controllers.len());
-            // TODO - Deregister ports on removing controller
+            let controller = surface.controllers.iter()
+                .find(|controller| controller.system_source.name().unwrap() == port.name().unwrap());
+
+            // Deregister jack ports on removing controller
+            if let Some(controller) = controller {
+                // We get a new port representation as we need to own port that we pass to client,
+                // and we can't own surface as it sits behind mutex
+                let input_port = client.port_by_name(&controller.input.name().unwrap()).unwrap();
+                client.unregister_port(input_port);
+                let output_port = client.port_by_name(&controller.output.name().unwrap()).unwrap();
+                client.unregister_port(output_port);
+            }
+
             surface.controllers.retain(|controller| controller.system_source.name().unwrap() != port.name().unwrap());
-            println!("{:?}", surface.controllers.len());
         }
 
 

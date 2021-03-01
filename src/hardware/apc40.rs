@@ -1,7 +1,7 @@
 
 use crate::*;
 
-pub struct APC40 {
+pub struct OLD_APC40 {
     // Ports that connect to APC
     input: jack::Port<jack::MidiIn>,
     output: MidiOut,
@@ -23,9 +23,7 @@ pub struct APC40 {
     //arm: WideRow,
 }
 
-impl ControllerType for APC40 {}
-
-impl APC for APC40 {
+impl APC_trait for OLD_APC40 {
     type Loopable = Pattern;
 
     const CHANNEL_OFFSET: u8 = 8;

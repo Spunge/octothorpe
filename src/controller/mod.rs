@@ -28,7 +28,7 @@ const PLAYING_LOOPABLE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as
 const PLAYING_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32;
 const QUEUED_SEQUENCE_INDICATOR_TICKS: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 / 2;
 
-pub trait APC {
+pub trait APC_trait {
     type Loopable: Loopable;
 
     const CHANNEL_OFFSET: u8;
