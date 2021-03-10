@@ -147,7 +147,7 @@ impl Phrase {
     }
 
     // Default phrase length = 4 bars
-    pub fn default_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 * 4 }
+    pub fn default_length() -> u32 { Transport::TICKS_PER_BEAT as u32 * 4 * 4 }
     pub fn set_length(&mut self, length: u32) { 
         self.length = length; 
 
@@ -198,7 +198,7 @@ impl Loopable for Pattern {
 }
 
 impl Pattern {
-    pub fn minimum_length() -> u32 { TimebaseHandler::TICKS_PER_BEAT as u32 * 4 }
+    pub fn minimum_length() -> u32 { Transport::TICKS_PER_BEAT as u32 * 4 }
 
     pub fn new() -> Self {
         Pattern { note_events: vec![], length: None }

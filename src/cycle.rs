@@ -2,7 +2,6 @@
 use super::TickRange;
 
 pub struct ProcessCycle<'a> {
-    pub client: &'a jack::Client,
     pub scope: &'a jack::ProcessScope,
     pub tick_range: TickRange,
     pub time_stop: u64,
@@ -10,19 +9,21 @@ pub struct ProcessCycle<'a> {
     pub is_rolling: bool,
 }
 
+/*
+ * This represents a timeframe for which we will have to process midi events
+ */
 impl<'a> ProcessCycle<'a> {
     pub fn frame_to_tick(pos: jack::Position, frame: u32) -> f64 {
         let second = frame as f64 / pos.frame_rate as f64;
         second / 60.0 * pos.beats_per_minute * pos.ticks_per_beat
     }
 
-    // Save client as we pass this cycle thing everywhere
+    // Save client as we pass this cycle everywhere
     pub fn new(client: &'a jack::Client, scope: &'a jack::ProcessScope) -> Self {
         let cycle_times = scope.cycle_times().unwrap();
         let (state, pos) = client.transport_query();
 
         Self {
-            client,
             scope,
             time_start: cycle_times.current_usecs,
             time_stop: cycle_times.next_usecs,
@@ -34,10 +35,12 @@ impl<'a> ProcessCycle<'a> {
         }
     }
 
+    // Get time in usecs that this cycle lasts
     pub fn usecs(&self) -> u64 {
         self.time_stop - self.time_start
     }
 
+    // Get time in ticks that this cycle lasts
     pub fn ticks(&self) -> u32 {
         self.tick_range.stop - self.tick_range.start
     }

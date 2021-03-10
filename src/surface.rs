@@ -1,5 +1,6 @@
 
 use crate::*;
+use crate::inputevent::*;
 //use super::controller::input::*;
 //use super::loopable::*;
 
@@ -12,52 +13,69 @@ pub enum View {
 
 pub struct Surface {
     pub controllers: Vec<Controller>,
-    pub view: View,
-    pub button_memory: ButtonMemory,
-    pub event_memory: EventMemory,
+    //pub view: View,
+    //pub button_memory: ButtonMemory,
+    //pub event_memory: EventMemory,
 
-    channel_shown: u8,
-    sequence_shown: u8,
-    timeline_offset: u32,
+    //channel_shown: u8,
+    //sequence_shown: u8,
+    //timeline_offset: u32,
 
-    phrase_shown: [u8; 16],
-    phrase_zoom_level: u8,
-    phrase_offsets: [u32; 16],
+    //phrase_shown: [u8; 16],
+    //phrase_zoom_level: u8,
+    //phrase_offsets: [u32; 16],
 
-    pattern_shown: [u8; 16],
-    pattern_zoom_level: u8,
-    pattern_offsets: [u32; 16],
-    pattern_base_notes: [u8; 16],
+    //pattern_shown: [u8; 16],
+    //pattern_zoom_level: u8,
+    //pattern_offsets: [u32; 16],
+    //pattern_base_notes: [u8; 16],
 }
 
 impl Surface {
-    pub const PATTERN_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
-    pub const PHRASE_TICKS_PER_BUTTON: u32 = Self::PATTERN_TICKS_PER_BUTTON * 4;
-    pub const TIMELINE_TICKS_PER_BUTTON: u32 = Self::PHRASE_TICKS_PER_BUTTON * 1;
+    //pub const PATTERN_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
+    //pub const PHRASE_TICKS_PER_BUTTON: u32 = Self::PATTERN_TICKS_PER_BUTTON * 4;
+    //pub const TIMELINE_TICKS_PER_BUTTON: u32 = Self::PHRASE_TICKS_PER_BUTTON * 1;
 
     pub fn new() -> Self {
         Surface { 
             controllers: vec![],
 
-            view: View::Channel, 
-            button_memory: ButtonMemory::new(),
-            event_memory: EventMemory::new(),
+            //view: View::Channel, 
+            //button_memory: ButtonMemory::new(),
+            //event_memory: EventMemory::new(),
 
-            channel_shown: 0,
-            sequence_shown: 0,
-            timeline_offset: 0,
+            //channel_shown: 0,
+            //sequence_shown: 0,
+            //timeline_offset: 0,
 
-            phrase_shown: [0; 16],
-            phrase_zoom_level: 4,
-            phrase_offsets: [0; 16],
+            //phrase_shown: [0; 16],
+            //phrase_zoom_level: 4,
+            //phrase_offsets: [0; 16],
 
-            pattern_shown: [0; 16],
-            pattern_zoom_level: 4,
-            pattern_offsets: [0; 16],
-            pattern_base_notes: [60; 16],
+            //pattern_shown: [0; 16],
+            //pattern_zoom_level: 4,
+            //pattern_offsets: [0; 16],
+            //pattern_base_notes: [60; 16],
         }
     }
 
+    // Get all input events that occured on surface
+    // We expect controllers to be turned on from left to right. Therefore we can pass already
+    // processed controllers to the next input_events function, so controllerscan add offset of
+    // other controller grids to their button positions
+    pub fn input_events(&mut self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
+        let mut events = vec![];
+        let mut controllers = vec![];
+
+        for controller in self.controllers.iter_mut() {
+            events.append(&mut controller.input_events(scope, &controllers));
+            controllers.push(controller);
+        }
+
+        events
+    }
+
+    /*
     pub fn switch_view(&mut self, view: View) { 
         self.view = view;
     }
@@ -162,8 +180,10 @@ impl Surface {
         self.set_timeline_offset(sequencer, timeline_offset);
         // TODO - Timeline
     }
+    */
 }
 
+/*
 #[derive(Debug)]
 struct OccurredInputEvent {
     controller_channel_offset: u8,
@@ -272,3 +292,4 @@ impl ButtonMemory {
             .and_then(|pressed_button| Some(pressed_button))
     }
 }
+*/

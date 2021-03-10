@@ -5,8 +5,10 @@ extern crate matches;
 
 extern crate jack;
 
-pub mod controller;
+//pub mod controller;
 pub mod hardware;
+pub mod inputevent;
+
 pub mod message;
 pub mod sequencer;
 pub mod cycle;
@@ -21,9 +23,9 @@ pub mod instrument;
 pub mod router;
 pub mod tickrange;
 pub mod handler;
+pub mod transport;
 
 // TODO - Save & load state on restart
-use std::io;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
@@ -31,8 +33,11 @@ use std::fmt::Debug;
 use sequencer::Sequencer;
 use loopable::*;
 use events::*;
-use controller::*;
+//use controller::*;
+use channel::*;
+use sequence::*;
 use surface::*;
+use message::*;
 use hardware::*;
 use port::*;
 use surface::Surface;
@@ -40,6 +45,7 @@ use cycle::*;
 use router::*;
 use tickrange::*;
 use handler::*;
+use transport::*;
 
 fn main() {
     // Setup client
@@ -47,14 +53,15 @@ fn main() {
         jack::Client::new("octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
 
     let surface = Arc::new(Mutex::new(Surface::new()));
+    let transport = Arc::new(Mutex::new(Transport::new()));
 
     let (port_registration_sender, port_registration_receiver) = channel();
 
     //let notificationhandler = NotificationHandler::new(connection_send);
-    let notificationhandler = NotificationHandler::new(&client, Arc::clone(&surface), port_registration_sender);
-    let timebasehandler = TimebaseHandler::new();
+    let notificationhandler = NotificationHandler::new(&client, port_registration_sender);
+    let timebasehandler = TimebaseHandler::new(Arc::clone(&transport));
     //let processhandler = ProcessHandler::new(introduction_receive, timebase_sender, &client);
-    let processhandler = ProcessHandler::new(Arc::clone(&surface));
+    let processhandler = ProcessHandler::new(Arc::clone(&surface), Arc::clone(&transport));
 
     // Activate client
     let async_client = client
@@ -66,8 +73,7 @@ fn main() {
 
     // Wait for notifications about new ports
     while let Ok((port, is_registered)) = port_registration_receiver.recv() {
-        // We're not interested in ports we are creating ourselves, as connections to correct ports
-        // should be handled by controller
+        // We're not interested in ports we are creating ourselves
         if client.is_mine(&port) {
             continue
         }
@@ -94,6 +100,8 @@ fn main() {
                 let controller = surface.controllers.iter_mut()
                     .find(|controller| controller.system_source.name().unwrap() == capture_port_name);
 
+                // Now that we've added sink port, controller is ready to communicate
+                // Connect it to system ports of said controller
                 if let Some(controller) = controller {
                     controller.system_sink = Some(port);
                     client.connect_ports(&controller.system_source, &controller.input);

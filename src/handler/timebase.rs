@@ -1,26 +1,18 @@
 
 // We need jack_sys C library as timebase master logic is not implemented in rust-jack crate
 use jack_sys;
-use crate::ProcessCycle;
+use crate::*;
 
 pub struct TimebaseHandler {
-    beats_per_minute: f64,
-    beats_per_bar: f32,
-    beat_type: f32,
-    is_up_to_date: bool,
+    transport: Arc<Mutex<Transport>>,
 }
 
 impl TimebaseHandler {
-    pub const TICKS_PER_BEAT: f64 = 1920.0;
 
-    pub fn new() -> Self {
+    pub fn new(transport: Arc<Mutex<Transport>>) -> Self {
         TimebaseHandler {
             // TODO - Put this in transport struct that we can share via arc/mutex
-            beats_per_minute: 138.0,
-            is_up_to_date: false,
-            beats_per_bar: 4.0,
-            beat_type: 4.0,
-            //receiver,
+            transport,
         }
     }
 }
@@ -36,15 +28,13 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 //println!("{:?}", (*pos).beats_per_minute);
             //}
 
-            // Only update timebase when we are asked for it, or when our state changed
-            if is_new_pos || ! self.is_up_to_date {
-                (*pos).beats_per_bar = self.beats_per_bar;
-                (*pos).ticks_per_beat = Self::TICKS_PER_BEAT;
-                (*pos).beat_type = self.beat_type;
-                (*pos).beats_per_minute = self.beats_per_minute;
+            let transport = self.transport.lock().unwrap();
 
-                self.is_up_to_date = true;
-            }
+            // Update timebase information
+            (*pos).beats_per_bar = transport.beats_per_bar;
+            (*pos).ticks_per_beat = Transport::TICKS_PER_BEAT;
+            (*pos).beat_type = transport.beat_type;
+            (*pos).beats_per_minute = transport.beats_per_minute;
 
             let abs_tick = ProcessCycle::frame_to_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;

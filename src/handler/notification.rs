@@ -5,13 +5,18 @@ use crate::*;
  * NotificationHandler is called back on certain jack events
  */
 pub struct NotificationHandler {
-    surface: Arc<Mutex<Surface>>,
     port_registration_sender: Sender<(jack::Port<jack::Unowned>, bool)>,
 }
 
+// We use a channel to notify main thread of newly connected system ports
+// I tried to create new controller representations and their corresponding ports from the
+// notification thread first, but jack errors, telling me that i can't query the jack server from
+// the notification thread (to create ports)
 impl NotificationHandler {
-    pub fn new(client: &jack::Client, surface: Arc<Mutex<Surface>>, port_registration_sender: Sender<(jack::Port<jack::Unowned>, bool)>) -> Self {
-        let mut handler = NotificationHandler { surface, port_registration_sender };
+    pub fn new(client: &jack::Client, port_registration_sender: Sender<(jack::Port<jack::Unowned>, bool)>) -> Self {
+        let mut handler = NotificationHandler { 
+            port_registration_sender 
+        };
 
         // Currently existing registered ports should also be handled
         let ports: Vec<jack::Port<jack::Unowned>> = client

@@ -3,6 +3,7 @@ use crate::*;
 
 pub struct ProcessHandler {
     surface: Arc<Mutex<Surface>>,
+    transport: Arc<Mutex<Transport>>,
     // Controllers
     //apc20: APC20,
     //apc40: APC40,
@@ -18,9 +19,11 @@ impl ProcessHandler {
         //_timebase_sender: Sender<f64>,
         //client: &jack::Client
         surface: Arc<Mutex<Surface>>,
+        transport: Arc<Mutex<Transport>>,
     ) -> Self {
         ProcessHandler {
             surface,
+            transport,
             //apc20: APC20::new(client),
             //apc40: APC40::new(client),
 
@@ -33,6 +36,15 @@ impl ProcessHandler {
 
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+
+        let mut surface = self.surface.lock().unwrap();
+    
+        let input_events = surface.input_events(scope);
+
+        if input_events.len() > 0 {
+            println!("{:?}", input_events);
+        }
+
         /*
         // Get something representing this process cycle
         let cycle = ProcessCycle::new(client, scope);

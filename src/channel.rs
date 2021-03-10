@@ -1,9 +1,5 @@
 
-use super::port::*;
-use super::loopable::*;
-use super::cycle::*;
-use super::events::*;
-use super::message::*;
+use crate::*;
 
 pub struct Channel {
     // TODO - these are public as we're testing with premade patterns

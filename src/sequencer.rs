@@ -1,10 +1,5 @@
 
-use super::TickRange;
-use super::cycle::*;
-use super::channel::Channel;
-use super::sequence::Sequence;
-use super::loopable::*;
-use super::events::*;
+use crate::*;
 
 pub struct Sequencer {
     pub channels: [Channel; 16],
@@ -68,6 +63,8 @@ impl Sequencer {
         &mut self.sequences[index]
     }
 
+    // TODO - This should live in transport
+    /*
     pub fn start(&mut self, cycle: &ProcessCycle) {
         // Start playing notes, as it could be we halted mid channel
         self.channels.iter_mut().for_each(|channel| {
@@ -95,6 +92,7 @@ impl Sequencer {
             channel.clear_playing_notes();
         });
     }
+    */
 
     pub fn reset_timeline(&mut self) {
         self.channels.iter_mut().for_each(|channel| {
