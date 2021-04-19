@@ -60,19 +60,11 @@ impl Surface {
     }
 
     // Get all input events that occured on surface
-    // We expect controllers to be turned on from left to right. Therefore we can pass already
-    // processed controllers to the next input_events function, so controllerscan add offset of
-    // other controller grids to their button positions
     pub fn input_events(&mut self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
-        let mut events = vec![];
-        let mut controllers = vec![];
-
-        for controller in self.controllers.iter_mut() {
-            events.append(&mut controller.input_events(scope, &controllers));
-            controllers.push(controller);
-        }
-
-        events
+        // TODO - Enumerate and change input events based on controllers in surface
+        self.controllers.iter_mut()
+            .flat_map(|controller| controller.input_events(scope))
+            .collect()
     }
 
     /*

@@ -17,7 +17,7 @@ pub mod loopable;
 pub mod sequence;
 pub mod surface;
 pub mod port;
-pub mod mixer;
+//pub mod mixer;
 pub mod events;
 pub mod instrument;
 pub mod router;
@@ -40,7 +40,6 @@ use surface::*;
 use message::*;
 use hardware::*;
 use port::*;
-use surface::Surface;
 use cycle::*;
 use router::*;
 use tickrange::*;
@@ -67,7 +66,6 @@ fn main() {
     let async_client = client
         .activate_async(notificationhandler, processhandler, timebasehandler)
         .unwrap();
-
 
     let client = async_client.as_client();
 

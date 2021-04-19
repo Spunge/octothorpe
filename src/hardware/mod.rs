@@ -7,6 +7,11 @@
 
 use crate::inputevent::*;
 
+pub struct Offset {
+    x: u8,
+    y: u8,
+}
+
 pub struct Grid { 
     width: u8,
     height: u8,
@@ -19,7 +24,7 @@ pub trait ControllerType {
 
     fn grid(&mut self) -> Option<&mut Grid>;
 
-    fn rawmidi_to_inputevent(&self, message: jack::RawMidi, other_controllers: &Vec<&mut Controller>) -> Option<InputEvent>;
+    fn process_rawmidi(&self, message: jack::RawMidi) -> Option<InputEvent>;
 }
 
 pub struct APC {
@@ -45,10 +50,14 @@ impl ControllerType for APC {
 
     fn grid(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
 
-    fn rawmidi_to_inputevent(&self, message: jack::RawMidi, other_controllers: &Vec<&mut Controller>) -> Option<InputEvent> {
-        println!("{:?}", message);
-        println!("{:?}", other_controllers.len());
-        None
+    fn process_rawmidi(&self, message: jack::RawMidi) -> Option<InputEvent> {
+        if(message.bytes.len() == 3) {
+            // TODO - introduce here
+            None
+        } else {
+            println!("{:?}", message);
+            None
+        }
     }
 }
 
@@ -95,7 +104,11 @@ pub struct Controller {
 impl Controller {
     // We expect that system always reports capture port first, so we can create hardware
     // representations when we see the capture port and add the playback port later
-    pub fn new(system_source: jack::Port<jack::Unowned>, client: &jack::Client, controller_type: impl ControllerType + Send + 'static) -> Self {
+    pub fn new(
+        system_source: jack::Port<jack::Unowned>,
+        client: &jack::Client,
+        controller_type: impl ControllerType + Send + 'static
+    ) -> Self {
         let port_name = controller_type.port_name();
 
         let mut input_port_name = port_name.to_owned();
@@ -114,7 +127,16 @@ impl Controller {
         }
     }
 
-    pub fn input_events(&mut self, scope: &jack::ProcessScope, other_controllers: &Vec<&mut Controller>) -> Vec<InputEvent> {
-        self.input.iter(scope).filter_map(|message| self.controller_type.rawmidi_to_inputevent(message, other_controllers)).collect()
+    // Get input events from this controllers input midi port
+    pub fn input_events(&mut self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
+        self.input.iter(scope)
+            .filter_map(|message| {
+                self.controller_type.process_rawmidi(message)
+            })
+            .collect()
+    }
+
+    pub fn output(&mut self, scope: &jack::ProcessScope) {
+    
     }
 }

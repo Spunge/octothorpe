@@ -1,7 +1,6 @@
 
 #[derive(Debug)]
 pub struct InputEvent {
-
 }
 
 impl InputEvent {
