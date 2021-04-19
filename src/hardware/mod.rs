@@ -13,8 +13,8 @@ pub struct Offset {
 }
 
 pub struct Grid { 
-    width: u8,
-    height: u8,
+    pub width: u8,
+    pub height: u8,
 }
 
 pub trait ControllerType {
@@ -22,7 +22,8 @@ pub trait ControllerType {
     //fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage>;
     fn port_name(&self) -> &'static str;
 
-    fn grid(&mut self) -> Option<&mut Grid>;
+    fn grid_mut(&mut self) -> Option<&mut Grid>;
+    fn grid(&self) -> Option<&Grid>;
 
     fn process_rawmidi(&self, message: jack::RawMidi) -> Option<InputEvent>;
 }
@@ -48,7 +49,8 @@ impl APC {
 impl ControllerType for APC {
     fn port_name(&self) -> &'static str { self.apc_type.port_name() }
 
-    fn grid(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
+    fn grid_mut(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
+    fn grid(&self) -> Option<&Grid> { Some(&self.grid) }
 
     fn process_rawmidi(&self, message: jack::RawMidi) -> Option<InputEvent> {
         if(message.bytes.len() == 3) {

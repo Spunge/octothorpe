@@ -85,6 +85,11 @@ fn main() {
             if port.flags().contains(jack::PortFlags::IS_OUTPUT) {
                 let aliases = port.aliases().unwrap();
 
+                // Get offset based on other already connected controllers that also support grid
+                let offset = surface.controllers.iter()
+                    .filter_map(|controller| { controller.controller_type.grid().and_then(|grid| Some(grid.width)) })
+                    .reduce(|a, b| a + b );
+
                 // Add controller if port has an alias we know
                 if aliases.iter().find(|alias| alias.contains("APC40")).is_some() {
                     surface.controllers.push(Controller::new(port, client, APC::new(APC40::new())));
