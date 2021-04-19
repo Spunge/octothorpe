@@ -5,12 +5,7 @@
 //pub use self::apc40::OLD_APC40;
 //pub use self::apc20::OLD_APC20;
 
-use crate::inputevent::*;
-
-pub struct Offset {
-    x: u8,
-    y: u8,
-}
+use crate::*;
 
 pub struct Grid { 
     pub width: u8,
@@ -25,7 +20,7 @@ pub trait ControllerType {
     fn grid_mut(&mut self) -> Option<&mut Grid>;
     fn grid(&self) -> Option<&Grid>;
 
-    fn process_rawmidi(&self, message: jack::RawMidi) -> Option<InputEvent>;
+    fn process_rawmidi(&self, message: jack::RawMidi);
 }
 
 pub struct APC {
@@ -52,14 +47,9 @@ impl ControllerType for APC {
     fn grid_mut(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
     fn grid(&self) -> Option<&Grid> { Some(&self.grid) }
 
-    fn process_rawmidi(&self, message: jack::RawMidi) -> Option<InputEvent> {
-        if(message.bytes.len() == 3) {
-            // TODO - introduce here
-            None
-        } else {
-            println!("{:?}", message);
-            None
-        }
+    fn process_rawmidi(&self, message: jack::RawMidi) {
+        // TODO - introduce here
+        println!("{:?}", message);
     }
 }
 
@@ -95,7 +85,7 @@ impl APCType for APC20 {
 
 pub struct Controller {
     pub system_source: jack::Port<jack::Unowned>,
-    pub system_sink: Option<jack::Port<jack::Unowned>>,
+    pub system_sink: jack::Port<jack::Unowned>,
 
     pub input: jack::Port<jack::MidiIn>,
     pub output: jack::Port<jack::MidiOut>,
@@ -107,35 +97,47 @@ impl Controller {
     // We expect that system always reports capture port first, so we can create hardware
     // representations when we see the capture port and add the playback port later
     pub fn new(
-        system_source: jack::Port<jack::Unowned>,
         client: &jack::Client,
+        system_source: jack::Port<jack::Unowned>,
+        system_sink: jack::Port<jack::Unowned>,
         controller_type: impl ControllerType + Send + 'static
     ) -> Self {
         let port_name = controller_type.port_name();
 
+        // Get port names based on contoller type
         let mut input_port_name = port_name.to_owned();
         input_port_name.push_str("_in");
         let mut output_port_name = port_name.to_owned();
         output_port_name.push_str("_out");
 
+        // Create controllers jack midi ports
+        let input = client.register_port(input_port_name.as_str(), jack::MidiIn::default()).unwrap();
+        let output = client.register_port(output_port_name.as_str(), jack::MidiOut::default()).unwrap();
+
+        // Connect this controller
+        client.connect_ports(&system_source, &input);
+        client.connect_ports(&output, &system_sink);
+
         Self {
             system_source,
-            system_sink: None,
-
-            input: client.register_port(input_port_name.as_str(), jack::MidiIn::default()).unwrap(),
-            output: client.register_port(output_port_name.as_str(), jack::MidiOut::default()).unwrap(),
+            system_sink,
+            input,
+            output,
 
             controller_type: Box::new(controller_type),
         }
     }
 
     // Get input events from this controllers input midi port
-    pub fn input_events(&mut self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
-        self.input.iter(scope)
-            .filter_map(|message| {
+    pub fn process_input(&mut self, cycle: &ProcessCycle, octothorpe: &mut Octothorpe, others: &Vec<Controller>) {
+        //println!("{:?}", self.controller_type.port_name());
+        let names: Vec<&str> = others.iter().map(|controller| controller.controller_type.port_name()).collect();
+        //println!("others {:?}", names);
+
+        self.input.iter(cycle.scope)
+            .for_each(|message| {
                 self.controller_type.process_rawmidi(message)
             })
-            .collect()
     }
 
     pub fn output(&mut self, scope: &jack::ProcessScope) {

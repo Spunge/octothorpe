@@ -11,8 +11,7 @@ pub enum View {
     Timeline,
 }
 
-pub struct Surface {
-    pub controllers: Vec<Controller>,
+pub struct Interface {
     //pub view: View,
     //pub button_memory: ButtonMemory,
     //pub event_memory: EventMemory,
@@ -31,15 +30,13 @@ pub struct Surface {
     //pattern_base_notes: [u8; 16],
 }
 
-impl Surface {
+impl Interface {
     //pub const PATTERN_TICKS_PER_BUTTON: u32 = TimebaseHandler::TICKS_PER_BEAT as u32 * 2;
     //pub const PHRASE_TICKS_PER_BUTTON: u32 = Self::PATTERN_TICKS_PER_BUTTON * 4;
     //pub const TIMELINE_TICKS_PER_BUTTON: u32 = Self::PHRASE_TICKS_PER_BUTTON * 1;
 
     pub fn new() -> Self {
-        Surface { 
-            controllers: vec![],
-
+        Interface { 
             //view: View::Channel, 
             //button_memory: ButtonMemory::new(),
             //event_memory: EventMemory::new(),
@@ -59,13 +56,15 @@ impl Surface {
         }
     }
 
-    // Get all input events that occured on surface
+    // Get all input events that occured on interface
+    /*
     pub fn input_events(&mut self, scope: &jack::ProcessScope) -> Vec<InputEvent> {
-        // TODO - Enumerate and change input events based on controllers in surface
+        // TODO - Enumerate and change input events based on controllers in interface
         self.controllers.iter_mut()
             .flat_map(|controller| controller.input_events(scope))
             .collect()
     }
+    */
 
     /*
     pub fn switch_view(&mut self, view: View) { 

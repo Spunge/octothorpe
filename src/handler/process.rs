@@ -2,8 +2,8 @@
 use crate::*;
 
 pub struct ProcessHandler {
-    surface: Arc<Mutex<Surface>>,
-    transport: Arc<Mutex<Transport>>,
+    controllers: Arc<Mutex<Vec<Controller>>>,
+    octothorpe: Arc<Mutex<Octothorpe>>,
     // Controllers
     //apc20: APC20,
     //apc40: APC40,
@@ -18,12 +18,12 @@ impl ProcessHandler {
     pub fn new(
         //_timebase_sender: Sender<f64>,
         //client: &jack::Client
-        surface: Arc<Mutex<Surface>>,
-        transport: Arc<Mutex<Transport>>,
+        controllers: Arc<Mutex<Vec<Controller>>>,
+        octothorpe: Arc<Mutex<Octothorpe>>,
     ) -> Self {
         ProcessHandler {
-            surface,
-            transport,
+            controllers,
+            octothorpe,
             //apc20: APC20::new(client),
             //apc40: APC40::new(client),
 
@@ -37,20 +37,31 @@ impl ProcessHandler {
 impl jack::ProcessHandler for ProcessHandler {
     fn process(&mut self, client: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
 
-        let mut surface = self.surface.lock().unwrap();
-    
-        let input_events = surface.input_events(scope);
+        let cycle = ProcessCycle::new(client, scope);
 
-        if input_events.len() > 0 {
-            println!("{:?}", input_events);
+        let mut octothorpe = self.octothorpe.lock().unwrap();
+        let mut controllers = self.controllers.lock().unwrap();
+
+        // As we want to pass other controllers to each controller that's processing
+        // so it change its behaviour based on what other controllers are connected,
+        // we remove it from the vector so we can pass it the rest
+        for index in 0..controllers.len() {
+            let mut controller = controllers.remove(0);
+
+            controller.process_input(&cycle, &mut octothorpe, &controllers);
+
+            // TODO - Controller output
+
+            controllers.push(controller);
         }
+
+        // TODO - Sequencer output
 
         /*
         // Get something representing this process cycle
         let cycle = ProcessCycle::new(client, scope);
 
         while let Ok((port, _is_registered)) = self.introduction_receiver.try_recv() {
-            // TODO - Use is_registered to create & destroy controller structs
             // @important - for now we only get is_registered = true, as for now, we only
             // connect new ports
             println!("{:?}", _is_registered);

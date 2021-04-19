@@ -4,15 +4,14 @@ use jack_sys;
 use crate::*;
 
 pub struct TimebaseHandler {
-    transport: Arc<Mutex<Transport>>,
+    octothorpe: Arc<Mutex<Octothorpe>>,
 }
 
 impl TimebaseHandler {
-
-    pub fn new(transport: Arc<Mutex<Transport>>) -> Self {
+    pub fn new(octothorpe: Arc<Mutex<Octothorpe>>) -> Self {
         TimebaseHandler {
             // TODO - Put this in transport struct that we can share via arc/mutex
-            transport,
+            octothorpe,
         }
     }
 }
@@ -28,13 +27,13 @@ impl jack::TimebaseHandler for TimebaseHandler {
                 //println!("{:?}", (*pos).beats_per_minute);
             //}
 
-            let transport = self.transport.lock().unwrap();
+            let octothorpe = self.octothorpe.lock().unwrap();
 
             // Update timebase information
-            (*pos).beats_per_bar = transport.beats_per_bar;
+            (*pos).beats_per_bar = octothorpe.transport.beats_per_bar;
             (*pos).ticks_per_beat = Transport::TICKS_PER_BEAT;
-            (*pos).beat_type = transport.beat_type;
-            (*pos).beats_per_minute = transport.beats_per_minute;
+            (*pos).beat_type = octothorpe.transport.beat_type;
+            (*pos).beats_per_minute = octothorpe.transport.beats_per_minute;
 
             let abs_tick = ProcessCycle::frame_to_tick(*pos, (*pos).frame);
             let abs_beat = abs_tick / (*pos).ticks_per_beat;
