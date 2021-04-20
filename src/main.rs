@@ -48,6 +48,11 @@ use handler::*;
 use transport::*;
 use octothorpe::*;
 
+struct Offset {
+    x: u8,
+    y: u8,
+}
+
 // This will keep track of what controllers are connected
 struct ControllerManager {
     controllers: Arc<Mutex<Vec<Controller>>>,
@@ -113,7 +118,7 @@ impl ControllerManager {
             client.unregister_port(output_port);
 
             // Remove controller from octo
-            controllers.swap_remove(index);
+            controllers.remove(index);
         }
     }
 

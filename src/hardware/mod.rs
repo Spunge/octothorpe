@@ -38,8 +38,8 @@ pub enum ButtonType {
     Side(u8),
     Indicator(u8),
     Channel(u8),
-    Length(u8),
-    Zoom(u8),
+    Activator(u8),
+    Solo(u8),
     //Arm(u8),
     Shift,
     Quantization,
@@ -98,7 +98,7 @@ pub trait ControllerType {
     fn grid_mut(&mut self) -> Option<&mut Grid>;
     fn grid(&self) -> Option<&Grid>;
 
-    fn process_rawmidi(&mut self, bytes: &[u8]) -> Option<ControllerEventType>;
+    fn process_rawmidi(&mut self, bytes: &[u8], octothorpe: &mut Octothorpe) -> Option<ControllerEventType>;
 
     fn get_midi_messages(&mut self, cycle: &ProcessCycle) -> Vec<MidiMessage>;
 }
@@ -138,31 +138,15 @@ impl APC {
             // Grid should add notes & add phrases
             0x35 ..= 0x39 => Some(ButtonType::Grid(channel, 4 - (byte - 0x35))),
             //0x30 => ButtonType::Arm(channel),
-            0x31 => Some(ButtonType::Zoom(channel)),
-            0x32 => Some(ButtonType::Length(channel)),
+            0x31 => Some(ButtonType::Activator(channel)),
+            0x32 => Some(ButtonType::Solo(channel)),
             _ => self.apc_type.byte_to_buttontype(byte, channel),
         }
     }
-}
 
-impl ControllerType for APC {
-    fn port_name(&self) -> &'static str { self.apc_type.port_name() }
-
-    fn grid_mut(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
-    fn grid(&self) -> Option<&Grid> { Some(&self.grid) }
-
-    fn process_rawmidi(&mut self, bytes: &[u8]) -> Option<ControllerEventType> {
+    // If this midi message is recognized, make it into a controller event
+    fn rawmidi_to_controller_event(&self, bytes: &[u8]) -> Option<ControllerEventType> {
         match bytes[0] {
-            // Sysex message
-            0xF0 => {
-                // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
-                if bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && (bytes[6] == 0x73 || bytes[6] == 0x7b) {
-                    println!("inquiry response received {:?} {:?}", bytes[13], bytes[6]);
-                    self.local_id = Some(bytes[13]);
-                    self.device_id = Some(bytes[6]);
-                }
-                None
-            },
             // Button pressed or released
             0x80 ..= 0x9F => {
                 let (channel, button_state) = if(bytes[0] > 0x8F) {
@@ -197,7 +181,26 @@ impl ControllerType for APC {
             _ => None,
         }
     }
+}
 
+impl ControllerType for APC {
+    fn port_name(&self) -> &'static str { self.apc_type.port_name() }
+
+    fn grid_mut(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
+    fn grid(&self) -> Option<&Grid> { Some(&self.grid) }
+
+    fn process_rawmidi(&mut self, bytes: &[u8], octothorpe: &mut Octothorpe) -> Option<ControllerEventType> {
+        // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
+        if bytes[0] == 0xF0 && bytes[3] == 0x06 && bytes[4] == 0x02 && bytes[5] == 0x47 && (bytes[6] == 0x73 || bytes[6] == 0x7b) {
+            println!("inquiry response received {:?} {:?}", bytes[13], bytes[6]);
+            self.local_id = Some(bytes[13]);
+            self.device_id = Some(bytes[6]);
+        }
+
+        self.rawmidi_to_controller_event(bytes)
+    }
+
+    // Get midi messages that should be output
     fn get_midi_messages(&mut self, cycle: &ProcessCycle) -> Vec<MidiMessage> {
         let mut messages = vec![];
 
@@ -318,12 +321,12 @@ impl Controller {
     // Get input events from this controllers input midi port
     pub fn process_midi_input(&mut self, cycle: &ProcessCycle, octothorpe: &mut Octothorpe, others: &Vec<Controller>) {
         //println!("{:?}", self.controller_type.port_name());
-        let names: Vec<&str> = others.iter().map(|controller| controller.controller_type.port_name()).collect();
+        //let names: Vec<&str> = others.iter().map(|controller| controller.controller_type.port_name()).collect();
         //println!("others {:?}", names);
 
         for message in self.input.iter(cycle.scope) {
             // Let controller type handle midi
-            if let Some(event_type) = self.controller_type.process_rawmidi(message.bytes) {
+            if let Some(event_type) = self.controller_type.process_rawmidi(message.bytes, octothorpe) {
                 // If message is a recognized event type, make event
                 let controller_event = ControllerEvent::new(cycle.time_at_frame(message.time), event_type);
                 println!("{:?}", controller_event);
