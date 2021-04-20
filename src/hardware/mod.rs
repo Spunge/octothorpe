@@ -102,9 +102,6 @@ pub trait DeviceType {
     //fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage>;
     fn port_name(&self) -> &'static str;
 
-    fn grid_mut(&mut self) -> Option<&mut Grid>;
-    fn grid(&self) -> Option<&Grid>;
-
     fn process_rawmidi(&mut self, message: jack::RawMidi) -> Option<InputEventType>;
 
     fn get_midi_messages(&mut self, cycle: &ProcessCycle) -> Vec<MidiMessage>;
@@ -115,8 +112,6 @@ pub struct APC {
     introduced_at: u64,
     local_id: Option<u8>,
     device_id: Option<u8>,
-
-    grid: Grid,
 }
 
 impl APC {
@@ -126,8 +121,6 @@ impl APC {
             introduced_at: 0,
             local_id: None,
             device_id: None,
-
-            grid: Grid { width: 8, height: 5 },
         }
     }
 
@@ -163,9 +156,6 @@ impl APC {
 
 impl DeviceType for APC {
     fn port_name(&self) -> &'static str { self.apc_type.port_name() }
-
-    fn grid_mut(&mut self) -> Option<&mut Grid> { Some(&mut self.grid) }
-    fn grid(&self) -> Option<&Grid> { Some(&self.grid) }
 
     fn process_rawmidi(&mut self, message: jack::RawMidi) -> Option<InputEventType> {
         let b = message.bytes;

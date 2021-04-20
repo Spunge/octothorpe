@@ -60,9 +60,8 @@ fn main() {
     let (client, _status) = jack::Client::new("octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
     let (port_registration_sender, port_registration_receiver) = channel();
 
-    let devices = Arc::new(Mutex::new(vec![]));
-    let mut device_manager = DeviceManager::new(port_registration_receiver, Arc::clone(&devices));
-    let octothorpe = Arc::new(Mutex::new(Octothorpe::new(devices)));
+    let octothorpe = Arc::new(Mutex::new(Octothorpe::new()));
+    let mut device_manager = DeviceManager::new(port_registration_receiver, Arc::clone(&octothorpe));
 
     //let notificationhandler = NotificationHandler::new(connection_send);
     let notificationhandler = NotificationHandler::new(port_registration_sender);
