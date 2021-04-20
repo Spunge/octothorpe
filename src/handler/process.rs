@@ -2,7 +2,6 @@
 use crate::*;
 
 pub struct ProcessHandler {
-    controllers: Arc<Mutex<Vec<Controller>>>,
     octothorpe: Arc<Mutex<Octothorpe>>,
     // Controllers
     //apc20: APC20,
@@ -18,11 +17,9 @@ impl ProcessHandler {
     pub fn new(
         //_timebase_sender: Sender<f64>,
         //client: &jack::Client
-        controllers: Arc<Mutex<Vec<Controller>>>,
         octothorpe: Arc<Mutex<Octothorpe>>,
     ) -> Self {
         ProcessHandler {
-            controllers,
             octothorpe,
             //apc20: APC20::new(client),
             //apc40: APC40::new(client),
@@ -40,23 +37,8 @@ impl jack::ProcessHandler for ProcessHandler {
         let cycle = ProcessCycle::new(client, scope);
 
         let mut octothorpe = self.octothorpe.lock().unwrap();
-        let mut controllers = self.controllers.lock().unwrap();
-
-        // As we want to pass other controllers to each controller that's processing
-        // so it change its behaviour based on what other controllers are connected,
-        // we remove it from the vector so we can pass it the rest
-        for index in 0..controllers.len() {
-            let mut controller = controllers.remove(0);
-            controller.process_midi_input(&cycle, &mut octothorpe, &controllers);
-            controllers.push(controller);
-        }
-
-        // After processing all input of all controllers, output
-        for index in 0..controllers.len() {
-            let mut controller = controllers.remove(0);
-            controller.output_midi(&cycle, &mut octothorpe, &controllers);
-            controllers.push(controller);
-        }
+        octothorpe.process_midi_input(&cycle);
+        octothorpe.output_midi(&cycle);
 
         // TODO - Sequencer output
 

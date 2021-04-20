@@ -45,7 +45,7 @@ impl<'a> ProcessCycle<'a> {
         self.tick_range.stop - self.tick_range.start
     }
 
-    pub fn time_at_frame(&self, frame: u32) -> u64 {
+    pub fn frame_to_time(&self, frame: u32) -> u64 {
         // TODO - When can this error?
         let usecs_per_frame = self.usecs() as f32 / self.scope.n_frames() as f32;
         let usecs_since_period_start = frame as f32 * usecs_per_frame;
