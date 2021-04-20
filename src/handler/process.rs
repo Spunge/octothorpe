@@ -47,11 +47,14 @@ impl jack::ProcessHandler for ProcessHandler {
         // we remove it from the vector so we can pass it the rest
         for index in 0..controllers.len() {
             let mut controller = controllers.remove(0);
+            controller.process_midi_input(&cycle, &mut octothorpe, &controllers);
+            controllers.push(controller);
+        }
 
-            controller.process_input(&cycle, &mut octothorpe, &controllers);
-
-            // TODO - Controller output
-
+        // After processing all input of all controllers, output
+        for index in 0..controllers.len() {
+            let mut controller = controllers.remove(0);
+            controller.output_midi(&cycle, &mut octothorpe, &controllers);
             controllers.push(controller);
         }
 
