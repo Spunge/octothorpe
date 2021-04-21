@@ -44,7 +44,7 @@ impl DeviceManager {
                 let device_type = if is_apc40 { APC::new(APC40::new()) } else { APC::new(APC20::new()) };
 
                 //println!("adding device {:?}", capture_port.aliases().unwrap().first().unwrap());
-                self.octothorpe.lock().unwrap().devices.push(Device::new(client, capture_port, port, device_type));
+                self.octothorpe.lock().unwrap().add_device(Device::new(client, capture_port, port, device_type));
             }
         }
     }
@@ -69,7 +69,7 @@ impl DeviceManager {
             client.unregister_port(output_port);
 
             // Remove device from octo
-            octothorpe.devices.remove(index);
+            octothorpe.remove_device(index);
         }
     }
 
@@ -93,11 +93,15 @@ impl DeviceManager {
             if client.is_mine(&port) {
                 continue
             }
-            
+
             if is_registered {
-                println!("{:?} registered", port.name().unwrap());
-                self.register_port(port, client);
+                // We're only interested in physical midi ports
+                if port.flags().contains(jack::PortFlags::IS_PHYSICAL) && port.port_type().unwrap().contains("midi") {
+                    println!("{:?} registered", port.name().unwrap());
+                    self.register_port(port, client);
+                }
             } else {
+                // On deregister, no port info is known, so we'll have to check every port
                 println!("{:?} deregistered", port.name().unwrap());
                 self.deregister_port(port, client);
             }

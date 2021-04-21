@@ -48,6 +48,7 @@ pub enum ButtonType {
     Blue(u8),
     // Arms channels in sequence view, alters channel quantization in other views
     Red(u8),
+    View,
     Shift,
     Quantization,
     Play,
@@ -92,11 +93,6 @@ impl InputEvent {
     }
 }
 
-pub struct Grid { 
-    pub width: u8,
-    pub height: u8,
-}
-
 pub trait DeviceType {
     //fn process_InputEvent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
     //fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage>;
@@ -132,7 +128,7 @@ impl APC {
             // Side grid is turned upside down as we draw the phrases upside down as we draw notes
             // updside down due to lower midi nodes having lower numbers, therefore the 4 -
             0x52 ..= 0x56 => Some(ButtonType::Side(4 - (byte - 0x52))),
-            0x51 => Some(ButtonType::Shift),
+            0x51 => Some(ButtonType::View),
             0x62 => Some(ButtonType::Shift),
             0x50 => Some(ButtonType::Master),
             // Grid should add notes & add phrases
@@ -162,7 +158,6 @@ impl DeviceType for APC {
 
         // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
         if b[0] == 0xF0 && b[3] == 0x06 && b[4] == 0x02 && b[5] == 0x47 && (b[6] == 0x73 || b[6] == 0x7b) {
-            println!("inquiry response received {:?} {:?}", b[13], b[6]);
             self.local_id = Some(b[13]);
             self.device_id = Some(b[6]);
         }
@@ -212,11 +207,9 @@ impl DeviceType for APC {
             if let (Some(local_id), Some(device_id)) = (self.local_id, self.device_id) {
                 // ID is known, introduce ourselves
                 self.introduced_at = cycle.time_start;
-                println!("writing introduction");
                 messages.push(MidiMessage::new(0, vec![0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x42, 0x00, 0x00, 0x00, 0xF7]))
             } else {
                 // No ID know yet, inquire about device
-                println!("writing inquiry");
                 messages.push(MidiMessage::new(0, vec![0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]));
             }
         } else {

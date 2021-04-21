@@ -8,8 +8,13 @@ use crate::inputevent::*;
 pub enum View {
     Channel,
     Sequence,
-    Timeline,
 }
+
+//pub enum ChannelView {
+    //Pattern,
+    //Phrase,
+    //Timeline,
+//}
 
 pub struct Interface {
     //pub view: View,
