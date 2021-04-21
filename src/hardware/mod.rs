@@ -5,6 +5,7 @@
 //pub use self::apc40::OLD_APC40;
 //pub use self::apc20::OLD_APC20;
 
+use std::collections::HashMap;
 use crate::*;
 
 #[derive(Debug)]
@@ -32,132 +33,209 @@ pub enum ButtonState {
     Released,
 }
 
-#[derive(Debug)]
-pub enum ButtonType {
-    // Sets notes in patterns, or playing patterns in phrases, or playing phrases in timeline
-    Grid(u8, u8),
-    // Selects patterns & phrases
-    Side(u8),
-    // Indicates current playhead position
-    Indicator(u8),
-    // Indicates selected channel
-    Channel(u8),
-    // Indicates pattern, timeline or phrase length
-    Green(u8),
-    // Indicates pattern, timeline or phrase zoom
-    Blue(u8),
-    // Arms channels in sequence view, alters channel quantization in other views
-    Red(u8),
-    View,
-    Shift,
-    Quantization,
-    Play,
-    Stop,
-    Up,
-    Down,
-    Right,
-    Left,
-    Master,
-    Unknown,
-}
-
-#[derive(Debug)]
-pub enum FaderType {
-    Channel(u8),
-    CrossFade,
-    Master,
-}
-
-#[derive(Debug)]
-pub enum KnobType {
-    Control(u8),
-    Cue,
-}
-
-#[derive(Debug)]
-pub enum InputEventType {
-    KnobEvent(KnobType, u8),
-    ButtonEvent(ButtonType, ButtonState),
-    FaderEvent(FaderType, u8),
-}
-
-#[derive(Debug)]
-pub struct InputEvent {
-    time: u64,
-    event_type: InputEventType,
-}
-
-impl InputEvent {
-    pub fn new(time: u64, event_type: InputEventType) -> Self {
-        Self { time, event_type }
-    }
-}
-
 pub trait DeviceType {
     //fn process_InputEvent(&mut self, event: &InputEvent, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface);
     //fn output_messages(&mut self, cycle: &ProcessCycle, sequencer: &mut Sequencer, surface: &mut Surface) -> Vec<TimedMessage>;
     fn port_name(&self) -> &'static str;
 
-    fn process_rawmidi(&mut self, message: jack::RawMidi) -> Option<InputEventType>;
+    fn surface(&self, name: &str) -> Option<&Surface> { None }
+    fn surface_mut(&mut self, name: &str) -> Option<&mut Surface> { None }
+
+    fn process_midi_inputevent(&mut self, midi_input_event: MidiInputEvent, octothorpe: &mut Octothorpe);
 
     fn get_midi_messages(&mut self, cycle: &ProcessCycle) -> Vec<MidiMessage>;
 }
 
+#[derive(Debug)]
+pub struct Surface {
+    width: u8,
+    height: u8,
+    offset_x: u8,
+    surface_type: SurfaceType,
+}
+
+impl Surface {
+    pub fn new(width: u8, height: u8, surface_type: SurfaceType) -> Self {
+        Self { width, height, offset_x: 0, surface_type }
+    }
+
+    pub fn set_offset_x(&mut self, offset_x: u8) {
+        self.offset_x = offset_x;
+    }
+
+    pub fn process_event(&mut self, mut event: SurfaceEvent) {
+        event.offset_x(self.offset_x);
+        println!("{:?}", self);
+        println!("Processed the following event:");
+        println!("{:?}", event);
+        println!("");
+    }
+}
+
+#[derive(Debug)]
+pub enum ControlType {
+    Absolute,
+    Relative,
+}
+
+#[derive(Debug)]
+pub enum SurfaceType {
+    Button(ButtonSurfaceType),
+    Control(ControlType, ControlSurfaceType),
+}
+
+#[derive(Debug)]
+pub struct SurfaceEvent {
+    time: u64,
+    position: Position,
+    surface_event_type: SurfaceEventType,
+}
+
+impl SurfaceEvent {
+    pub fn new(time: u64, position: Position, surface_event_type: SurfaceEventType) -> Self {
+        Self { time, position, surface_event_type }
+    }
+
+    pub fn offset_x(&mut self, offset: u8) {
+        self.position.x += offset;
+    }
+}
+
+#[derive(Debug)]
+pub enum SurfaceEventType {
+    Button(ButtonState),
+    Control(u8),
+}
+
+#[derive(Debug)]
+pub enum ButtonSurfaceType {
+    PatternLength,
+    PatternZoom,
+}
+
+#[derive(Debug)]
+pub enum ControlSurfaceType {
+    Parameter,
+    Volume,
+    HorizontalPosition,
+    VerticalPosition,
+}
+
+#[derive(Debug)]
+pub struct Position {
+    x: u8,
+    y: u8,
+}
+
+impl Position {
+    pub fn new(x: u8, y: u8) -> Self {
+        Self { x, y, }
+    }
+}
+
+pub struct Dimensions {
+    width: u8,
+    height: u8,
+}
+
+pub struct MidiInputEvent<'a> {
+    bytes: &'a [u8],
+    time: u64,
+}
+
 pub struct APC {
-    apc_type: Box<dyn APCType + Send>,
+    apc_type: APCType,
     introduced_at: u64,
     local_id: Option<u8>,
     device_id: Option<u8>,
+    
+    surfaces: HashMap<&'static str, Surface>,
 }
 
 impl APC {
-    pub fn new(apc_type: impl APCType + Send + 'static) -> Self {
-        Self {
-            apc_type: Box::new(apc_type),
+    pub fn new(apc_type: APCType, other_devices: &Vec<Device>) -> Self {
+        // Keep track of surfaces in hashmap, so we can map over keys
+        let mut surfaces = HashMap::new();
+        surfaces.insert(
+            "pattern_length",
+            Surface::new(8, 1, SurfaceType::Button(ButtonSurfaceType::PatternLength)),
+        );
+        surfaces.insert(
+            "pattern_zoom",
+            Surface::new(8, 1, SurfaceType::Button(ButtonSurfaceType::PatternZoom)),
+        );
+
+        // Offset every surface by adding width of corresponding surface of already existing devices
+        for (key, surface) in surfaces.iter_mut() {
+            let offset_x = other_devices.iter()
+                .filter_map(|device| {
+                    device.device_type.surface(key)
+                        .and_then(|surface| Some(surface.width))
+                })
+                .reduce(|a, b| a + b)
+                .or(Some(0))
+                .unwrap();
+
+            surface.set_offset_x(offset_x);
+        }
+
+         Self {
+            apc_type,
             introduced_at: 0,
             local_id: None,
             device_id: None,
+            surfaces,
         }
     }
 
-    fn byte_to_buttontype(&self, byte: u8, channel: u8) -> Option<ButtonType> {
+    fn recognized_button(&mut self, channel: u8, byte: u8) -> Option<(&mut Surface, Position)> {
         match byte {
-            0x33 => Some(ButtonType::Channel(channel)),
+            //0x33 => Some(ButtonType::Channel(channel)),
             // These used to be sequence buttons, but will now be more control groups for plugin parameters
-            //0x57 ..= 0x5A => ButtonType::Sequence(byte - 0x57),
+            //0x57 ..= 0x5A => ButtonType::Sequence(b[1]- 0x57),
             // Side grid is turned upside down as we draw the phrases upside down as we draw notes
             // updside down due to lower midi nodes having lower numbers, therefore the 4 -
-            0x52 ..= 0x56 => Some(ButtonType::Side(4 - (byte - 0x52))),
-            0x51 => Some(ButtonType::View),
-            0x62 => Some(ButtonType::Shift),
-            0x50 => Some(ButtonType::Master),
+            //0x52 ..= 0x56 => Some(ButtonType::Side(4 - (b[1]- 0x52))),
+            //0x51 => Some(ButtonType::View),
+            //0x62 => Some(ButtonType::Shift),
+            //0x50 => Some(ButtonType::Master),
             // Grid should add notes & add phrases
-            0x35 ..= 0x39 => Some(ButtonType::Grid(channel, 4 - (byte - 0x35))),
-            0x34 => Some(ButtonType::Indicator(channel)),
-            0x30 => Some(ButtonType::Red(channel)),
-            0x31 => Some(ButtonType::Green(channel)),
-            0x32 => Some(ButtonType::Blue(channel)),
+            //0x35 ..= 0x39 => Some(ButtonType::Grid(channel, 4 - (b[1]- 0x35))),
+            //0x34 => Some(ButtonType::Indicator(channel)),
+            //0x30 => Some(ButtonType::Red(channel)),
+            0x31 => Some((self.surface_mut("pattern_zoom").unwrap(), Position::new(channel, 0))),
+            0x32 => Some((self.surface_mut("pattern_length").unwrap(), Position::new(channel, 0))),
             // APC40 specific stuff
-            0x5B => Some(ButtonType::Play),
-            0x5C => Some(ButtonType::Stop),
-            0x3F => Some(ButtonType::Quantization),
-            0x5E => Some(ButtonType::Up),
-            0x5F => Some(ButtonType::Down),
-            0x60 => Some(ButtonType::Right),
-            0x61 => Some(ButtonType::Left),
+            //0x5B => Some(ButtonType::Play),
+            //0x5C => Some(ButtonType::Stop),
+            //0x3F => Some(ButtonType::Quantization),
+            //0x5E => Some(ButtonType::Up),
+            //0x5F => Some(ButtonType::Down),
+            //0x60 => Some(ButtonType::Right),
+            //0x61 => Some(ButtonType::Left),
             _ => None,
         }
     }
+
 }
 
 impl DeviceType for APC {
     fn port_name(&self) -> &'static str { self.apc_type.port_name() }
 
-    fn process_rawmidi(&mut self, message: jack::RawMidi) -> Option<InputEventType> {
-        let b = message.bytes;
+    fn surface(&self, name: &str) -> Option<&Surface> {
+        self.surfaces.get(name)
+    }
+
+    fn surface_mut(&mut self, name: &str) -> Option<&mut Surface> {
+        self.surfaces.get_mut(name)
+    }
+
+    fn process_midi_inputevent(&mut self, midi_input_event: MidiInputEvent, octothorpe: &mut Octothorpe) {
+        let b = midi_input_event.bytes;
 
         // 0x06 = inquiry e, 0x02 = inquiry response 0x47 = akai manufacturer, 0x73 = APC40, 0x7b = APC20
         if b[0] == 0xF0 && b[3] == 0x06 && b[4] == 0x02 && b[5] == 0x47 && (b[6] == 0x73 || b[6] == 0x7b) {
+            //println!("Inquiry response received, local_id: {:?}, device_id: {:?}", b[13], b[6]);
             self.local_id = Some(b[13]);
             self.device_id = Some(b[6]);
         }
@@ -172,13 +250,15 @@ impl DeviceType for APC {
                     (b[0] - 0x80, ButtonState::Released)
                 };
 
-                self.byte_to_buttontype(b[1], channel)
-                    .and_then(|button_type| {
-                        Some(InputEventType::ButtonEvent(button_type, button_state))
-                    })
+                // Get associated surface, and make it handle input
+                if let Some((surface, position)) = self.recognized_button(channel, b[1]) {
+                    let event = SurfaceEvent::new(midi_input_event.time, position, SurfaceEventType::Button(button_state));
+                    surface.process_event(event);
+                }
             },
             // Fader or pot adjusted
             0xB0 ..= 0xB8 => {
+                /*
                 match b[1] {
                     0x30 ..= 0x37 | 0x10 ..= 0x17 => {
                         // APC effect knobs are ordered weird, reorder them from to 0..16
@@ -192,10 +272,11 @@ impl DeviceType for APC {
                     0xF => Some(InputEventType::FaderEvent(FaderType::CrossFade, b[2])),
                     0x2F => Some(InputEventType::KnobEvent(KnobType::Cue, b[2])),
                     _ => None,
-                }
+                };
+                */
             },
-            _ => None,
-        }
+            _ => (),
+        };
     }
 
     // Get midi messages that should be output
@@ -207,9 +288,11 @@ impl DeviceType for APC {
             if let (Some(local_id), Some(device_id)) = (self.local_id, self.device_id) {
                 // ID is known, introduce ourselves
                 self.introduced_at = cycle.time_start;
+                //println!("Introducing {:?}", self.apc_type);
                 messages.push(MidiMessage::new(0, vec![0xF0, 0x47, local_id, device_id, 0x60, 0x00, 0x04, 0x42, 0x00, 0x00, 0x00, 0xF7]))
             } else {
                 // No ID know yet, inquire about device
+                //println!("Inquiring {:?}", self.apc_type);
                 messages.push(MidiMessage::new(0, vec![0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]));
             }
         } else {
@@ -220,34 +303,19 @@ impl DeviceType for APC {
     }
 }
 
-pub trait APCType {
-    fn port_name(&self) -> &'static str;
+#[derive(Debug)]
+pub enum APCType {
+    APC40,
+    APC20,
 }
 
-pub struct APC40 {
-}
-
-impl APC40 {
-    pub fn new() -> Self {
-        Self {}
+impl APCType {
+    fn port_name(&self) -> &'static str {
+        match &self {
+            Self::APC40 => "apc40",
+            Self::APC20 => "apc20",
+        }
     }
-}
-
-impl APCType for APC40 {
-    fn port_name(&self) -> &'static str { "apc40" }
-}
-
-pub struct APC20 {
-}
-
-impl APC20 {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl APCType for APC20 {
-    fn port_name(&self) -> &'static str { "apc20" }
 }
 
 pub struct Device {
@@ -267,7 +335,7 @@ impl Device {
         client: &jack::Client,
         system_source: jack::Port<jack::Unowned>,
         system_sink: jack::Port<jack::Unowned>,
-        device_type: impl DeviceType + Send + 'static
+        device_type: impl DeviceType + Send + 'static,
     ) -> Self {
         let port_name = device_type.port_name();
 
@@ -302,18 +370,17 @@ impl Device {
     }
 
     // Get input events from this devices input midi port
-    pub fn process_midi_input(&mut self, cycle: &ProcessCycle) -> Vec<InputEvent> {
-        let mut events = vec![];
+    pub fn process_midi_input(&mut self, cycle: &ProcessCycle, octothorpe: &mut Octothorpe, devices: &Vec<Device>) {
         for message in self.input.iter(cycle.scope) {
-            if let Some(input_event_type) = self.device_type.process_rawmidi(message) {
-                events.push(InputEvent::new(cycle.frame_to_time(message.time), input_event_type))
-            }
+            let midi_input_event = MidiInputEvent { time: cycle.frame_to_time(message.time), bytes: message.bytes };
+            self.device_type.process_midi_inputevent(midi_input_event, octothorpe);
+            //if let Some(input_event_type) = self.device_type.process_midi_inputevent(message) {
+                //events.push(InputEvent::new(cycle.frame_to_time(message.time), input_event_type))
+            //}
         }
-
-        events
     }
 
-    pub fn output_midi(&mut self, cycle: &ProcessCycle) {
+    pub fn output_midi(&mut self, cycle: &ProcessCycle, octothorpe: &mut Octothorpe, devices: &Vec<Device>) {
         let mut writer = self.output.writer(cycle.scope);
         let messages = self.device_type.get_midi_messages(cycle);
 

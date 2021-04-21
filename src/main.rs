@@ -50,24 +50,20 @@ use transport::*;
 use octothorpe::*;
 use device_manager::*;
 
-struct Offset {
-    x: u8,
-    y: u8,
-}
-
 fn main() {
     // Setup client
     let (client, _status) = jack::Client::new("octothorpe", jack::ClientOptions::NO_START_SERVER).unwrap();
     let (port_registration_sender, port_registration_receiver) = channel();
 
+    let devices = Arc::new(Mutex::new(vec![]));
     let octothorpe = Arc::new(Mutex::new(Octothorpe::new()));
-    let mut device_manager = DeviceManager::new(port_registration_receiver, Arc::clone(&octothorpe));
+    let mut device_manager = DeviceManager::new(port_registration_receiver, Arc::clone(&devices));
 
     //let notificationhandler = NotificationHandler::new(connection_send);
     let notificationhandler = NotificationHandler::new(port_registration_sender);
     let timebasehandler = TimebaseHandler::new(Arc::clone(&octothorpe));
     //let processhandler = ProcessHandler::new(introduction_receive, timebase_sender, &client);
-    let processhandler = ProcessHandler::new(Arc::clone(&octothorpe));
+    let processhandler = ProcessHandler::new(octothorpe, devices);
 
     // Activate client
     let async_client = client

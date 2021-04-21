@@ -3,6 +3,7 @@ use crate::*;
 
 pub struct ProcessHandler {
     octothorpe: Arc<Mutex<Octothorpe>>,
+    devices: Arc<Mutex<Vec<Device>>>,
     // Controllers
     //apc20: APC20,
     //apc40: APC40,
@@ -18,9 +19,11 @@ impl ProcessHandler {
         //_timebase_sender: Sender<f64>,
         //client: &jack::Client
         octothorpe: Arc<Mutex<Octothorpe>>,
+        devices: Arc<Mutex<Vec<Device>>>,
     ) -> Self {
         ProcessHandler {
             octothorpe,
+            devices,
             //apc20: APC20::new(client),
             //apc40: APC40::new(client),
 
@@ -36,9 +39,21 @@ impl jack::ProcessHandler for ProcessHandler {
 
         let cycle = ProcessCycle::new(client, scope);
 
+        let mut devices = self.devices.lock().unwrap();
         let mut octothorpe = self.octothorpe.lock().unwrap();
-        octothorpe.process_midi_input(&cycle);
-        octothorpe.output_midi(&cycle);
+
+        // Grab devices from index 0 and push them onto the end, this way we can pass all other
+        // devices to the device, so it can change it's behaviour based on other controllers present
+        for _index in 0..devices.len() {
+            let mut device = devices.remove(0);
+            device.process_midi_input(&cycle, &mut octothorpe, &devices);
+            devices.push(device);
+        }
+        for _index in 0..devices.len() {
+            let mut device = devices.remove(0);
+            device.output_midi(&cycle, &mut octothorpe, &devices);
+            devices.push(device);
+        }
 
         // TODO - Sequencer output
 

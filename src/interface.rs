@@ -17,7 +17,7 @@ pub enum View {
 //}
 
 pub struct Interface {
-    //pub view: View,
+    pub view: View,
     //pub button_memory: ButtonMemory,
     //pub event_memory: EventMemory,
 
@@ -42,7 +42,7 @@ impl Interface {
 
     pub fn new() -> Self {
         Interface { 
-            //view: View::Channel, 
+            view: View::Channel, 
             //button_memory: ButtonMemory::new(),
             //event_memory: EventMemory::new(),
 

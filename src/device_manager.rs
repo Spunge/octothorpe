@@ -2,15 +2,15 @@
 use crate::*;
 
 pub struct DeviceManager {
-    octothorpe: Arc<Mutex<Octothorpe>>,
+    devices: Arc<Mutex<Vec<Device>>>,
     port_registration_receiver: Receiver<(jack::PortId, bool)>,
     registered_ports: Vec<jack::Port<jack::Unowned>>,
 }
 
 impl DeviceManager {
-    pub fn new(port_registration_receiver: Receiver<(jack::PortId, bool)>, octothorpe: Arc<Mutex<Octothorpe>>) -> Self {
+    pub fn new(port_registration_receiver: Receiver<(jack::PortId, bool)>, devices: Arc<Mutex<Vec<Device>>>) -> Self {
         Self {
-            octothorpe,
+            devices,
             port_registration_receiver,
             registered_ports: vec![],
         }
@@ -40,11 +40,13 @@ impl DeviceManager {
                 let capture_port = self.registered_ports.swap_remove(index);
 
                 // Add found device
+                let mut devices = self.devices.lock().unwrap();
+
                 let is_apc40 = port.aliases().unwrap().iter().find(|alias| alias.contains("APC40")).is_some();
-                let device_type = if is_apc40 { APC::new(APC40::new()) } else { APC::new(APC20::new()) };
+                let device_type = APC::new(if is_apc40 { APCType::APC40 } else { APCType::APC20 }, &devices);
 
                 //println!("adding device {:?}", capture_port.aliases().unwrap().first().unwrap());
-                self.octothorpe.lock().unwrap().add_device(Device::new(client, capture_port, port, device_type));
+                devices.push(Device::new(client, capture_port, port, device_type));
             }
         }
     }
@@ -52,10 +54,10 @@ impl DeviceManager {
     // Destroy device when ports disconnect
     pub fn deregister_port(&mut self, port: jack::Port<jack::Unowned>, client: &jack::Client) {
         // Get lock
-        let mut octothorpe = self.octothorpe.lock().unwrap();
+        let mut devices = self.devices.lock().unwrap();
 
         // Only destroy on output port disconnect as devices have multiple ports
-        let device = octothorpe.devices.iter().enumerate()
+        let device = devices.iter().enumerate()
             .find(|(_index, device)| device.system_source.name().unwrap() == port.name().unwrap());
 
         // Deregister jack ports on removing device
@@ -69,7 +71,7 @@ impl DeviceManager {
             client.unregister_port(output_port);
 
             // Remove device from octo
-            octothorpe.remove_device(index);
+            devices.remove(index);
         }
     }
 
