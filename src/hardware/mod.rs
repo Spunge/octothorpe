@@ -56,7 +56,7 @@ pub struct Surface {
 
 impl Surface {
     pub fn new(width: u8, height: u8, surface_type: SurfaceType) -> Self {
-        Self { width, height, offset_x: 0, surface_type }
+        Self { width, height, offset_x: 0, surface_type, }
     }
 
     pub fn set_offset_x(&mut self, offset_x: u8) {
@@ -65,10 +65,26 @@ impl Surface {
 
     pub fn process_event(&mut self, mut event: SurfaceEvent) {
         event.offset_x(self.offset_x);
-        println!("{:?}", self);
-        println!("Processed the following event:");
-        println!("{:?}", event);
-        println!("");
+
+        match (&self.surface_type, event) {
+            (
+                SurfaceType::Button(button_surface_type), 
+                SurfaceEvent { time, position, surface_event_type: SurfaceEventType::Button(button_state) }
+            ) => {
+                println!("{:?}", button_surface_type);
+                println!("Processed the following event:");
+                println!("{:?} changed to {:?} at {:?}\n", position, button_state, time);
+            },
+            (
+                SurfaceType::Control(control_surface_type, control_type),
+                SurfaceEvent { time, position, surface_event_type: SurfaceEventType::Control(value) }
+            ) => {
+                println!("{:?}", control_surface_type);
+                println!("Processed the following {:?} event:", control_type);
+                println!("{:?} changed to {:?} at {:?}\n", position, value, time);
+            },
+            _ => ()
+        }
     }
 }
 
@@ -109,8 +125,9 @@ pub enum SurfaceEventType {
 
 #[derive(Debug)]
 pub enum ButtonSurfaceType {
-    PatternLength,
-    PatternZoom,
+    Length,
+    Zoom,
+    View,
 }
 
 #[derive(Debug)]
@@ -133,11 +150,6 @@ impl Position {
     }
 }
 
-pub struct Dimensions {
-    width: u8,
-    height: u8,
-}
-
 pub struct MidiInputEvent<'a> {
     bytes: &'a [u8],
     time: u64,
@@ -156,22 +168,16 @@ impl APC {
     pub fn new(apc_type: APCType, other_devices: &Vec<Device>) -> Self {
         // Keep track of surfaces in hashmap, so we can map over keys
         let mut surfaces = HashMap::new();
-        surfaces.insert(
-            "pattern_length",
-            Surface::new(8, 1, SurfaceType::Button(ButtonSurfaceType::PatternLength)),
-        );
-        surfaces.insert(
-            "pattern_zoom",
-            Surface::new(8, 1, SurfaceType::Button(ButtonSurfaceType::PatternZoom)),
-        );
+        surfaces.insert("length", Surface::new(8, 1, SurfaceType::Button(ButtonSurfaceType::Length)));
+        surfaces.insert("zoom", Surface::new(8, 1, SurfaceType::Button(ButtonSurfaceType::Zoom)));
+        surfaces.insert("view", Surface::new(1, 1, SurfaceType::Button(ButtonSurfaceType::View)));
+
+        // TODO - Pass surfaces to APC_type here, so it can add it's surfaces
 
         // Offset every surface by adding width of corresponding surface of already existing devices
         for (key, surface) in surfaces.iter_mut() {
             let offset_x = other_devices.iter()
-                .filter_map(|device| {
-                    device.device_type.surface(key)
-                        .and_then(|surface| Some(surface.width))
-                })
+                .filter_map(|device| device.device_type.surface(key).and_then(|surface| Some(surface.width)))
                 .reduce(|a, b| a + b)
                 .or(Some(0))
                 .unwrap();
@@ -187,36 +193,6 @@ impl APC {
             surfaces,
         }
     }
-
-    fn recognized_button(&mut self, channel: u8, byte: u8) -> Option<(&mut Surface, Position)> {
-        match byte {
-            //0x33 => Some(ButtonType::Channel(channel)),
-            // These used to be sequence buttons, but will now be more control groups for plugin parameters
-            //0x57 ..= 0x5A => ButtonType::Sequence(b[1]- 0x57),
-            // Side grid is turned upside down as we draw the phrases upside down as we draw notes
-            // updside down due to lower midi nodes having lower numbers, therefore the 4 -
-            //0x52 ..= 0x56 => Some(ButtonType::Side(4 - (b[1]- 0x52))),
-            //0x51 => Some(ButtonType::View),
-            //0x62 => Some(ButtonType::Shift),
-            //0x50 => Some(ButtonType::Master),
-            // Grid should add notes & add phrases
-            //0x35 ..= 0x39 => Some(ButtonType::Grid(channel, 4 - (b[1]- 0x35))),
-            //0x34 => Some(ButtonType::Indicator(channel)),
-            //0x30 => Some(ButtonType::Red(channel)),
-            0x31 => Some((self.surface_mut("pattern_zoom").unwrap(), Position::new(channel, 0))),
-            0x32 => Some((self.surface_mut("pattern_length").unwrap(), Position::new(channel, 0))),
-            // APC40 specific stuff
-            //0x5B => Some(ButtonType::Play),
-            //0x5C => Some(ButtonType::Stop),
-            //0x3F => Some(ButtonType::Quantization),
-            //0x5E => Some(ButtonType::Up),
-            //0x5F => Some(ButtonType::Down),
-            //0x60 => Some(ButtonType::Right),
-            //0x61 => Some(ButtonType::Left),
-            _ => None,
-        }
-    }
-
 }
 
 impl DeviceType for APC {
@@ -250,8 +226,42 @@ impl DeviceType for APC {
                     (b[0] - 0x80, ButtonState::Released)
                 };
 
+
+                let recognized_button = match b[1] {
+                    //0x33 => Some(ButtonType::Channel(channel)),
+                    // These used to be sequence buttons, but will now be more control groups for plugin parameters
+                    //0x57 ..= 0x5A => ButtonType::Sequence(b[1]- 0x57),
+                    // Side grid is turned upside down as we draw the phrases upside down as we draw notes
+                    // updside down due to lower midi nodes having lower numbers, therefore the 4 -
+                    //0x52 ..= 0x56 => Some(ButtonType::Side(4 - (b[1]- 0x52))),
+                    //0x51 => Some(ButtonType::View),
+                    //0x62 => Some(ButtonType::Shift),
+                    0x50 => Some((self.surface_mut("view").unwrap(), Position::new(0, 0))),
+                    // Grid should add notes & add phrases
+                    //0x35 ..= 0x39 => Some(ButtonType::Grid(channel, 4 - (b[1]- 0x35))),
+                    //0x34 => Some(ButtonType::Indicator(channel)),
+                    //0x30 => Some(ButtonType::Red(channel)),
+                    0x31 => Some((self.surface_mut("zoom").unwrap(), Position::new(channel, 0))),
+                    0x32 => Some((self.surface_mut("length").unwrap(), Position::new(channel, 0))),
+                    // TODO - Put surfaces into apc_type aswell
+                    // TODO - Passing surface and position like this, i don't like it
+                    // TODO - Is there a way to be able to pass channel & note so service and be
+                    // done with it?
+                    
+                    // APC40 specific stuff
+                    //0x5B => Some(ButtonType::Play),
+                    //0x5C => Some(ButtonType::Stop),
+                    //0x3F => Some(ButtonType::Quantization),
+                    //0x5E => Some(ButtonType::Up),
+                    //0x5F => Some(ButtonType::Down),
+                    //0x60 => Some(ButtonType::Right),
+                    //0x61 => Some(ButtonType::Left),
+                    _ => None,
+                };
+
                 // Get associated surface, and make it handle input
-                if let Some((surface, position)) = self.recognized_button(channel, b[1]) {
+                // TODO - don't handle buttons here, make this generic for pots & faders & buttons
+                if let Some((surface, position)) = recognized_button {
                     let event = SurfaceEvent::new(midi_input_event.time, position, SurfaceEventType::Button(button_state));
                     surface.process_event(event);
                 }
